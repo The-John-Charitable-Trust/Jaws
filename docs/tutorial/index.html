@@ -469,12 +469,14 @@
 
         <h3>Agentic AI Responsibilities</h3>
         <p>The first JAWS release path uses a small set of role-oriented agents. The support agent explains findings and operational impact. The governance agent evaluates policy, approval, and compliance context. The deploy agent performs approved changes. The workflow agent coordinates multi-step execution and validation. Each agent receives only the tools and permissions required for its role, and each response makes clear whether JAWS is recommending, planning, executing, or validating.</p>
+        <p>The implementation pattern introduced by <code>src/Jaws.AgentFramework/FirstAgent.cs</code> is reused for the role-oriented agents. Later tutorial sections add the corresponding C# files as the scenario grows: <code>SupportAgent.cs</code> for investigation and user-facing explanations, <code>GovernanceAgent.cs</code> for policy and approval reasoning, <code>DeployAgent.cs</code> for approved Datadog and ServiceNow write actions, and <code>WorkflowAgent.cs</code> for multi-step orchestration and validation. Each section names the source file next to the C# snippet, just as the first-agent section does.</p>
 
         <h3>Tool And MCP Boundary</h3>
         <p>JAWS uses a custom MCP server as the controlled tool boundary. The MCP server exposes approved tools for Azure inventory, Datadog, webhook validation, ServiceNow, policy evidence, and operational knowledge. It is hardened so tool calls are authenticated, authorized, logged, schema-validated, and constrained by customer configuration. Write-capable tools require explicit approval before execution.</p>
 
         <h3>Approval And Evidence Flow</h3>
         <p>JAWS separates recommendation from execution. A user can ask for recommendations without changing anything. When a requested action would create or modify Datadog, ServiceNow, Azure, or other external assets, JAWS uses a human-in-the-loop workflow checkpoint and requires an approval reference before execution. After execution, JAWS returns an evidence summary showing the requested action, tool calls performed, resources affected, generated links, webhook validation result, ServiceNow incident result, and final pass/fail status.</p>
+        <p>The approval checkpoint is implemented as workflow code, not as a prompt convention. The workflow section adds source files for approval state, workflow execution, and evidence capture, including <code>ApprovalCheckpoint.cs</code>, <code>DatadogOnboardingWorkflow.cs</code>, and <code>WorkflowEvidence.cs</code>. The user experience remains natural in Teams: JAWS asks for approval when a write action is required, records the approval reference, then executes and validates only after approval is present.</p>
 
         <h3>Definition Of Done</h3>
         <p>The scenario is complete when the user can verify the Datadog monitor or synthetic test in Datadog, see the approved webhook configuration, trigger or observe a Datadog notification, confirm JAWS received the event, and inspect the ServiceNow incident that includes operational reasoning, evidence, affected resource context, and the workflow test result.</p>
@@ -618,16 +620,16 @@ print(result)</code></pre>
           </div>
         </section>
         <h2 id="step-2">Step 2: Add Tools</h2>
-        <p>This release adds tool calling and introduces the JAWS tool extensibility contract. The hardened custom MCP boundary follows in the next release.</p>
+        <p>This release adds tool calling and introduces the JAWS tool extensibility contract. The C# snippets reference the source files that define tool contracts and tool registration, including <code>ToolRegistry.cs</code> and <code>AgentToolFactory.cs</code>. The hardened custom MCP boundary follows in the next release.</p>
 
         <h2 id="step-3">Step 3: Multi-Turn Conversations</h2>
-        <p>This release adds session continuity for Teams and API conversations.</p>
+        <p>This release adds session continuity for Teams and API conversations. The C# snippets reference the conversation/session files that keep role-agent context connected across turns.</p>
 
         <h2 id="step-4">Step 4: Memory and Persistence</h2>
-        <p>This release adds curated context, RAG provider options, and persistence guidance.</p>
+        <p>This release adds curated context, RAG provider options, and persistence guidance. The C# snippets reference the retrieval provider files and the role-agent context-loading files used by support, governance, deploy, and workflow agents.</p>
 
         <h2 id="step-5">Step 5: Workflows</h2>
-        <p>This release adds the human-in-the-loop workflow for Datadog monitor or synthetic creation, webhook validation, and ServiceNow incident creation.</p>
+        <p>This release adds the human-in-the-loop workflow for Datadog monitor or synthetic creation, webhook validation, and ServiceNow incident creation. The workflow snippets reference the C# files that coordinate the support, governance, deploy, and workflow agents from recommendation through approval, execution, validation, and evidence reporting.</p>
 
         <h2 id="step-6">Step 6: Host Your Agent</h2>
         <p>This release completes hosting, deployment, and production-readiness guidance.</p>

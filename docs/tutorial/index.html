@@ -387,7 +387,7 @@
       <h2>Table of contents</h2>
       <nav aria-label="Tutorial navigation">
         <a class="active" href="#introduction">Introduction</a>
-        <a href="#system-requirements">System Requirements</a>
+        <a href="#jaws-platform-overview">JAWS Platform Overview</a>
         <a href="#concept-of-operations">Concept of Operations</a>
         <a href="#step-1">Step 1: Your First Agent</a>
         <a href="#step-2">Step 2: Add Tools</a>
@@ -421,38 +421,22 @@
           The full step-by-step source code is available on GitHub at <a href="https://github.com/cezjah/jaws">https://github.com/cezjah/jaws</a>. Each release is aligned to the corresponding Microsoft Agent Framework tutorial step, making it possible to inspect the code, run the tests, deploy the platform, and compare each implementation phase against the documented concepts.
         </div>
 
-                <h2 id="system-requirements">System Requirements</h2>
-        <p>Before working through the code tutorial, prepare the required developer tools, repository access, and model configuration values. The release <code>0.1</code> code can build and run locally without Datadog, ServiceNow, Teams, MCP, or RAG infrastructure.</p>
+                <h2 id="jaws-platform-overview">JAWS Platform Overview</h2>
+        <p>The JAWS GitHub repository is the system of record for the reference implementation. It contains the source code, tutorial documentation, release history, test cases, and installation guidance needed to understand and deploy the platform.</p>
 
-        <h3>Required Accounts</h3>
+        <h3>Repository Contents</h3>
         <ul>
-          <li>Azure subscription for the JAWS deployment.</li>
-          <li>Azure AI Foundry or Azure OpenAI access with an existing model deployment.</li>
-          <li>Datadog trial, evaluation, or licensed account.</li>
-          <li>ServiceNow developer instance or licensed instance.</li>
-          <li>GitHub account with access to the JAWS repository.</li>
-          <li>Microsoft Teams license if Teams integration is enabled.</li>
+          <li><code>src/Jaws.AgentFramework</code> contains the agent implementation code, starting with the first agent and expanding into role-oriented support, governance, deploy, and workflow agents.</li>
+          <li><code>src/Jaws.Api</code> contains the hosted API surface that exposes agent execution, health checks, Teams-facing routes, workflow endpoints, and integration callbacks as the tutorial progresses.</li>
+          <li><code>tests</code> contains release-aligned tests and validation runners so each phase can be verified independently.</li>
+          <li><code>docs</code> contains the HTML tutorial, test-case documentation, and the installation guide when the platform reaches the release that introduces deployment packaging.</li>
         </ul>
 
-        <h3>Required Local Tools</h3>
-        <ul>
-          <li>Git</li>
-          <li>PowerShell 7 or later</li>
-          <li>Azure CLI</li>
-          <li>.NET 10 SDK</li>
-          <li>Visual Studio Code</li>
-        </ul>
-        <p>Optional developer tools include OpenAI Codex, Claude Code by Anthropic, and GitHub Copilot. The Step 1 code in this tutorial targets <code>net10.0</code>.</p>
-        <h3>Azure Access For Live Tests</h3>
-        <p>Local build and unit tests do not require Azure deployment. Live Step 1 validation requires access to an Azure AI Foundry or Azure OpenAI project endpoint and permission to call the configured model deployment.</p>
-        <h3>Required Model Configuration</h3>
-        <ul>
-          <li>Azure AI Foundry or Azure OpenAI endpoint.</li>
-          <li>Model deployment name.</li>
-          <li>Approved authentication method, such as Azure CLI login for local testing or managed identity in a hosted environment.</li>
-        </ul>
+        <h3>Release-Aligned Learning Path</h3>
+        <p>Each GitHub release corresponds to a tutorial phase. The source code grows alongside the Microsoft Agent Framework concepts: first agent, tools, conversations, memory, workflows, hosting, and the final JAWS operations scenario. This lets the reader compare a small working codebase at each release instead of jumping directly to the finished platform.</p>
 
-
+        <h3>Installation And Tests</h3>
+        <p>The installation guide lives in GitHub with the source code and is maintained separately from the code tutorial. It covers prerequisites, Azure deployment choices, naming and tagging inputs, SaaS credentials, Teams packaging, Key Vault usage, and optional compliance profiles. Test cases also live in GitHub and describe how to validate local code, live Azure behavior, Teams interaction, Datadog webhook delivery, and ServiceNow incident creation.</p>
 
         <h2 id="concept-of-operations">Concept of Operations</h2>
         <p>JAWS is an agentic operations platform that lets a user chat in Microsoft Teams, investigate an operational need, deliberate with specialized agents, approve a governed action, and deploy an evidence-backed change across Azure, Datadog, and ServiceNow.</p>

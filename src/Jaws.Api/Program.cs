@@ -2,7 +2,7 @@ using Jaws.AgentFramework.Step1;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Step 1 reads configuration from normal ASP.NET Core providers such as app settings, environment variables, or local development settings.
+// Step 1 reads non-secret runtime settings from ASP.NET Core configuration: App Service settings, local app settings, user secrets, or environment variables.
 var step1Options = new Step1AgentOptions
 {
     Endpoint = FirstConfiguredValue(

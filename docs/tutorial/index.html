@@ -483,10 +483,10 @@
         <h2 id="step-1">Step 1: Your First Agent</h2>
         <p>Release <code>0.1</code> implements the first JAWS agent in alignment with Microsoft Agent Framework Step 1. The goal is intentionally narrow: create a minimal, well-documented agent that can receive a request, call the configured model, and return a response from the deployed JAWS API.</p>
 
-        <h3>Code Deliverables</h3>
+        <h3>Source Layout</h3>
         <p>In this release, you add the first JAWS agent implementation. The code follows Microsoft Agent Framework Step 1 by creating an <code>AIAgent</code>, configuring it with the selected model deployment and instructions, and calling <code>RunAsync</code> to return a response.</p>
         <p>The implementation includes comments at the important decision points so you can see why each part exists: where the model endpoint comes from, how Azure credentials are selected, how the agent is created, and where the first agent execution happens.</p>
-        <p>The initial source layout separates the hosted API, agent implementation, configuration model, and tests:</p>
+        <p>The initial source layout separates the hosted API, agent implementation, and configuration model:</p>
         <table>
           <thead>
             <tr><th>Path</th><th>Purpose</th></tr>
@@ -494,25 +494,17 @@
           <tbody>
             <tr><td><code>src/Jaws.Api</code></td><td>Hosted API surface for the JAWS tutorial platform.</td></tr>
             <tr><td><code>src/Jaws.AgentFramework</code></td><td>Agent Framework integration and Step 1 agent implementation.</td></tr>
-            <tr><td><code>tests/Jaws.Step1.Tests</code></td><td>Unit and integration tests for release <code>0.1</code>.</td></tr>
-            <tr><td><code>docs/tutorial</code></td><td>HTML tutorial and release-aligned documentation.</td></tr>
           </tbody>
         </table>
 
-        <h3>Configuration Deliverables</h3>
-        <p>In the code tutorial, configuration is represented by typed options that the API can validate before creating the first agent. Release <code>0.1</code> introduces <code>Step1AgentOptions</code> for the agent endpoint, deployment name, agent name, and instructions.</p>
+        <h3>Configuration Model</h3>
+        <p>The Step 1 API uses typed options that can be validated before the first agent is created. <code>Step1AgentOptions</code> holds the agent endpoint, deployment name, agent name, and instructions.</p>
         <p>The Step 1 code reads four runtime settings: <code>Endpoint</code>, <code>DeploymentName</code>, <code>AgentName</code>, and <code>Instructions</code>. The API accepts these values from ASP.NET Core configuration keys such as <code>Jaws:Agent:Step1:Endpoint</code> and <code>Jaws:Agent:Step1:DeploymentName</code>, or from environment variables such as <code>JAWS_AGENT_ENDPOINT</code>, <code>JAWS_AGENT_DEPLOYMENT_NAME</code>, <code>JAWS_AGENT_NAME</code>, and <code>JAWS_AGENT_INSTRUCTIONS</code>.</p>
-        <p>For local development, provide the same settings with environment variables, .NET user secrets, or <code>appsettings.Development.json</code>. For hosted Azure App Service deployments, the same settings are supplied as App Service application settings. <code>Endpoint</code>, <code>DeploymentName</code>, <code>AgentName</code>, and <code>Instructions</code> are non-secret runtime configuration values.</p>
-        <p>In the future release <code>1.0</code> installation flow, the local bootstrap JSON is installer input only. It stores non-secret deployment choices such as subscription ID, tenant ID, region, naming values, Azure AI endpoint, and model deployment name. The installer then writes the required runtime settings into Azure App Service application settings. Secret values such as API keys, SaaS passwords, webhook secrets, and private credentials are stored in Azure Key Vault and exposed to the app through Key Vault references or Key Vault-backed application settings. The application code does not read the bootstrap JSON directly.</p>
+        <p>For local development, provide the same settings with environment variables, .NET user secrets, or <code>appsettings.Development.json</code>. For hosted Azure App Service deployments, the same settings are supplied as App Service application settings. <code>Endpoint</code>, <code>DeploymentName</code>, <code>AgentName</code>, and <code>Instructions</code> are non-secret runtime configuration values. If a hosted value is backed by Key Vault, the app still reads it through the same configuration key after Azure resolves the Key Vault reference.</p>
 
-        <h3>Test Deliverables</h3>
-        <p>Every release includes tests in the GitHub repository. For release <code>0.1</code>, the tests prove configuration validation, naming-policy output, API health behavior, and successful first-agent execution. Tests that require live Azure or model access are separated from local unit tests and documented as deployment validation.</p>
-
-        <h3>Release Rule</h3>
-        <p>Each minor release maps to one Microsoft documentation step. Release <code>0.1</code> maps to Step 1. Release <code>0.2</code> maps to Step 2. This keeps code, documentation, and tests aligned with the tutorial progression.</p>
         <h3>Step 1 Tutorial Snippets</h3>
         <p>The snippets below show the Step 1 implementation shape used by the JAWS reference code. Choose C# to follow the implemented path in this repository. Choose Python to compare the same Microsoft Agent Framework concept in Python.</p>
-        <p>The endpoint and deployment variables come from Azure AI Foundry or Azure OpenAI resources that already exist before this Step 1 code runs. In the code tutorial, enter those values through the runtime configuration keys shown above. In release <code>1.0</code>, the installer will collect those same non-secret values once, validate them, and apply them to the hosted Azure configuration automatically.</p>
+        <p>The endpoint and deployment variables come from Azure AI Foundry or Azure OpenAI resources that already exist before this Step 1 code runs. In the code tutorial, enter those values through the runtime configuration keys shown above.</p>
 
         <div class="language-card">
           <h3>Choose a programming language</h3>

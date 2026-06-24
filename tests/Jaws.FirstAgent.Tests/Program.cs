@@ -1,3 +1,4 @@
+using Jaws.AgentFramework.Agents;
 using Jaws.AgentFramework.Configuration;
 using Jaws.AgentFramework.FirstAgent;
 
@@ -5,6 +6,8 @@ var tests = new List<(string Name, Action Test)>
 {
     ("First agent options validate required fields", FirstAgentOptionsValidateRequiredFields),
     ("First agent options accept valid configuration", FirstAgentOptionsAcceptValidConfiguration),
+    ("Role agent catalog includes workflow agents", RoleAgentCatalogIncludesWorkflowAgents),
+    ("Deploy agent requires approval", DeployAgentRequiresApproval),
     ("Naming policy generates expected resource names", NamingPolicyGeneratesExpectedNames)
 };
 
@@ -55,6 +58,29 @@ static void FirstAgentOptionsAcceptValidConfiguration()
 
     AssertTrue(options.IsConfigured, "valid options should be configured");
     AssertEqual(0, options.Validate().Count, "valid options error count");
+}
+
+static void RoleAgentCatalogIncludesWorkflowAgents()
+{
+    var roles = RoleAgentCatalog.All.Select(agent => agent.Role).ToHashSet();
+
+    AssertEqual(4, RoleAgentCatalog.All.Count, "role agent count");
+    AssertTrue(roles.Contains(AgentRole.Support), "support role missing");
+    AssertTrue(roles.Contains(AgentRole.Governance), "governance role missing");
+    AssertTrue(roles.Contains(AgentRole.Deploy), "deploy role missing");
+    AssertTrue(roles.Contains(AgentRole.Workflow), "workflow role missing");
+    AssertTrue(RoleAgentCatalog.All.All(agent => agent.Validate().Count == 0), "catalog job descriptions should validate");
+}
+
+static void DeployAgentRequiresApproval()
+{
+    var deploy = DeployAgent.JobDescription;
+
+    AssertTrue(deploy.RequiresApproval, "deploy agent should require approval");
+    AssertTrue(deploy.AllowedTools.Contains("datadog.synthetic.create", StringComparer.Ordinal), "datadog synthetic tool missing");
+    AssertTrue(deploy.AllowedTools.Contains("servicenow.incident.createOrUpdate", StringComparer.Ordinal), "ServiceNow incident tool missing");
+    AssertTrue(deploy.ApprovalPolicy.WriteActions.Contains("testNotification", StringComparer.Ordinal), "test notification approval action missing");
+    AssertTrue(deploy.EvidencePolicy.IncludePassFailTable, "deploy evidence should include pass/fail table");
 }
 
 static void NamingPolicyGeneratesExpectedNames()

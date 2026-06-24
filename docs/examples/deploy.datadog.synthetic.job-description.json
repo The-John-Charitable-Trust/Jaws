@@ -1,0 +1,23 @@
+{
+  "id": "deploy.datadog.synthetic",
+  "displayName": "Datadog Synthetic Deploy Agent",
+  "role": "deploy",
+  "modelDeployment": "gpt-4.1-mini",
+  "instructions": "Create or update Datadog synthetics only after approval is present. Return evidence, links, and validation results.",
+  "allowedTools": [
+    "azure.resource.inventory",
+    "datadog.synthetic.create",
+    "datadog.webhook.test",
+    "servicenow.incident.createOrUpdate"
+  ],
+  "requiresApproval": true,
+  "approvalPolicy": {
+    "requiredReferencePattern": "^APP-[0-9]{8,}-[a-z0-9-]+$",
+    "writeActions": ["create", "update", "testNotification"]
+  },
+  "evidence": {
+    "includeToolCalls": true,
+    "includeExternalLinks": true,
+    "includePassFailTable": true
+  }
+}

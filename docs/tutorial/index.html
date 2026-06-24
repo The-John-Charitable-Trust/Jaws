@@ -453,7 +453,7 @@
 
         <h3>Agentic AI Responsibilities</h3>
         <p>The first JAWS release path uses a small set of role-oriented agents. The support agent explains findings and operational impact. The governance agent evaluates policy, approval, and compliance context. The deploy agent performs approved changes. The workflow agent coordinates multi-step execution and validation. Each agent receives only the tools and permissions required for its role, and each response makes clear whether JAWS is recommending, planning, executing, or validating.</p>
-        <p>The implementation pattern introduced by <code>src/Jaws.AgentFramework/FirstAgent.cs</code> is reused for the role-oriented agents. Later tutorial sections add the corresponding C# files as the scenario grows: <code>SupportAgent.cs</code> for investigation and user-facing explanations, <code>GovernanceAgent.cs</code> for policy and approval reasoning, <code>DeployAgent.cs</code> for approved Datadog and ServiceNow write actions, and <code>WorkflowAgent.cs</code> for multi-step orchestration and validation. Each section names the source file next to the C# snippet, just as the first-agent section does.</p>
+        <p>The implementation pattern introduced by <code>src/Jaws.AgentFramework/FirstAgent.cs</code> is reused for the role-oriented agents. Release <code>0.1</code> includes the corresponding C# files so the end-state workflow is visible from the beginning: <code>SupportAgent.cs</code> for investigation and user-facing explanations, <code>GovernanceAgent.cs</code> for policy and approval reasoning, <code>DeployAgent.cs</code> for approved Datadog and ServiceNow write actions, and <code>WorkflowAgent.cs</code> for multi-step orchestration and validation. Later sections attach tools, memory, Teams routing, and workflow execution to these agents.</p>
 
         <h3>Tool And MCP Boundary</h3>
         <p>JAWS uses a custom MCP server as the controlled tool boundary. The MCP server exposes approved tools for Azure inventory, Datadog, webhook validation, ServiceNow, policy evidence, and operational knowledge. It is hardened so tool calls are authenticated, authorized, logged, schema-validated, and constrained by customer configuration. Write-capable tools require explicit approval before execution.</p>
@@ -489,7 +489,7 @@
         <p>For local development, provide the same settings with environment variables, .NET user secrets, or <code>appsettings.Development.json</code>. For hosted Azure App Service deployments, the same settings are supplied as App Service application settings. <code>Endpoint</code>, <code>DeploymentName</code>, <code>AgentName</code>, and <code>Instructions</code> are non-secret runtime configuration values. If a hosted value is backed by Key Vault, the app still reads it through the same configuration key after Azure resolves the Key Vault reference.</p>
 
         <h3>Extending To Role Agents</h3>
-        <p>This first release creates one minimal agent so the Agent Framework construction pattern is easy to see. The end demonstration uses multiple agents. The same construction pattern is repeated for role-specific agents as later releases add tools, memory, Teams routing, and workflows.</p>
+        <p>This first release creates one runnable first agent and also includes the role-agent scaffolds needed by the end demonstration. The role agents use the same Agent Framework construction pattern; later releases add tools, memory, Teams routing, and workflow execution.</p>
         <table>
           <thead>
             <tr><th>Role</th><th>Source file</th><th>Purpose</th></tr>
@@ -501,8 +501,8 @@
             <tr><td>Workflow</td><td><code>src/Jaws.AgentFramework/Agents/WorkflowAgent.cs</code></td><td>Coordinates multi-agent execution, human approval checkpoints, validation, and final evidence reporting.</td></tr>
           </tbody>
         </table>
-        <p>Agent extensibility is configuration-driven. A later release introduces job-description JSON files that define an agent&apos;s role, instructions, allowed tools, approval requirements, and evidence obligations. The platform loads these job descriptions, validates them, and creates the corresponding agent configuration without hard-coding every future role into the API.</p>
-        <p>Sample job description:</p>
+        <p>Agent extensibility is configuration-driven. Release <code>0.1</code> includes the job-description shape and an example JSON file. Later releases load customer-authored job descriptions, validate them, and create corresponding agent configuration without hard-coding every future role into the API.</p>
+        <p>Sample job description from <code>docs/examples/deploy.datadog.synthetic.job-description.json</code>:</p>
         <div class="code-block">
           <div class="code-header"><span>JSON</span><button class="copy-button" type="button">Copy</button></div>
           <pre><code>{

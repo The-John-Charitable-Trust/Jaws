@@ -1,0 +1,24 @@
+# Build outputs
+bin/
+obj/
+.vs/
+.vscode/.ropeproject/
+
+# Local/dev state
+.local/
+.env
+.env.*
+*.user
+*.suo
+*.log
+
+# Secrets and generated config
+local.settings.json
+secrets.json
+*.tfstate
+*.tfstate.backup
+*.generated.json
+
+# Packages
+node_modules/
+packages/

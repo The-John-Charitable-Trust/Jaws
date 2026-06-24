@@ -1,10 +1,8 @@
-using System.Text.Json;
-using Jaws.AgentFramework.Installation;
+using Jaws.AgentFramework.Configuration;
 using Jaws.AgentFramework.Step1;
 
 var tests = new List<(string Name, Action Test)>
 {
-    ("Bootstrap example is parseable", BootstrapExampleIsParseable),
     ("Step 1 options validate required fields", Step1OptionsValidateRequiredFields),
     ("Step 1 options accept valid configuration", Step1OptionsAcceptValidConfiguration),
     ("Naming policy generates expected resource names", NamingPolicyGeneratesExpectedNames)
@@ -36,16 +34,6 @@ if (failures.Count > 0)
 
 Console.WriteLine();
 Console.WriteLine($"Summary: {tests.Count}/{tests.Count} passed.");
-
-static void BootstrapExampleIsParseable()
-{
-    var path = FindRepoFile("config/bootstrap.example.json");
-    using var stream = File.OpenRead(path);
-    using var document = JsonDocument.Parse(stream);
-
-    AssertEqual("0.1", document.RootElement.GetProperty("version").GetString(), "bootstrap version");
-    AssertEqual("eastus", document.RootElement.GetProperty("azure").GetProperty("region").GetString(), "bootstrap region");
-}
 
 static void Step1OptionsValidateRequiredFields()
 {
@@ -89,23 +77,6 @@ static void NamingPolicyGeneratesExpectedNames()
     AssertEqual("aiopscontosojawsdev001", names.StorageAccount, "storage account");
 }
 
-static string FindRepoFile(string relativePath)
-{
-    var directory = new DirectoryInfo(AppContext.BaseDirectory);
-    while (directory is not null)
-    {
-        var candidate = Path.Combine(directory.FullName, relativePath);
-        if (File.Exists(candidate))
-        {
-            return candidate;
-        }
-
-        directory = directory.Parent;
-    }
-
-    throw new FileNotFoundException($"Could not find {relativePath} from {AppContext.BaseDirectory}.");
-}
-
 static void AssertTrue(bool condition, string message)
 {
     if (!condition)
@@ -121,3 +92,5 @@ static void AssertEqual<T>(T expected, T actual, string name)
         throw new InvalidOperationException($"{name}: expected '{expected}', actual '{actual}'.");
     }
 }
+
+

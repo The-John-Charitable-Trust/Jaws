@@ -1,4 +1,4 @@
-namespace Jaws.AgentFramework.Installation;
+namespace Jaws.AgentFramework.Configuration;
 
 public sealed record NamingInputs(
     string Organization,
@@ -83,3 +83,4 @@ public static class JawsNamingPolicy
     private static string TrimAzureName(string value, int maxLength) =>
         value.Length <= maxLength ? value : value[..maxLength].TrimEnd('-');
 }
+

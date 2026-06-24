@@ -2,9 +2,7 @@ using Jaws.AgentFramework.Step1;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Step 1 reads configuration from normal ASP.NET Core providers. In Azure App Service,
-// these values should come from app settings or Key Vault-backed references. Local
-// generated bootstrap files are intentionally not committed to GitHub.
+// Step 1 reads configuration from normal ASP.NET Core providers such as app settings, environment variables, or local development settings.
 var step1Options = new Step1AgentOptions
 {
     Endpoint = FirstConfiguredValue(
@@ -57,3 +55,4 @@ app.Run();
 
 static string FirstConfiguredValue(params string?[] values) =>
     values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+

@@ -501,7 +501,8 @@
 
         <h3>Configuration Deliverables</h3>
         <p>In the code tutorial, configuration is represented by typed options that the API can validate before creating the first agent. Release <code>0.1</code> introduces <code>Step1AgentOptions</code> for the agent endpoint, deployment name, agent name, and instructions.</p>
-        <p>The code reads those values from the normal ASP.NET Core configuration pipeline, such as app settings, environment variables, or local development settings.</p>
+        <p>The Step 1 code reads <code>Endpoint</code>, <code>DeploymentName</code>, <code>AgentName</code>, and <code>Instructions</code> from the ASP.NET Core configuration pipeline. For local development, provide these values with environment variables, user secrets, or <code>appsettings.Development.json</code>.</p>
+        <p>In the future release <code>1.0</code> installation flow, the installer will read non-secret deployment values from the user&apos;s local bootstrap JSON, then write the required runtime configuration into Azure App Service app settings. Secret values, such as API keys, passwords, webhook secrets, and private credentials, will be stored in Azure Key Vault and exposed to the app through Key Vault-backed app settings. The application code does not read the bootstrap JSON directly.</p>
 
         <h3>Test Deliverables</h3>
         <p>Every release includes tests in the GitHub repository. For release <code>0.1</code>, the tests prove configuration validation, naming-policy output, API health behavior, and successful first-agent execution. Tests that require live Azure or model access are separated from local unit tests and documented as deployment validation.</p>
@@ -726,6 +727,7 @@ print(result)</code></pre>
   </script>
 </body>
 </html>
+
 
 
 

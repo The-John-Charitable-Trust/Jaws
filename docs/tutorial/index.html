@@ -524,6 +524,7 @@
           </div>
 
           <p>Create the agent:</p>
+          <p>Source file: <code>src/Jaws.AgentFramework/FirstAgent.cs</code></p>
           <div class="code-block">
             <div class="code-header"><span>C#</span><button class="copy-button" type="button">Copy</button></div>
             <pre><code><span class="token-keyword">using</span> System;
@@ -556,6 +557,7 @@ Console.WriteLine(response.Text);</code></pre>
           </div>
 
           <p>Expose the first agent through a small API endpoint so the configured environment can be tested:</p>
+          <p>Source files: <code>src/Jaws.Api/Program.cs</code> and <code>src/Jaws.AgentFramework/FirstAgentContracts.cs</code></p>
           <div class="code-block">
             <div class="code-header"><span>C# Minimal API</span><button class="copy-button" type="button">Copy</button></div>
             <pre><code>app.MapPost(<span class="token-string">"/api/agent/run"</span>, <span class="token-keyword">async</span> (FirstAgentRequest request, FirstAgent agent) =&gt;

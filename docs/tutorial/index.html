@@ -247,6 +247,55 @@
     }
 
 
+
+    .language-card {
+      margin: 1.25rem 0 1.75rem;
+      padding: 1.1rem;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #f7f7f7;
+    }
+
+    .language-card h3 {
+      margin-top: 0;
+      padding-top: 0;
+      border-top: 0;
+    }
+
+    .language-tabs {
+      display: inline-flex;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: #fff;
+    }
+
+    .language-tab {
+      border: 0;
+      border-right: 1px solid var(--line);
+      background: #fff;
+      color: var(--text);
+      cursor: pointer;
+      font: inherit;
+      font-weight: 600;
+      padding: 0.55rem 0.85rem;
+    }
+
+    .language-tab:last-child {
+      border-right: 0;
+    }
+
+    .language-tab.active {
+      background: #d7ebff;
+      color: var(--accent-dark);
+      outline: 2px solid var(--accent-dark);
+      outline-offset: -2px;
+    }
+
+    .language-panel[hidden] {
+      display: none;
+    }
+
     .code-block {
       margin: 1rem 0 1.5rem;
       overflow: hidden;
@@ -460,34 +509,45 @@
         <h3>Release Rule</h3>
         <p>Each minor release maps to one Microsoft documentation step. Release <code>0.1</code> maps to Step 1. Release <code>0.2</code> maps to Step 2. This keeps code, documentation, and tests aligned with the tutorial progression.</p>
         <h3>Step 1 Tutorial Snippets</h3>
-        <p>The snippets below show the Step 1 implementation shape used by the JAWS reference code.</p>
+        <p>The snippets below show the Step 1 implementation shape used by the JAWS reference code. Choose C# to follow the implemented path in this repository. Choose Python to compare the same Microsoft Agent Framework concept in Python.</p>
+        <p>The endpoint and deployment variables come from resources the reader has already configured in Azure AI Foundry or Azure OpenAI. In this code tutorial, provide those values through environment variables or application configuration. The future release <code>1.0</code> installation guide will describe how the installer collects those values and applies them to hosted Azure app settings.</p>
 
-        <p>Install the Agent Framework packages required for the first C# agent:</p>
-        <div class="code-block">
-          <div class="code-header"><span>.NET CLI</span><button class="copy-button" type="button">Copy</button></div>
-          <pre><code><span class="token-command">dotnet</span> add package Azure.AI.Projects <span class="token-param">--prerelease</span>
+        <div class="language-card">
+          <h3>Choose a programming language</h3>
+          <div class="language-tabs" role="tablist" aria-label="Programming language">
+            <button class="language-tab active" type="button" role="tab" aria-selected="true" aria-controls="lang-csharp" data-language="csharp">C#</button>
+            <button class="language-tab" type="button" role="tab" aria-selected="false" aria-controls="lang-python" data-language="python">Python</button>
+          </div>
+        </div>
+
+        <section class="language-panel" id="lang-csharp" data-language-panel="csharp">
+          <p>Install the Agent Framework packages required for the first C# agent:</p>
+          <div class="code-block">
+            <div class="code-header"><span>.NET CLI</span><button class="copy-button" type="button">Copy</button></div>
+            <pre><code><span class="token-command">dotnet</span> add package Azure.AI.Projects <span class="token-param">--prerelease</span>
 <span class="token-command">dotnet</span> add package Azure.Identity
 <span class="token-command">dotnet</span> add package Microsoft.Agents.AI.Foundry <span class="token-param">--prerelease</span></code></pre>
-        </div>
-<p>Create the first JAWS agent. The comments call out how the code maps to Microsoft Agent Framework Step 1:</p>
-        <div class="code-block">
-          <div class="code-header"><span>C#</span><button class="copy-button" type="button">Copy</button></div>
-          <pre><code><span class="token-keyword">using</span> System;
+          </div>
+
+          <p>Create the agent:</p>
+          <div class="code-block">
+            <div class="code-header"><span>C#</span><button class="copy-button" type="button">Copy</button></div>
+            <pre><code><span class="token-keyword">using</span> System;
 <span class="token-keyword">using</span> Azure.AI.Projects;
 <span class="token-keyword">using</span> Azure.Identity;
 <span class="token-keyword">using</span> Microsoft.Agents.AI;
 
 <span class="token-comment">// Step 1 creates the first minimal agent. It does not add tools, memory, or workflows yet.</span>
 <span class="token-keyword">var</span> endpoint = Environment.GetEnvironmentVariable(<span class="token-string">"JAWS_AGENT_ENDPOINT"</span>)
-    ?? <span class="token-keyword">throw new</span> InvalidOperationException(<span class="token-string">"Set JAWS_AGENT_ENDPOINT."</span>);
+    ?? <span class="token-keyword">throw new</span> InvalidOperationException(<span class="token-string">"Set JAWS_AGENT_ENDPOINT from your Azure AI project endpoint."</span>);
 
 <span class="token-keyword">var</span> deploymentName = Environment.GetEnvironmentVariable(<span class="token-string">"JAWS_AGENT_DEPLOYMENT_NAME"</span>)
-    ?? <span class="token-keyword">throw new</span> InvalidOperationException(<span class="token-string">"Set JAWS_AGENT_DEPLOYMENT_NAME."</span>);
+    ?? <span class="token-keyword">throw new</span> InvalidOperationException(<span class="token-string">"Set JAWS_AGENT_DEPLOYMENT_NAME from your model deployment."</span>);
 
-<span class="token-comment">// DefaultAzureCredential lets local developers use Azure CLI login and deployed apps use managed identity.</span>
+<span class="token-comment">// DefaultAzureCredential lets local developers use Azure CLI login and hosted apps use managed identity.</span>
 <span class="token-keyword">var</span> credential = <span class="token-keyword">new</span> DefaultAzureCredential();
 
-<span class="token-comment">// AIProjectClient connects to the Azure AI Foundry project or Azure OpenAI-compatible project endpoint.</span>
+<span class="token-comment">// AIProjectClient connects to the configured Azure AI project endpoint.</span>
 <span class="token-comment">// AsAIAgent creates the Agent Framework agent used by Step 1.</span>
 <span class="token-type">AIAgent</span> agent = <span class="token-keyword">new</span> AIProjectClient(<span class="token-keyword">new</span> Uri(endpoint), credential)
     .AsAIAgent(
@@ -499,20 +559,55 @@
 <span class="token-type">AgentRunResponse</span> response = <span class="token-keyword">await</span> agent.RunAsync(<span class="token-string">"Explain what JAWS Step 1 proves."</span>);
 
 Console.WriteLine(response.Text);</code></pre>
-        </div>
+          </div>
 
-        <p>The same Step 1 idea in Python creates an agent and calls <code>run</code>. This tutorial shows Python for comparison only; the implemented JAWS reference path is C#.</p>
-        <div class="code-block">
-          <div class="code-header"><span>Python</span><button class="copy-button" type="button">Copy</button></div>
-          <pre><code><span class="token-keyword">from</span> azure.identity.aio <span class="token-keyword">import</span> AzureCliCredential
+          <p>Expose the first agent through a small API endpoint so the configured environment can be tested:</p>
+          <div class="code-block">
+            <div class="code-header"><span>C# Minimal API</span><button class="copy-button" type="button">Copy</button></div>
+            <pre><code>app.MapPost(<span class="token-string">"/api/agent/step1/run"</span>, <span class="token-keyword">async</span> (Step1Request request, Step1Agent agent) =&gt;
+{
+    <span class="token-comment">// Step 1 keeps the request path simple: receive text, call the first agent, return text.</span>
+    <span class="token-keyword">var</span> answer = <span class="token-keyword">await</span> agent.RunAsync(request.Message);
+    <span class="token-keyword">return</span> Results.Ok(<span class="token-keyword">new</span> { answer });
+});
+
+<span class="token-keyword">public sealed record</span> Step1Request(<span class="token-keyword">string</span> Message);</code></pre>
+          </div>
+
+          <p>Validate the Step 1 API after it is configured:</p>
+          <div class="code-block">
+            <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+            <pre><code><span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Get <span class="token-param">-Uri</span> <span class="token-string">"https://&lt;jaws-api-host&gt;/health"</span>
+
+<span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Post <span class="token-param">-Uri</span> <span class="token-string">"https://&lt;jaws-api-host&gt;/api/agent/step1/run"</span> `
+  <span class="token-param">-ContentType</span> <span class="token-string">"application/json"</span> `
+  <span class="token-param">-Body</span> <span class="token-string">'{ "message": "What does JAWS Step 1 prove?" }'</span></code></pre>
+          </div>
+        </section>
+
+        <section class="language-panel" id="lang-python" data-language-panel="python" hidden>
+          <p>Install the Agent Framework packages required for the first Python agent:</p>
+          <div class="code-block">
+            <div class="code-header"><span>Python</span><button class="copy-button" type="button">Copy</button></div>
+            <pre><code><span class="token-command">pip</span> install azure-identity
+<span class="token-command">pip</span> install agent-framework --pre</code></pre>
+          </div>
+
+          <p>Create the agent:</p>
+          <div class="code-block">
+            <div class="code-header"><span>Python</span><button class="copy-button" type="button">Copy</button></div>
+            <pre><code><span class="token-keyword">import</span> os
+<span class="token-keyword">from</span> azure.identity.aio <span class="token-keyword">import</span> AzureCliCredential
 <span class="token-keyword">from</span> agent_framework <span class="token-keyword">import</span> Agent
 <span class="token-keyword">from</span> agent_framework.azure <span class="token-keyword">import</span> FoundryChatClient
 
-<span class="token-comment"># Step 1 creates a single agent and sends one message.</span>
-<span class="token-comment"># JAWS implements this fully in C#, but the Python shape mirrors the Microsoft tutorial.</span>
+<span class="token-comment"># These values come from your configured Azure AI project and model deployment.</span>
+endpoint = os.environ[<span class="token-string">"JAWS_AGENT_ENDPOINT"</span>]
+deployment_name = os.environ[<span class="token-string">"JAWS_AGENT_DEPLOYMENT_NAME"</span>]
+
 client = FoundryChatClient(
-    project_endpoint=<span class="token-string">"https://example-project.services.ai.azure.com/api/projects/example-project"</span>,
-    model=<span class="token-string">"gpt-4.1-mini"</span>,
+    project_endpoint=endpoint,
+    model=deployment_name,
     credential=AzureCliCredential(),
 )
 
@@ -524,30 +619,8 @@ agent = Agent(
 
 result = <span class="token-keyword">await</span> agent.run(<span class="token-string">"Explain what JAWS Step 1 proves."</span>)
 print(result)</code></pre>
-        </div>
-        <p>Expose the first agent through a small API endpoint so the deployed environment can be tested:</p>
-        <div class="code-block">
-          <div class="code-header"><span>C# Minimal API</span><button class="copy-button" type="button">Copy</button></div>
-          <pre><code>app.MapPost(<span class="token-string">"/api/agent/step1/run"</span>, <span class="token-keyword">async</span> (Step1Request request, Step1Agent agent) =&gt;
-{
-    <span class="token-comment">// Step 1 keeps the request path simple: receive text, call the first agent, return text.</span>
-    <span class="token-keyword">var</span> answer = <span class="token-keyword">await</span> agent.RunAsync(request.Message);
-    <span class="token-keyword">return</span> Results.Ok(<span class="token-keyword">new</span> { answer });
-});
-
-<span class="token-keyword">public sealed record</span> Step1Request(<span class="token-keyword">string</span> Message);</code></pre>
-        </div>
-
-        <p>Validate the Step 1 API after it is configured:</p>
-        <div class="code-block">
-          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
-          <pre><code><span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Get <span class="token-param">-Uri</span> <span class="token-string">"https://&lt;jaws-api-host&gt;/health"</span>
-
-<span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Post <span class="token-param">-Uri</span> <span class="token-string">"https://&lt;jaws-api-host&gt;/api/agent/step1/run"</span> `
-  <span class="token-param">-ContentType</span> <span class="token-string">"application/json"</span> `
-  <span class="token-param">-Body</span> <span class="token-string">'{ "message": "What does JAWS Step 1 prove?" }'</span></code></pre>
-        </div>
-
+          </div>
+        </section>
         <h2 id="step-2">Step 2: Add Tools</h2>
         <p>This release adds tool calling and introduces the JAWS tool extensibility contract. The hardened custom MCP boundary follows in the next release.</p>
 
@@ -620,6 +693,19 @@ print(result)</code></pre>
       });
     });
 
+    document.querySelectorAll('.language-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const language = tab.dataset.language;
+        document.querySelectorAll('.language-tab').forEach(item => {
+          const active = item.dataset.language === language;
+          item.classList.toggle('active', active);
+          item.setAttribute('aria-selected', String(active));
+        });
+        document.querySelectorAll('[data-language-panel]').forEach(panel => {
+          panel.hidden = panel.dataset.languagePanel !== language;
+        });
+      });
+    });
     document.querySelectorAll('.copy-button').forEach(copyButton => {
       copyButton.addEventListener('click', async () => {
         const code = copyButton.closest('.code-block').querySelector('code').innerText;
@@ -640,6 +726,7 @@ print(result)</code></pre>
   </script>
 </body>
 </html>
+
 
 
 

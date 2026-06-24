@@ -488,6 +488,48 @@
         <p>The first-agent code reads four runtime settings: <code>Endpoint</code>, <code>DeploymentName</code>, <code>AgentName</code>, and <code>Instructions</code>. The API accepts these values from ASP.NET Core configuration keys such as <code>Jaws:Agent:Endpoint</code> and <code>Jaws:Agent:DeploymentName</code>, or from environment variables such as <code>JAWS_AGENT_ENDPOINT</code>, <code>JAWS_AGENT_DEPLOYMENT_NAME</code>, <code>JAWS_AGENT_NAME</code>, and <code>JAWS_AGENT_INSTRUCTIONS</code>.</p>
         <p>For local development, provide the same settings with environment variables, .NET user secrets, or <code>appsettings.Development.json</code>. For hosted Azure App Service deployments, the same settings are supplied as App Service application settings. <code>Endpoint</code>, <code>DeploymentName</code>, <code>AgentName</code>, and <code>Instructions</code> are non-secret runtime configuration values. If a hosted value is backed by Key Vault, the app still reads it through the same configuration key after Azure resolves the Key Vault reference.</p>
 
+        <h3>Extending To Role Agents</h3>
+        <p>This first release creates one minimal agent so the Agent Framework construction pattern is easy to see. The end demonstration uses multiple agents. The same construction pattern is repeated for role-specific agents as later releases add tools, memory, Teams routing, and workflows.</p>
+        <table>
+          <thead>
+            <tr><th>Role</th><th>Source file</th><th>Purpose</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Support</td><td><code>src/Jaws.AgentFramework/Agents/SupportAgent.cs</code></td><td>Investigates user requests, explains findings, and prepares operational recommendations.</td></tr>
+            <tr><td>Governance</td><td><code>src/Jaws.AgentFramework/Agents/GovernanceAgent.cs</code></td><td>Checks policy, compliance, approval, and evidence requirements before execution.</td></tr>
+            <tr><td>Deploy</td><td><code>src/Jaws.AgentFramework/Agents/DeployAgent.cs</code></td><td>Performs approved Datadog, webhook, ServiceNow, and Azure write actions through controlled tools.</td></tr>
+            <tr><td>Workflow</td><td><code>src/Jaws.AgentFramework/Agents/WorkflowAgent.cs</code></td><td>Coordinates multi-agent execution, human approval checkpoints, validation, and final evidence reporting.</td></tr>
+          </tbody>
+        </table>
+        <p>Agent extensibility is configuration-driven. A later release introduces job-description JSON files that define an agent&apos;s role, instructions, allowed tools, approval requirements, and evidence obligations. The platform loads these job descriptions, validates them, and creates the corresponding agent configuration without hard-coding every future role into the API.</p>
+        <p>Sample job description:</p>
+        <div class="code-block">
+          <div class="code-header"><span>JSON</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code>{
+  <span class="token-string">"id"</span>: <span class="token-string">"deploy.datadog.synthetic"</span>,
+  <span class="token-string">"displayName"</span>: <span class="token-string">"Datadog Synthetic Deploy Agent"</span>,
+  <span class="token-string">"role"</span>: <span class="token-string">"deploy"</span>,
+  <span class="token-string">"modelDeployment"</span>: <span class="token-string">"gpt-4.1-mini"</span>,
+  <span class="token-string">"instructions"</span>: <span class="token-string">"Create or update Datadog synthetics only after approval is present. Return evidence, links, and validation results."</span>,
+  <span class="token-string">"allowedTools"</span>: [
+    <span class="token-string">"azure.resource.inventory"</span>,
+    <span class="token-string">"datadog.synthetic.create"</span>,
+    <span class="token-string">"datadog.webhook.test"</span>,
+    <span class="token-string">"servicenow.incident.createOrUpdate"</span>
+  ],
+  <span class="token-string">"requiresApproval"</span>: <span class="token-keyword">true</span>,
+  <span class="token-string">"approvalPolicy"</span>: {
+    <span class="token-string">"requiredReferencePattern"</span>: <span class="token-string">"^APP-[0-9]{8,}-[a-z0-9-]+$"</span>,
+    <span class="token-string">"writeActions"</span>: [<span class="token-string">"create"</span>, <span class="token-string">"update"</span>, <span class="token-string">"testNotification"</span>]
+  },
+  <span class="token-string">"evidence"</span>: {
+    <span class="token-string">"includeToolCalls"</span>: <span class="token-keyword">true</span>,
+    <span class="token-string">"includeExternalLinks"</span>: <span class="token-keyword">true</span>,
+    <span class="token-string">"includePassFailTable"</span>: <span class="token-keyword">true</span>
+  }
+}</code></pre>
+        </div>
+
         <h3>Step 1 Tutorial Snippets</h3>
         <p>The snippets below show the first-agent implementation shape used by the JAWS reference code. Choose C# to follow the implemented path in this repository. Choose Python to compare the same Microsoft Agent Framework concept in Python.</p>
         <p>The endpoint and deployment variables come from Azure AI Foundry or Azure OpenAI resources that already exist before this Step 1 code runs. In the code tutorial, enter those values through the runtime configuration keys shown above.</p>

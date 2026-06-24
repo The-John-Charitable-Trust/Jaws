@@ -1,0 +1,801 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>JAWS Agent Framework Tutorial</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --text: #1f2328;
+      --muted: #59636e;
+      --line: #d8dee4;
+      --line-soft: #eaeef2;
+      --nav-bg: #f6f8fa;
+      --accent: #0f6cbd;
+      --accent-dark: #0b5a9d;
+      --code-bg: #f6f8fa;
+      --callout-bg: #f3f9ff;
+      --callout-line: #78b7f5;
+      --max-content: 860px;
+      font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html {
+      scroll-behavior: smooth;
+      scroll-padding-top: 80px;
+    }
+
+    h1[id], h2[id], h3[id], .toc-card[id] {
+      scroll-margin-top: 80px;
+    }
+
+    body {
+      margin: 0;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.6;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      min-height: 56px;
+      padding: 0 1rem;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.96);
+      backdrop-filter: blur(8px);
+    }
+
+    .brand {
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    .topbar .subtitle {
+      color: var(--muted);
+      font-size: 0.92rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .nav-toggle {
+      display: none;
+      border: 1px solid var(--line);
+      background: var(--bg);
+      border-radius: 4px;
+      padding: 0.35rem 0.55rem;
+      font: inherit;
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      min-height: calc(100vh - 56px);
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 56px;
+      height: calc(100vh - 56px);
+      overflow-y: auto;
+      border-right: 1px solid var(--line);
+      background: var(--nav-bg);
+      padding: 1.25rem 1rem;
+    }
+
+    .sidebar h2 {
+      margin: 0 0 0.75rem;
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .sidebar nav a {
+      display: block;
+      padding: 0.45rem 0.55rem;
+      border-radius: 4px;
+      color: var(--text);
+      font-size: 0.94rem;
+    }
+
+    .sidebar nav a:hover,
+    .sidebar nav a.active {
+      background: #e7f1fb;
+      color: var(--accent-dark);
+      text-decoration: none;
+    }
+
+    .content-wrap {
+      min-width: 0;
+      padding: 2rem 2.5rem 4rem;
+    }
+
+    main {
+      max-width: var(--max-content);
+    }
+
+    .eyebrow {
+      margin: 0 0 0.5rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+
+    h1 {
+      margin: 0 0 1rem;
+      font-size: clamp(2rem, 4vw, 2.75rem);
+      line-height: 1.15;
+      font-weight: 600;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 2.2rem 0 0.75rem;
+      padding-top: 0.5rem;
+      font-size: 1.55rem;
+      line-height: 1.25;
+      font-weight: 600;
+      letter-spacing: 0;
+      border-top: 1px solid var(--line-soft);
+    }
+
+    h3 {
+      margin: 1.5rem 0 0.5rem;
+      font-size: 1.12rem;
+      line-height: 1.35;
+      font-weight: 600;
+      letter-spacing: 0;
+    }
+
+    p { margin: 0 0 1rem; }
+
+    ul {
+      margin: 0.25rem 0 1rem 1.25rem;
+      padding: 0;
+    }
+
+    li { margin: 0.35rem 0; }
+
+    table {
+      width: 100%;
+      margin: 1rem 0 1.35rem;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+
+    th, td {
+      padding: 0.65rem 0.75rem;
+      border: 1px solid var(--line);
+      vertical-align: top;
+      text-align: left;
+    }
+
+    th {
+      background: var(--nav-bg);
+      font-weight: 600;
+    }
+
+    code {
+      padding: 0.08rem 0.25rem;
+      border-radius: 4px;
+      background: var(--code-bg);
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.92em;
+    }
+
+    .lead {
+      color: #364049;
+      font-size: 1.12rem;
+    }
+
+    .callout {
+      margin: 1.5rem 0;
+      padding: 1rem 1.1rem;
+      border-left: 4px solid var(--callout-line);
+      background: var(--callout-bg);
+    }
+
+    .callout strong {
+      display: block;
+      margin-bottom: 0.25rem;
+    }
+
+    .toc-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.75rem;
+      margin: 1rem 0 1.5rem;
+    }
+
+    .toc-card {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0.9rem;
+      background: #fff;
+    }
+
+    .toc-card strong { display: block; margin-bottom: 0.25rem; }
+    .toc-card span { color: var(--muted); font-size: 0.92rem; }
+
+    .source-list {
+      color: var(--muted);
+      font-size: 0.94rem;
+    }
+
+    footer {
+      max-width: var(--max-content);
+      margin-top: 3rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--line-soft);
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+
+    .code-block {
+      margin: 1rem 0 1.5rem;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fbfbfb;
+    }
+
+    .code-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.55rem 0.75rem;
+      border-bottom: 1px solid var(--line);
+      background: #f3f4f6;
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .copy-button {
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--bg);
+      color: var(--text);
+      cursor: pointer;
+      font: inherit;
+      font-weight: 600;
+      padding: 0.25rem 0.55rem;
+    }
+
+    .copy-button:hover {
+      border-color: var(--accent);
+      color: var(--accent-dark);
+    }
+
+    pre {
+      margin: 0;
+      padding: 1rem;
+      overflow-x: auto;
+      background: #fbfbfb;
+      line-height: 1.45;
+    }
+
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: var(--text);
+      font-size: 0.92rem;
+      white-space: pre;
+    }
+
+    .token-comment { color: #57606a; }
+    .token-keyword { color: #0000ff; }
+    .token-string { color: #a31515; }
+    .token-type { color: #267f99; }
+    .token-command { color: #0000ff; }
+    .token-param { color: #007070; }
+
+    @media (max-width: 860px) {
+      .nav-toggle { display: inline-flex; }
+      .layout { display: block; }
+      .sidebar {
+        position: fixed;
+        top: 56px;
+        left: 0;
+        bottom: 0;
+        width: min(82vw, 320px);
+        height: auto;
+        transform: translateX(-105%);
+        transition: transform 160ms ease;
+        box-shadow: 0 16px 28px rgba(31, 35, 40, 0.18);
+      }
+      body.nav-open .sidebar { transform: translateX(0); }
+      .content-wrap { padding: 1.5rem 1.1rem 3rem; }
+      .toc-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <button class="nav-toggle" type="button" aria-controls="site-nav" aria-expanded="false">Menu</button>
+    <div class="brand">JAWS</div>
+    <div class="subtitle">Agent Framework tutorial and reference implementation</div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar" id="site-nav">
+      <h2>Table of contents</h2>
+      <nav aria-label="Tutorial navigation">
+        <a class="active" href="#introduction">Introduction</a>
+        <a href="#system-requirements">System Requirements</a>
+        <a href="#installation-overview">Installation Overview</a>
+        <a href="#concept-of-operations">Concept of Operations</a>
+        <a href="#installation">Installation</a>
+        <a href="#step-1">Step 1: Your First Agent</a>
+        <a href="#step-2">Step 2: Add Tools</a>
+        <a href="#step-3">Step 3: Multi-Turn Conversations</a>
+        <a href="#step-4">Step 4: Memory and Persistence</a>
+        <a href="#step-5">Step 5: Workflows</a>
+        <a href="#step-6">Step 6: Host Your Agent</a>
+        <a href="#sources">Sources</a>
+      </nav>
+    </aside>
+
+    <div class="content-wrap">
+      <main>
+        <p class="eyebrow">JAWS Agent Framework Tutorial</p>
+        <h1 id="introduction">Introduction</h1>
+
+        <p class="lead">JAWS is a step-by-step reference implementation for building a governed, full-stack agentic operations platform with the Microsoft Agent Framework.</p>
+
+        <p>Modern operations teams are being asked to manage increasingly complex cloud environments while also responding faster, proving compliance, reducing manual toil, and coordinating work across multiple enterprise systems. The challenge is not simply adding AI to operations. The harder problem is building a full-stack agentic platform that can reason over live cloud context, call approved tools, respect security boundaries, preserve operational evidence, and guide users through real workflows such as creating observability coverage, validating webhook delivery, and opening an IT service management incident.</p>
+
+        <p>JAWS uses the Microsoft Agent Framework tutorial as scaffolding for a real operational scenario. Rather than treating the Microsoft tutorial as a set of isolated code samples, this tutorial incrementally builds an agentic operations platform that can inspect Azure resources, recommend Datadog monitors or synthetic tests, use a hardened custom MCP server, validate alert delivery through an approved webhook contract, and create a ServiceNow incident with evidence and operational reasoning.</p>
+
+        <p>The goal is to show how each Microsoft Agent Framework concept becomes part of a working enterprise architecture. Step 1 begins with the first agent. Step 2 adds tools. Step 3 introduces multi-turn conversation state. Step 4 adds memory and external knowledge. Later steps extend the same platform into workflows, hosting, deployment, and operational governance. Each section explains the concept, shows the implementation, updates the installer where needed, and defines test cases with expected results.</p>
+
+        <p>The value to the reader is practical and cumulative. By following the tutorial, you are not only learning how to call an LLM from C#. You are learning how to assemble agents, tools, MCP boundaries, memory, SaaS integrations, Azure deployment assets, and verification tests into a platform that can be deployed into your own Azure environment. The tutorial is designed for architects, developers, and platform engineers who need to understand both the code and the operational decisions behind it.</p>
+
+        <p>This approach is unique because it treats the Microsoft Agent Framework documentation as a product-building path rather than a collection of disconnected examples. Each release of JAWS corresponds to a step in the Microsoft documentation, so the reader can see exactly how the platform evolves from a minimal first agent into a governed, testable, multi-system agentic operations platform.</p>
+
+        <div class="callout">
+          <strong>Source code and releases</strong>
+          The full step-by-step source code is available on GitHub at <a href="https://github.com/cezjah/jaws">https://github.com/cezjah/jaws</a>. Each release is aligned to the corresponding Microsoft Agent Framework tutorial step, making it possible to inspect the code, run the tests, deploy the platform, and compare each implementation phase against the documented concepts.
+        </div>
+
+                <h2 id="system-requirements">System Requirements</h2>
+        <p>Before installing JAWS, prepare the required accounts, tools, permissions, and configuration values. The installer can deploy and configure the JAWS platform, but it does not create the customer&apos;s SaaS accounts, Azure subscription, GitHub account, Teams license, or model quota.</p>
+
+        <h3>Required Accounts</h3>
+        <ul>
+          <li>Azure subscription for the JAWS deployment.</li>
+          <li>Azure AI Foundry or Azure OpenAI access with an existing model deployment.</li>
+          <li>Datadog trial, evaluation, or licensed account.</li>
+          <li>ServiceNow developer instance or licensed instance.</li>
+          <li>GitHub account with access to the JAWS repository.</li>
+          <li>Microsoft Teams license if Teams integration is enabled.</li>
+        </ul>
+
+        <h3>Required Local Tools</h3>
+        <ul>
+          <li>Git</li>
+          <li>PowerShell 7 or later</li>
+          <li>Azure CLI</li>
+          <li>.NET 10 SDK</li>
+          <li>Visual Studio Code</li>
+        </ul>
+        <p>Optional developer tools include OpenAI Codex, Claude Code by Anthropic, and GitHub Copilot. The Step 1 code in this tutorial targets <code>net10.0</code>.</p>
+
+        <h3>Azure Permissions</h3>
+        <p>For the simplest evaluation, use a dedicated Azure subscription and sign in with an account that has <strong>Owner</strong> on that subscription. This lets the installer deploy resources, assign managed identity permissions, and apply optional Azure Policy compliance settings without interruption.</p>
+        <p>If your organization requires least-privilege access, use the minimum role for the installation mode:</p>
+        <table>
+          <thead>
+            <tr><th>Installation Mode</th><th>Required Azure Permission</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Basic resource deployment</td><td>Contributor on the target subscription or resource group</td></tr>
+            <tr><td>Managed identity role assignments</td><td>User Access Administrator plus Contributor, or Owner</td></tr>
+            <tr><td>Azure Policy compliance profile</td><td>Permission to create policy assignments at the selected scope</td></tr>
+            <tr><td>Full evaluation in a new subscription</td><td>Owner on the subscription</td></tr>
+          </tbody>
+        </table>
+        <p>The installer creates and configures Azure resources such as App Service, managed identity, Key Vault, Log Analytics, Application Insights, storage, RBAC assignments, and optional Azure Policy assignments.</p>
+
+        <h3>Required Azure Configuration</h3>
+        <ul>
+          <li>Subscription ID and tenant ID.</li>
+          <li>Target Azure region.</li>
+          <li>Resource group name or permission to create one.</li>
+          <li>Azure AI Foundry or Azure OpenAI endpoint.</li>
+          <li>Model deployment name.</li>
+          <li>Approved authentication method, preferably managed identity for deployed workloads.</li>
+        </ul>
+
+        <h3>Naming And Tagging Inputs</h3>
+        <p>During installation, provide the minimum naming inputs required to generate consistent Azure resource names.</p>
+        <table>
+          <thead>
+            <tr><th>Input</th><th>Example</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Organization short name</td><td><code>contoso</code></td></tr>
+            <tr><td>Environment</td><td><code>dev</code></td></tr>
+            <tr><td>Region</td><td><code>eastus</code></td></tr>
+            <tr><td>Workload name</td><td><code>jaws</code></td></tr>
+            <tr><td>Optional resource prefix</td><td><code>aiops</code></td></tr>
+            <tr><td>Optional resource suffix</td><td><code>001</code></td></tr>
+          </tbody>
+        </table>
+        <p>The optional resource prefix groups JAWS under a broader platform, program, or business unit. Examples include <code>aiops</code>, <code>secops</code>, <code>platform</code>, <code>gov</code>, and <code>demo</code>. The optional resource suffix provides deterministic uniqueness across deployments. Examples include <code>001</code>, <code>eus01</code>, <code>dev01</code>, <code>pilot</code>, and <code>sandbox</code>.</p>
+        <p>Using the example inputs above, generated resource names would look like this:</p>
+        <table>
+          <thead>
+            <tr><th>Resource</th><th>Example Name</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Resource group</td><td><code>rg-aiops-contoso-jaws-dev-eastus-001</code></td></tr>
+            <tr><td>App Service</td><td><code>app-aiops-contoso-jaws-dev-eastus-001</code></td></tr>
+            <tr><td>App Service Plan</td><td><code>asp-aiops-contoso-jaws-dev-eastus-001</code></td></tr>
+            <tr><td>Key Vault</td><td><code>kv-aiops-contoso-jaws-dev-001</code></td></tr>
+            <tr><td>Log Analytics workspace</td><td><code>law-aiops-contoso-jaws-dev-eastus-001</code></td></tr>
+            <tr><td>Application Insights</td><td><code>appi-aiops-contoso-jaws-dev-eastus-001</code></td></tr>
+            <tr><td>Storage account</td><td><code>staiopscontosojawsdev001</code></td></tr>
+          </tbody>
+        </table>
+        <p>Storage account names are shortened and normalized because Azure Storage requires globally unique lowercase names with stricter length and character rules.</p>
+        <p>Generated names are preferred names. For resources that require global uniqueness, the installer checks availability and selects the nearest compliant variation when the preferred name is unavailable. Final selected names are displayed before deployment and written to the installation manifest.</p>
+        <p>The installer applies minimum tags to supported Azure resources: <code>Application</code>, <code>Environment</code>, <code>Owner</code>, <code>CostCenter</code>, <code>DataClassification</code>, <code>ManagedBy</code>, and <code>ComplianceProfile</code>.</p>
+
+        <h3>Datadog Requirements</h3>
+        <p>During installation, provide the Datadog site URL and an admin username and password, or credentials with equivalent permissions. The account must be able to create and manage monitors, synthetic tests, webhooks, API/application keys, tags, and integration settings.</p>
+        <p>Optional Datadog Agent testing requires an Azure-hosted VM. Recommended demo minimum: Ubuntu 22.04 LTS or Windows Server 2022, 2 vCPU, 4 GB RAM, 30 GB disk, and outbound HTTPS access to Datadog.</p>
+
+        <h3>ServiceNow Requirements</h3>
+        <p>During installation, provide the ServiceNow instance URL and an admin username and password, or credentials with equivalent permissions. The account must be able to create and update incidents, read CMDB records, create demo CMDB records when selected, and configure the required integration user or authentication settings.</p>
+
+        <h3>Compliance Options</h3>
+        <p>During installation, select one compliance profile: <code>None</code>, <code>FedRAMPModerate</code>, <code>CMMC20L2</code>, or <code>NIST80053R5</code>.</p>
+        <p>When a compliance profile is selected, the installer uses the selected profile to configure supported Azure resources with matching baseline settings, such as HTTPS-only endpoints, TLS 1.2 or higher, managed identity, Key Vault-backed secrets, diagnostic settings, application logging, audit logging, least-privilege RBAC, and the corresponding Azure Policy initiative assignment where available.</p>
+        <div class="callout">
+          <strong>Compliance note</strong>
+          JAWS can deploy resources using compliance-aligned Azure configurations and assign Azure Policy initiatives. It does not certify the deployment as compliant. Final compliance depends on the customer&apos;s environment, operations, evidence, remediation, governance, and audit process.
+        </div>
+
+        <h3>Network And Security Requirements</h3>
+        <ul>
+          <li>Outbound HTTPS from JAWS to Azure, Datadog, ServiceNow, GitHub, and Microsoft identity endpoints.</li>
+          <li>Public HTTPS endpoint for Datadog webhooks if webhook validation is enabled.</li>
+          <li>Public HTTPS endpoint for Teams callbacks if Teams integration is enabled.</li>
+          <li>Secrets stored in Azure Key Vault or Key Vault-backed app settings.</li>
+          <li>No SaaS API keys or credentials stored in source code.</li>
+        </ul>
+
+        <h2 id="installation-overview">Installation Overview</h2>
+        <p>The installer deploys a working JAWS evaluation environment into the selected Azure subscription and configures the supporting SaaS integrations when valid credentials are supplied. After installation, the user has a hosted agentic AI platform that can receive natural-language requests, call approved tools through a custom MCP server, retrieve operational context, and execute governed workflows.</p>
+
+        <h3>Azure Resources</h3>
+        <p>The Azure deployment includes the resource group, App Service Plan, JAWS API App Service, managed identity, Key Vault, Log Analytics workspace, Application Insights, storage account, app settings, Key Vault references, RBAC assignments, and optional Azure Policy assignments.</p>
+
+        <h3>Naming And Governance</h3>
+        <p>The installer applies the naming inputs selected during setup to generate governed resource names. For globally unique resources, the installer checks availability and selects the nearest compliant variation when the preferred name is unavailable. Final names, selected region, tags, compliance profile, and deployed resource IDs are written to the installation manifest.</p>
+
+        <h3>Regulatory Compliance</h3>
+        <p>If a compliance profile is selected, the installer deploys supported Azure resources with compliance-aligned settings and assigns the matching Azure Policy initiative where available. Supported evaluation profiles include <code>FedRAMPModerate</code>, <code>CMMC20L2</code>, and <code>NIST80053R5</code>. JAWS aligns deployment settings and evidence collection; it does not certify compliance.</p>
+
+        <h3>Secrets And Credentials</h3>
+        <p>Secrets such as Datadog credentials, ServiceNow credentials, API keys, webhook secrets, model credentials, and Teams configuration values are stored in Azure Key Vault or referenced through Key Vault-backed app settings. Secrets are not stored in source code or plain-text tutorial files.</p>
+
+        <h3>RAG And Operational Context</h3>
+        <p>The installation includes a starter knowledge store for retrieval-augmented generation. The content is organized into practical categories:</p>
+        <ul>
+          <li><strong>Curated context:</strong> approved runbooks, Datadog monitor guidance, webhook contracts, ServiceNow incident rules, compliance mappings, and agent operating instructions.</li>
+          <li><strong>Simulated context:</strong> demo Azure inventory, sample ServiceNow CMDB records, sample incidents, and testable observability scenarios.</li>
+          <li><strong>Live context:</strong> authorized Azure inventory, Azure Policy state, Azure Monitor evidence, Datadog monitor status, and ServiceNow incident or CMDB lookups collected through approved tools.</li>
+          <li><strong>Generated evidence:</strong> workflow results, test outcomes, tool call summaries, approval references, and incident evidence created during JAWS operation.</li>
+        </ul>
+        <p>For the evaluation install, curated and simulated context is stored in the configured JAWS knowledge store, such as Azure Blob Storage. Later tutorial steps add provider options for Azure AI Search, SharePoint via Microsoft Graph, and AI Foundry knowledge sources.</p>
+
+        <h3>SaaS Integration Setup</h3>
+        <p>For Datadog, the installer validates connectivity and can configure approved webhook, monitor, synthetic test, and tagging assets. For ServiceNow, the installer validates connectivity and configures the incident and CMDB integration contract. For Teams, the installer prepares the Teams app manifest package as a ZIP file for upload to the Teams admin center or for approved sideloading, depending on the tenant policy. Teams integration requires a valid Teams license plus the required Microsoft identity and bot configuration permissions.</p>
+
+        <h3>Installation Outcome</h3>
+        <p>At the end of installation, the user can open the JAWS endpoint, verify health, confirm secure configuration, test the custom MCP server, query curated and simulated knowledge, validate SaaS connectivity, upload or sideload the generated Teams app manifest ZIP, and use the Teams app to run the main scenario: investigate an Azure resource, deliberate over Datadog coverage, approve deployment, create the Datadog monitor or synthetic test, validate the webhook path, and confirm the ServiceNow incident.</p>
+
+        <h2 id="concept-of-operations">Concept of Operations</h2>
+        <p>JAWS is an agentic operations platform that lets a user chat in Microsoft Teams, investigate an operational need, deliberate with specialized agents, approve a governed action, and deploy an evidence-backed change across Azure, Datadog, and ServiceNow.</p>
+
+        <h3>Main Use Case</h3>
+        <p>The main tutorial use case starts in the Teams app. A user asks JAWS which Azure resources need Datadog monitors or synthetic tests. JAWS investigates the authorized Azure environment, retrieves curated observability guidance, evaluates the resource candidates, and explains its recommendation. The user then selects a resource, asks JAWS to proceed, supplies or confirms an approval reference, and JAWS deploys the Datadog monitor or synthetic test, configures the approved webhook path, validates the notification flow, and creates or updates the ServiceNow incident.</p>
+
+        <h3>Conversation Flow</h3>
+        <p>The expected Teams conversation has four phases. First, JAWS investigates and explains which resources need coverage. Second, JAWS deliberates with the relevant support, governance, and deploy agents to decide what should be created and what approval is required. Third, JAWS pauses at a human-in-the-loop approval checkpoint before any write-capable action. Fourth, after approval, JAWS performs the deployment through tool calls behind the custom MCP boundary and validates the result by confirming the Datadog asset, webhook delivery, and ServiceNow incident evidence.</p>
+
+        <h3>External Systems</h3>
+        <p>JAWS coordinates across external SaaS and cloud platforms that are owned, operated, licensed, and governed by their respective vendors. Microsoft Azure is Microsoft&apos;s cloud platform for hosting applications, infrastructure, identity, monitoring, policy, and security services. Datadog is a third-party SaaS observability platform from Datadog, Inc. for metrics, logs, traces, synthetic tests, monitors, alerts, and webhook notifications. ServiceNow is a third-party SaaS IT service management platform from ServiceNow, Inc. for incidents, configuration management, change workflows, approvals, ownership records, and operational history.</p>
+        <p>JAWS does not replace these systems. It coordinates approved actions across them, applies customer-defined governance rules, and records evidence so the user can understand what was observed, what was changed, which vendor system was used, and why.</p>
+
+        <h3>Agentic AI Responsibilities</h3>
+        <p>The first JAWS release path uses a small set of role-oriented agents. The support agent explains findings and operational impact. The governance agent evaluates policy, approval, and compliance context. The deploy agent performs approved changes. The workflow agent coordinates multi-step execution and validation. Each agent receives only the tools and permissions required for its role, and each response should make clear whether JAWS is recommending, planning, executing, or validating.</p>
+
+        <h3>Tool And MCP Boundary</h3>
+        <p>JAWS uses a custom MCP server as the controlled tool boundary. The MCP server exposes approved tools for Azure inventory, Datadog, webhook validation, ServiceNow, policy evidence, and operational knowledge. It is hardened so tool calls are authenticated, authorized, logged, schema-validated, and constrained by customer configuration. Write-capable tools require explicit approval before execution.</p>
+
+        <h3>Approval And Evidence Flow</h3>
+        <p>JAWS separates recommendation from execution. A user can ask for recommendations without changing anything. When a requested action would create or modify Datadog, ServiceNow, Azure, or other external assets, JAWS uses a human-in-the-loop workflow checkpoint and requires an approval reference before execution. After execution, JAWS returns an evidence summary showing the requested action, tool calls performed, resources affected, generated links, webhook validation result, ServiceNow incident result, and final pass/fail status.</p>
+
+        <h3>Definition Of Done</h3>
+        <p>The scenario is complete when the user can verify the Datadog monitor or synthetic test in Datadog, see the approved webhook configuration, trigger or observe a Datadog notification, confirm JAWS received the event, and inspect the ServiceNow incident that includes operational reasoning, evidence, affected resource context, and the workflow test result.</p>
+
+        <h2 id="installation">Installation</h2>
+        <p>The installation instructions grow with each release. Release <code>0.1</code> corresponds to Microsoft Agent Framework Step 1 and installs only the minimum Azure-hosted JAWS agent surface required to prove model connectivity and agent execution.</p>
+
+        <h3>Step 1 Installation</h3>
+        <p>For Step 1, deploy JAWS into a new Azure resource group using a generated bootstrap file. The repository includes only an example bootstrap JSON file. Each user creates a local bootstrap file during installation so tenant-specific values, names, endpoints, and secrets are not committed to GitHub.</p>
+        <p>The Step 1 installer will collect or generate the resource naming inputs, Azure subscription and region, Azure AI Foundry or Azure OpenAI endpoint, model deployment name, and deployment target settings. It will deploy the minimum hosted API, configure managed identity where supported, store sensitive values in Key Vault or Key Vault-backed app settings, and write the final selected resource names to the local installation manifest.</p>
+
+        <h3>Step 1 Success Test</h3>
+        <p>Step 1 is successful when the deployed JAWS endpoint reports healthy configuration, the first agent can call the configured model, and a test request returns a concise answer from the Step 1 agent. The test evidence should include the API health result, agent run result, deployment manifest location, and the release version <code>0.1</code>.</p>
+
+        <h2 id="step-1">Step 1: Your First Agent</h2>
+        <p>Release <code>0.1</code> implements the first JAWS agent in alignment with Microsoft Agent Framework Step 1. The goal is intentionally narrow: create a minimal, well-documented agent that can receive a request, call the configured model, and return a response from the deployed JAWS API.</p>
+
+        <h3>Code Deliverables</h3>
+        <p>The Step 1 code must be documented with comments that explain what the code is doing and how it maps to Microsoft Agent Framework Step 1. Comments should clarify the agent construction, model configuration, credential usage, request handling, and the call that executes the agent. Comments should explain intent, not restate obvious syntax.</p>
+        <p>The initial source layout should separate the hosted API, agent implementation, configuration model, installer assets, and tests. A suggested layout is:</p>
+        <table>
+          <thead>
+            <tr><th>Path</th><th>Purpose</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>src/Jaws.Api</code></td><td>Hosted API surface for the JAWS tutorial platform.</td></tr>
+            <tr><td><code>src/Jaws.AgentFramework</code></td><td>Agent Framework integration and Step 1 agent implementation.</td></tr>
+            <tr><td><code>installer</code></td><td>Installation scripts and Azure deployment automation.</td></tr>
+            <tr><td><code>config/bootstrap.example.json</code></td><td>Example bootstrap file committed to GitHub.</td></tr>
+            <tr><td><code>tests/Jaws.Step1.Tests</code></td><td>Unit and integration tests for release <code>0.1</code>.</td></tr>
+            <tr><td><code>docs/tutorial</code></td><td>HTML tutorial and release-aligned documentation.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Configuration Deliverables</h3>
+        <p>Step 1 uses an example bootstrap JSON file in source control and a generated local bootstrap file during installation. The example file documents the required properties without containing real tenant values, SaaS credentials, API keys, or secrets.</p>
+        <p>The local bootstrap file will include values such as subscription ID, tenant ID, Azure region, naming inputs, Azure AI endpoint, model deployment name, and selected deployment mode. Secrets are stored in Key Vault or Key Vault-backed application settings rather than in the bootstrap JSON.</p>
+
+        <h3>Test Deliverables</h3>
+        <p>Every release must include tests in the GitHub repository. For release <code>0.1</code>, tests should prove configuration validation, naming-policy output, bootstrap parsing, API health behavior, and successful first-agent execution. Where live Azure or model access is required, tests should clearly separate local unit tests from live deployment validation.</p>
+
+        <h3>Release Rule</h3>
+        <p>Each minor release maps to one Microsoft documentation step. Release <code>0.1</code> maps to Step 1. Release <code>0.2</code> maps to Step 2. This keeps code, docs, installer behavior, and tests aligned with the tutorial progression.</p>
+        <h3>Step 1 Tutorial Snippets</h3>
+        <p>The snippets below show the intended Step 1 implementation shape. They are tutorial excerpts; the actual source files are added to the repository only after the Step 1 design is approved.</p>
+
+        <p>Install the Agent Framework packages required for the first C# agent:</p>
+        <div class="code-block">
+          <div class="code-header"><span>.NET CLI</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-command">dotnet</span> add package Azure.AI.Projects <span class="token-param">--prerelease</span>
+<span class="token-command">dotnet</span> add package Azure.Identity
+<span class="token-command">dotnet</span> add package Microsoft.Agents.AI.Foundry <span class="token-param">--prerelease</span></code></pre>
+        </div>
+
+        <p>Create an example bootstrap file in source control. Real tenant values are generated locally during installation and are not committed to GitHub:</p>
+        <div class="code-block">
+          <div class="code-header"><span>config/bootstrap.example.json</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code>{
+  <span class="token-string">"version"</span>: <span class="token-string">"0.1"</span>,
+  <span class="token-string">"azure"</span>: {
+    <span class="token-string">"subscriptionId"</span>: <span class="token-string">"00000000-0000-0000-0000-000000000000"</span>,
+    <span class="token-string">"tenantId"</span>: <span class="token-string">"00000000-0000-0000-0000-000000000000"</span>,
+    <span class="token-string">"region"</span>: <span class="token-string">"eastus"</span>
+  },
+  <span class="token-string">"naming"</span>: {
+    <span class="token-string">"organization"</span>: <span class="token-string">"contoso"</span>,
+    <span class="token-string">"environment"</span>: <span class="token-string">"dev"</span>,
+    <span class="token-string">"workload"</span>: <span class="token-string">"jaws"</span>,
+    <span class="token-string">"prefix"</span>: <span class="token-string">"aiops"</span>,
+    <span class="token-string">"suffix"</span>: <span class="token-string">"001"</span>
+  },
+  <span class="token-string">"agent"</span>: {
+    <span class="token-string">"endpoint"</span>: <span class="token-string">"https://example-foundry-resource.services.ai.azure.com/api/projects/example-project"</span>,
+    <span class="token-string">"deploymentName"</span>: <span class="token-string">"gpt-4.1-mini"</span>
+  }
+}</code></pre>
+        </div>
+
+        <p>Create the first JAWS agent. The comments call out how the code maps to Microsoft Agent Framework Step 1:</p>
+        <div class="code-block">
+          <div class="code-header"><span>C#</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-keyword">using</span> System;
+<span class="token-keyword">using</span> Azure.AI.Projects;
+<span class="token-keyword">using</span> Azure.Identity;
+<span class="token-keyword">using</span> Microsoft.Agents.AI;
+
+<span class="token-comment">// Step 1 creates the first minimal agent. It does not add tools, memory, or workflows yet.</span>
+<span class="token-keyword">var</span> endpoint = Environment.GetEnvironmentVariable(<span class="token-string">"JAWS_AGENT_ENDPOINT"</span>)
+    ?? <span class="token-keyword">throw new</span> InvalidOperationException(<span class="token-string">"Set JAWS_AGENT_ENDPOINT."</span>);
+
+<span class="token-keyword">var</span> deploymentName = Environment.GetEnvironmentVariable(<span class="token-string">"JAWS_AGENT_DEPLOYMENT_NAME"</span>)
+    ?? <span class="token-keyword">throw new</span> InvalidOperationException(<span class="token-string">"Set JAWS_AGENT_DEPLOYMENT_NAME."</span>);
+
+<span class="token-comment">// DefaultAzureCredential lets local developers use Azure CLI login and deployed apps use managed identity.</span>
+<span class="token-keyword">var</span> credential = <span class="token-keyword">new</span> DefaultAzureCredential();
+
+<span class="token-comment">// AIProjectClient connects to the Azure AI Foundry project or Azure OpenAI-compatible project endpoint.</span>
+<span class="token-comment">// AsAIAgent creates the Agent Framework agent used by Step 1.</span>
+<span class="token-type">AIAgent</span> agent = <span class="token-keyword">new</span> AIProjectClient(<span class="token-keyword">new</span> Uri(endpoint), credential)
+    .AsAIAgent(
+        model: deploymentName,
+        name: <span class="token-string">"JawsStep1Agent"</span>,
+        instructions: <span class="token-string">"You are JAWS, a concise agentic operations assistant. For Step 1, answer without tools."</span>);
+
+<span class="token-comment">// RunAsync is the Step 1 execution point: send one request and return the model response.</span>
+<span class="token-type">AgentRunResponse</span> response = <span class="token-keyword">await</span> agent.RunAsync(<span class="token-string">"Explain what JAWS Step 1 proves."</span>);
+
+Console.WriteLine(response.Text);</code></pre>
+        </div>
+
+        <p>The same Step 1 idea in Python creates an agent and calls <code>run</code>. This tutorial shows Python for comparison only; the implemented JAWS reference path is C#.</p>
+        <div class="code-block">
+          <div class="code-header"><span>Python</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-keyword">from</span> azure.identity.aio <span class="token-keyword">import</span> AzureCliCredential
+<span class="token-keyword">from</span> agent_framework <span class="token-keyword">import</span> Agent
+<span class="token-keyword">from</span> agent_framework.azure <span class="token-keyword">import</span> FoundryChatClient
+
+<span class="token-comment"># Step 1 creates a single agent and sends one message.</span>
+<span class="token-comment"># JAWS implements this fully in C#, but the Python shape mirrors the Microsoft tutorial.</span>
+client = FoundryChatClient(
+    project_endpoint=<span class="token-string">"https://example-project.services.ai.azure.com/api/projects/example-project"</span>,
+    model=<span class="token-string">"gpt-4.1-mini"</span>,
+    credential=AzureCliCredential(),
+)
+
+agent = Agent(
+    client=client,
+    name=<span class="token-string">"JawsStep1Agent"</span>,
+    instructions=<span class="token-string">"You are JAWS. For Step 1, answer without tools."</span>,
+)
+
+result = <span class="token-keyword">await</span> agent.run(<span class="token-string">"Explain what JAWS Step 1 proves."</span>)
+print(result)</code></pre>
+        </div>
+        <p>Expose the first agent through a small API endpoint so the deployed environment can be tested:</p>
+        <div class="code-block">
+          <div class="code-header"><span>C# Minimal API</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code>app.MapPost(<span class="token-string">"/api/agent/step1/run"</span>, <span class="token-keyword">async</span> (Step1Request request, Step1Agent agent) =&gt;
+{
+    <span class="token-comment">// Step 1 keeps the request path simple: receive text, call the first agent, return text.</span>
+    <span class="token-keyword">var</span> answer = <span class="token-keyword">await</span> agent.RunAsync(request.Message);
+    <span class="token-keyword">return</span> Results.Ok(<span class="token-keyword">new</span> { answer });
+});
+
+<span class="token-keyword">public sealed record</span> Step1Request(<span class="token-keyword">string</span> Message);</code></pre>
+        </div>
+
+        <p>Validate the Step 1 deployment after the installer finishes:</p>
+        <div class="code-block">
+          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Get <span class="token-param">-Uri</span> <span class="token-string">"https://&lt;jaws-api-host&gt;/health"</span>
+
+<span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Post <span class="token-param">-Uri</span> <span class="token-string">"https://&lt;jaws-api-host&gt;/api/agent/step1/run"</span> `
+  <span class="token-param">-ContentType</span> <span class="token-string">"application/json"</span> `
+  <span class="token-param">-Body</span> <span class="token-string">'{ "message": "What does JAWS Step 1 prove?" }'</span></code></pre>
+        </div>
+
+        <h2 id="step-2">Step 2: Add Tools</h2>
+        <p>Pending Step 1 completion. This release will add tool calling and the hardened custom MCP boundary.</p>
+
+        <h2 id="step-3">Step 3: Multi-Turn Conversations</h2>
+        <p>Pending Step 2 completion. This release will add session continuity for Teams and API conversations.</p>
+
+        <h2 id="step-4">Step 4: Memory and Persistence</h2>
+        <p>Pending Step 3 completion. This release will add curated context, RAG provider options, and persistence guidance.</p>
+
+        <h2 id="step-5">Step 5: Workflows</h2>
+        <p>Pending Step 4 completion. This release will add the human-in-the-loop workflow for Datadog monitor or synthetic creation, webhook validation, and ServiceNow incident creation.</p>
+
+        <h2 id="step-6">Step 6: Host Your Agent</h2>
+        <p>Pending Step 5 completion. This release will complete hosting, deployment, and production-readiness guidance.</p>
+
+        <h2 id="sources">Sources</h2>
+        <ul class="source-list">
+          <li><a href="https://learn.microsoft.com/en-us/agent-framework/overview/?pivots=programming-language-csharp">Microsoft Agent Framework overview</a></li>
+          <li><a href="https://learn.microsoft.com/en-us/agent-framework/get-started/your-first-agent?pivots=programming-language-csharp">Step 1: Your First Agent</a></li>
+          <li><a href="https://learn.microsoft.com/en-us/agent-framework/get-started/add-tools?pivots=programming-language-csharp">Step 2: Add Tools</a></li>
+          <li><a href="https://learn.microsoft.com/en-us/agent-framework/get-started/multi-turn?pivots=programming-language-csharp">Step 3: Multi-Turn Conversations</a></li>
+          <li><a href="https://learn.microsoft.com/en-us/agent-framework/get-started/memory?pivots=programming-language-csharp">Step 4: Memory and Persistence</a></li>
+          <li><a href="https://learn.microsoft.com/en-us/agent-framework/agents/conversations/storage?pivots=programming-language-csharp">Agent conversation storage</a></li>
+          <li><a href="https://learn.microsoft.com/en-us/agent-framework/get-started/workflows?pivots=programming-language-csharp">Step 5: Workflows</a></li>
+          <li><a href="https://learn.microsoft.com/en-us/agent-framework/get-started/hosting">Step 6: Host Your Agent</a></li>
+        </ul>
+
+        <footer>
+          <p>Draft tutorial page. This file is documentation-only and will be updated incrementally as each JAWS release is aligned to a Microsoft Agent Framework step.</p>
+        </footer>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const button = document.querySelector('.nav-toggle');
+    const links = document.querySelectorAll('.sidebar a');
+    const topbar = document.querySelector('.topbar');
+
+    function closeNavigation() {
+      document.body.classList.remove('nav-open');
+      button.setAttribute('aria-expanded', 'false');
+    }
+
+    function scrollToTarget(target, updateHash = true) {
+      const offset = topbar.offsetHeight + 28;
+      const top = target.getBoundingClientRect().top + window.scrollY - offset;
+      window.scrollTo({ top: Math.max(top, 0), behavior: 'smooth' });
+      if (updateHash) {
+        history.pushState(null, '', `#${target.id}`);
+      }
+    }
+
+    button.addEventListener('click', () => {
+      const isOpen = document.body.classList.toggle('nav-open');
+      button.setAttribute('aria-expanded', String(isOpen));
+    });
+
+    links.forEach(link => {
+      link.addEventListener('click', event => {
+        const id = link.getAttribute('href').slice(1);
+        const target = document.getElementById(id);
+        if (!target) return;
+
+        event.preventDefault();
+        closeNavigation();
+        links.forEach(item => item.classList.remove('active'));
+        link.classList.add('active');
+        scrollToTarget(target);
+      });
+    });
+
+    document.querySelectorAll('.copy-button').forEach(copyButton => {
+      copyButton.addEventListener('click', async () => {
+        const code = copyButton.closest('.code-block').querySelector('code').innerText;
+        await navigator.clipboard.writeText(code);
+        const original = copyButton.innerText;
+        copyButton.innerText = 'Copied';
+        setTimeout(() => { copyButton.innerText = original; }, 1400);
+      });
+    });
+
+    window.addEventListener('load', () => {
+      if (!window.location.hash) return;
+      const target = document.getElementById(window.location.hash.slice(1));
+      if (target) {
+        setTimeout(() => scrollToTarget(target, false), 0);
+      }
+    });
+  </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

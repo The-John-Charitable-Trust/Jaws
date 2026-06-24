@@ -1,0 +1,25 @@
+{
+  "version": "0.1",
+  "azure": {
+    "subscriptionId": "00000000-0000-0000-0000-000000000000",
+    "tenantId": "00000000-0000-0000-0000-000000000000",
+    "region": "eastus"
+  },
+  "naming": {
+    "organization": "contoso",
+    "environment": "dev",
+    "workload": "jaws",
+    "prefix": "aiops",
+    "suffix": "001"
+  },
+  "jaws": {
+    "agent": {
+      "step1": {
+        "endpoint": "https://example-project.services.ai.azure.com/api/projects/example-project",
+        "deploymentName": "gpt-4.1-mini",
+        "agentName": "JawsStep1Agent",
+        "instructions": "You are JAWS, a concise agentic operations assistant. For Step 1, answer without tools."
+      }
+    }
+  }
+}

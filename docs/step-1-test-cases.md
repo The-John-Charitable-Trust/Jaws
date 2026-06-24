@@ -1,0 +1,15 @@
+# Step 1 Test Cases
+
+Release: `0.1`
+Microsoft documentation step: Step 1: Your First Agent
+
+| ID | Test | Method | Expected Result |
+|---|---|---|---|
+| ST1-001 | Bootstrap example is parseable | `dotnet run --project tests/Jaws.Step1.Tests` | PASS |
+| ST1-002 | Step 1 agent options validate required fields | `dotnet run --project tests/Jaws.Step1.Tests` | PASS |
+| ST1-003 | Naming policy generates governed Azure names | `dotnet run --project tests/Jaws.Step1.Tests` | PASS |
+| ST1-004 | Solution builds | `dotnet build Jaws.slnx` | PASS |
+| ST1-005 | API health endpoint reports configuration state | `GET /health` | Returns `healthy` or actionable configuration errors |
+| ST1-006 | First agent executes against configured model | `POST /api/agent/step1/run` | Returns model answer with release and documentation step metadata |
+
+Live tests require an Azure login, reachable project endpoint, and model deployment.

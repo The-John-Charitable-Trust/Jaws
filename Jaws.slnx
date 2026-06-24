@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Jaws.AgentFramework/Jaws.AgentFramework.csproj" />
+    <Project Path="src/Jaws.Api/Jaws.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Jaws.Step1.Tests/Jaws.Step1.Tests.csproj" />
+  </Folder>
+</Solution>

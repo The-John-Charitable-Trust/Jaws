@@ -1,52 +1,51 @@
-using Jaws.AgentFramework.Step1;
+using Jaws.AgentFramework.FirstAgent;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Step 1 reads non-secret runtime settings from ASP.NET Core configuration: App Service settings, local app settings, user secrets, or environment variables.
-var step1Options = new Step1AgentOptions
+// Read non-secret agent runtime settings from ASP.NET Core configuration: App Service settings, local app settings, user secrets, or environment variables.
+var firstAgentOptions = new FirstAgentOptions
 {
     Endpoint = FirstConfiguredValue(
-        builder.Configuration["Jaws:Agent:Step1:Endpoint"],
+        builder.Configuration["Jaws:Agent:Endpoint"],
         builder.Configuration["JAWS_AGENT_ENDPOINT"],
         Environment.GetEnvironmentVariable("JAWS_AGENT_ENDPOINT")),
     DeploymentName = FirstConfiguredValue(
-        builder.Configuration["Jaws:Agent:Step1:DeploymentName"],
+        builder.Configuration["Jaws:Agent:DeploymentName"],
         builder.Configuration["JAWS_AGENT_DEPLOYMENT_NAME"],
         Environment.GetEnvironmentVariable("JAWS_AGENT_DEPLOYMENT_NAME")),
     AgentName = FirstConfiguredValue(
-        builder.Configuration["Jaws:Agent:Step1:AgentName"],
+        builder.Configuration["Jaws:Agent:AgentName"],
         Environment.GetEnvironmentVariable("JAWS_AGENT_NAME"),
-        "JawsStep1Agent"),
+        "JawsFirstAgent"),
     Instructions = FirstConfiguredValue(
-        builder.Configuration["Jaws:Agent:Step1:Instructions"],
+        builder.Configuration["Jaws:Agent:Instructions"],
         Environment.GetEnvironmentVariable("JAWS_AGENT_INSTRUCTIONS"),
-        "You are JAWS, a concise agentic operations assistant. For Step 1, answer without tools.")
+        "You are JAWS, a concise agentic operations assistant. Answer directly and do not use tools unless tools are explicitly configured.")
 };
 
-builder.Services.AddSingleton(step1Options);
-builder.Services.AddSingleton<IStep1Agent, Step1Agent>();
+builder.Services.AddSingleton(firstAgentOptions);
+builder.Services.AddSingleton<IFirstAgent, FirstAgent>();
 
 var app = builder.Build();
 
 app.MapGet("/health", () =>
 {
-    var errors = step1Options.Validate();
+    var errors = firstAgentOptions.Validate();
     return Results.Ok(new
     {
         status = errors.Count == 0 ? "healthy" : "configuration_incomplete",
         release = "0.1",
-        documentationStep = "Step 1: Your First Agent",
         configurationErrors = errors
     });
 });
 
-app.MapPost("/api/agent/step1/run", async (
-    Step1AgentRequest request,
-    IStep1Agent agent,
+app.MapPost("/api/agent/run", async (
+    FirstAgentRequest request,
+    IFirstAgent agent,
     CancellationToken cancellationToken) =>
 {
-    // Step 1 exposes one narrow execution endpoint. Later releases add tools,
-    // Teams routing, sessions, memory, and workflow endpoints.
+    // Expose one narrow execution endpoint. Later releases add tools, Teams
+    // routing, sessions, memory, and workflow endpoints.
     var response = await agent.RunAsync(request, cancellationToken);
     return Results.Ok(response);
 });

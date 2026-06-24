@@ -4,6 +4,6 @@
     <Project Path="src/Jaws.Api/Jaws.Api.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/Jaws.Step1.Tests/Jaws.Step1.Tests.csproj" />
+    <Project Path="tests/Jaws.FirstAgent.Tests/Jaws.FirstAgent.Tests.csproj" />
   </Folder>
 </Solution>

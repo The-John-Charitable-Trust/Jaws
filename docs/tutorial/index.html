@@ -498,12 +498,12 @@
         </table>
 
         <h3>Configuration Model</h3>
-        <p>The Step 1 API uses typed options that can be validated before the first agent is created. <code>Step1AgentOptions</code> holds the agent endpoint, deployment name, agent name, and instructions.</p>
-        <p>The Step 1 code reads four runtime settings: <code>Endpoint</code>, <code>DeploymentName</code>, <code>AgentName</code>, and <code>Instructions</code>. The API accepts these values from ASP.NET Core configuration keys such as <code>Jaws:Agent:Step1:Endpoint</code> and <code>Jaws:Agent:Step1:DeploymentName</code>, or from environment variables such as <code>JAWS_AGENT_ENDPOINT</code>, <code>JAWS_AGENT_DEPLOYMENT_NAME</code>, <code>JAWS_AGENT_NAME</code>, and <code>JAWS_AGENT_INSTRUCTIONS</code>.</p>
+        <p>The first-agent API uses typed options that can be validated before the agent is created. <code>FirstAgentOptions</code> holds the agent endpoint, deployment name, agent name, and instructions.</p>
+        <p>The first-agent code reads four runtime settings: <code>Endpoint</code>, <code>DeploymentName</code>, <code>AgentName</code>, and <code>Instructions</code>. The API accepts these values from ASP.NET Core configuration keys such as <code>Jaws:Agent:Endpoint</code> and <code>Jaws:Agent:DeploymentName</code>, or from environment variables such as <code>JAWS_AGENT_ENDPOINT</code>, <code>JAWS_AGENT_DEPLOYMENT_NAME</code>, <code>JAWS_AGENT_NAME</code>, and <code>JAWS_AGENT_INSTRUCTIONS</code>.</p>
         <p>For local development, provide the same settings with environment variables, .NET user secrets, or <code>appsettings.Development.json</code>. For hosted Azure App Service deployments, the same settings are supplied as App Service application settings. <code>Endpoint</code>, <code>DeploymentName</code>, <code>AgentName</code>, and <code>Instructions</code> are non-secret runtime configuration values. If a hosted value is backed by Key Vault, the app still reads it through the same configuration key after Azure resolves the Key Vault reference.</p>
 
         <h3>Step 1 Tutorial Snippets</h3>
-        <p>The snippets below show the Step 1 implementation shape used by the JAWS reference code. Choose C# to follow the implemented path in this repository. Choose Python to compare the same Microsoft Agent Framework concept in Python.</p>
+        <p>The snippets below show the first-agent implementation shape used by the JAWS reference code. Choose C# to follow the implemented path in this repository. Choose Python to compare the same Microsoft Agent Framework concept in Python.</p>
         <p>The endpoint and deployment variables come from Azure AI Foundry or Azure OpenAI resources that already exist before this Step 1 code runs. In the code tutorial, enter those values through the runtime configuration keys shown above.</p>
 
         <div class="language-card">
@@ -531,7 +531,7 @@
 <span class="token-keyword">using</span> Azure.Identity;
 <span class="token-keyword">using</span> Microsoft.Agents.AI;
 
-<span class="token-comment">// Step 1 creates the first minimal agent. It does not add tools, memory, or workflows yet.</span>
+<span class="token-comment">// Create the first minimal JAWS agent. Tools, memory, and workflows are added later.</span>
 <span class="token-keyword">var</span> endpoint = Environment.GetEnvironmentVariable(<span class="token-string">"JAWS_AGENT_ENDPOINT"</span>)
     ?? <span class="token-keyword">throw new</span> InvalidOperationException(<span class="token-string">"Set JAWS_AGENT_ENDPOINT from your Azure AI project endpoint."</span>);
 
@@ -542,15 +542,15 @@
 <span class="token-keyword">var</span> credential = <span class="token-keyword">new</span> DefaultAzureCredential();
 
 <span class="token-comment">// AIProjectClient connects to the configured Azure AI project endpoint.</span>
-<span class="token-comment">// AsAIAgent creates the Agent Framework agent used by Step 1.</span>
+<span class="token-comment">// AsAIAgent creates the Agent Framework agent used by this API.</span>
 <span class="token-type">AIAgent</span> agent = <span class="token-keyword">new</span> AIProjectClient(<span class="token-keyword">new</span> Uri(endpoint), credential)
     .AsAIAgent(
         model: deploymentName,
-        name: <span class="token-string">"JawsStep1Agent"</span>,
-        instructions: <span class="token-string">"You are JAWS, a concise agentic operations assistant. For Step 1, answer without tools."</span>);
+        name: <span class="token-string">"JawsFirstAgent"</span>,
+        instructions: <span class="token-string">"You are JAWS, a concise agentic operations assistant. Answer directly and do not use tools unless tools are explicitly configured."</span>);
 
-<span class="token-comment">// RunAsync is the Step 1 execution point: send one request and return the model response.</span>
-<span class="token-type">AgentRunResponse</span> response = <span class="token-keyword">await</span> agent.RunAsync(<span class="token-string">"Explain what JAWS Step 1 proves."</span>);
+<span class="token-comment">// RunAsync sends one request to the agent and returns the model response.</span>
+<span class="token-type">AgentRunResponse</span> response = <span class="token-keyword">await</span> agent.RunAsync(<span class="token-string">"Explain what this JAWS agent proves."</span>);
 
 Console.WriteLine(response.Text);</code></pre>
           </div>
@@ -558,24 +558,24 @@ Console.WriteLine(response.Text);</code></pre>
           <p>Expose the first agent through a small API endpoint so the configured environment can be tested:</p>
           <div class="code-block">
             <div class="code-header"><span>C# Minimal API</span><button class="copy-button" type="button">Copy</button></div>
-            <pre><code>app.MapPost(<span class="token-string">"/api/agent/step1/run"</span>, <span class="token-keyword">async</span> (Step1Request request, Step1Agent agent) =&gt;
+            <pre><code>app.MapPost(<span class="token-string">"/api/agent/run"</span>, <span class="token-keyword">async</span> (FirstAgentRequest request, FirstAgent agent) =&gt;
 {
-    <span class="token-comment">// Step 1 keeps the request path simple: receive text, call the first agent, return text.</span>
+    <span class="token-comment">// Keep the request path simple: receive text, call the first agent, return text.</span>
     <span class="token-keyword">var</span> answer = <span class="token-keyword">await</span> agent.RunAsync(request.Message);
     <span class="token-keyword">return</span> Results.Ok(<span class="token-keyword">new</span> { answer });
 });
 
-<span class="token-keyword">public sealed record</span> Step1Request(<span class="token-keyword">string</span> Message);</code></pre>
+<span class="token-keyword">public sealed record</span> FirstAgentRequest(<span class="token-keyword">string</span> Message);</code></pre>
           </div>
 
-          <p>Validate the Step 1 API after it is configured:</p>
+          <p>Validate the API after it is configured:</p>
           <div class="code-block">
             <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
             <pre><code><span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Get <span class="token-param">-Uri</span> <span class="token-string">"https://&lt;jaws-api-host&gt;/health"</span>
 
-<span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Post <span class="token-param">-Uri</span> <span class="token-string">"https://&lt;jaws-api-host&gt;/api/agent/step1/run"</span> `
+<span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Post <span class="token-param">-Uri</span> <span class="token-string">"https://&lt;jaws-api-host&gt;/api/agent/run"</span> `
   <span class="token-param">-ContentType</span> <span class="token-string">"application/json"</span> `
-  <span class="token-param">-Body</span> <span class="token-string">'{ "message": "What does JAWS Step 1 prove?" }'</span></code></pre>
+  <span class="token-param">-Body</span> <span class="token-string">'{ "message": "What does this JAWS agent prove?" }'</span></code></pre>
           </div>
         </section>
 
@@ -607,11 +607,11 @@ client = FoundryChatClient(
 
 agent = Agent(
     client=client,
-    name=<span class="token-string">"JawsStep1Agent"</span>,
-    instructions=<span class="token-string">"You are JAWS. For Step 1, answer without tools."</span>,
+    name=<span class="token-string">"JawsFirstAgent"</span>,
+    instructions=<span class="token-string">"You are JAWS. Answer directly and do not use tools unless tools are explicitly configured."</span>,
 )
 
-result = <span class="token-keyword">await</span> agent.run(<span class="token-string">"Explain what JAWS Step 1 proves."</span>)
+result = <span class="token-keyword">await</span> agent.run(<span class="token-string">"Explain what this JAWS agent proves."</span>)
 print(result)</code></pre>
           </div>
         </section>

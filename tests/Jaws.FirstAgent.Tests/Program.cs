@@ -1,10 +1,10 @@
 using Jaws.AgentFramework.Configuration;
-using Jaws.AgentFramework.Step1;
+using Jaws.AgentFramework.FirstAgent;
 
 var tests = new List<(string Name, Action Test)>
 {
-    ("Step 1 options validate required fields", Step1OptionsValidateRequiredFields),
-    ("Step 1 options accept valid configuration", Step1OptionsAcceptValidConfiguration),
+    ("First agent options validate required fields", FirstAgentOptionsValidateRequiredFields),
+    ("First agent options accept valid configuration", FirstAgentOptionsAcceptValidConfiguration),
     ("Naming policy generates expected resource names", NamingPolicyGeneratesExpectedNames)
 };
 
@@ -35,9 +35,9 @@ if (failures.Count > 0)
 Console.WriteLine();
 Console.WriteLine($"Summary: {tests.Count}/{tests.Count} passed.");
 
-static void Step1OptionsValidateRequiredFields()
+static void FirstAgentOptionsValidateRequiredFields()
 {
-    var options = new Step1AgentOptions();
+    var options = new FirstAgentOptions();
     var errors = options.Validate();
 
     AssertTrue(errors.Count >= 2, "empty options should produce validation errors");
@@ -45,9 +45,9 @@ static void Step1OptionsValidateRequiredFields()
     AssertTrue(errors.Any(error => error.Contains("DeploymentName", StringComparison.Ordinal)), "deployment name error missing");
 }
 
-static void Step1OptionsAcceptValidConfiguration()
+static void FirstAgentOptionsAcceptValidConfiguration()
 {
-    var options = new Step1AgentOptions
+    var options = new FirstAgentOptions
     {
         Endpoint = "https://example-project.services.ai.azure.com/api/projects/example-project",
         DeploymentName = "gpt-4.1-mini"

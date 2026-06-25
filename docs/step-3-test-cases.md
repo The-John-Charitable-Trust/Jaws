@@ -17,4 +17,6 @@ JAWS tutorial step: Step 3: Secure MCP Server
 
 Local validation for release `0.3` is `dotnet build Jaws.slnx -c Release` plus `dotnet run --project tests/Jaws.FirstAgent.Tests/Jaws.FirstAgent.Tests.csproj`. To validate the live MCP path, run `src/Jaws.Api` locally with the `http` launch profile and confirm the objective Step 3 tutorial result: `SafeMethodError=True`, `SchemaValidation=True`, `StatusHardened=True`, and `ReadOnlyAnnotations=True`.
 
+Do not use the Step 2 `StatusPass` assertion for Step 3. Step 2 checks for `release=0.2`; Step 3 correctly reports `release=0.3` and should be validated with `StatusHardened=True`.
+
 Step 3 implements the first security hardening slice for the custom MCP server. The security posture is based on [Model Context Protocol (MCP) Security](https://github.com/cosai-oasis/ws4-secure-design-agentic-systems/blob/main/model-context-protocol-security.md), published by CoSAI Workstream 4: Secure Design Patterns for Agentic Systems. The local tests cover the first application-level controls: explicit tool boundaries, read/write separation, input validation, safe errors, human-approval gating for write-capable tools, and audit-friendly correlation.

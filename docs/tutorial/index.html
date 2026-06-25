@@ -909,8 +909,10 @@ app.MapPost(<span class="token-string">"/mcp"</span>, (JsonElement request, Jaws
         <div class="code-block">
           <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
           <pre><code><span class="token-command">git</span> fetch <span class="token-param">--tags</span>
-<span class="token-command">git</span> checkout v0.3</code></pre>
+<span class="token-command">git</span> checkout v0.3
+<span class="token-command">git</span> describe <span class="token-param">--tags</span> <span class="token-param">--exact-match</span></code></pre>
         </div>
+        <p>The final command should return <code>v0.3</code>. Step 3 has its own expected-result checks. Do not reuse the Step 2 <code>StatusPass</code> assertion, because that assertion intentionally checks for <code>release=0.2</code> and will be <code>False</code> against the Step 3 MCP server.</p>
         <p>The security rationale comes from <a href="https://github.com/cosai-oasis/ws4-secure-design-agentic-systems/blob/main/model-context-protocol-security.md">Model Context Protocol (MCP) Security</a>, published by CoSAI Workstream 4: Secure Design Patterns for Agentic Systems and approved by the CoSAI Project Governing Board. The document treats MCP as a protocol, tool, identity, and trust-boundary surface. Its controls include agent identity, secure delegation and access control, input and data sanitization, sandboxing and isolation, transport security, secure tool and UX design, human-in-the-loop, logging, lifecycle governance, and resource management.</p>
         <p>In this code tutorial, Step 3 focuses on the application-level controls that can be tested locally. Hosted installation will later add the infrastructure and deployment controls, including identity, RBAC, Key Vault, network restrictions, transport security, logging pipelines, rate limits, and deployment hardening.</p>
 
@@ -1014,6 +1016,7 @@ Summary: 14/14 passed.</code></pre>
           <pre><code><span class="token-command">dotnet</span> run <span class="token-param">--project</span> src\Jaws.Api\Jaws.Api.csproj <span class="token-param">--launch-profile</span> http</code></pre>
         </div>
         <p>Open a second terminal and run objective security probes against the local MCP endpoint:</p>
+        <p>The Step 3 pass/fail object is <code>SafeMethodError</code>, <code>SchemaValidation</code>, <code>StatusHardened</code>, and <code>ReadOnlyAnnotations</code>. A Step 2 result object with <code>StatusPass</code> is not valid for Step 3.</p>
         <div class="code-block">
           <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
           <pre><code><span class="token-variable">$unsupported</span> = <span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Post <span class="token-param">-Uri</span> <span class="token-string">"http://localhost:5124/mcp"</span> `

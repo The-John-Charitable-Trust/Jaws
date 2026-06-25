@@ -421,18 +421,18 @@
 
         <div class="callout">
           <strong>Source code and releases</strong>
-          The full step-by-step source code is available on GitHub at <a href="https://github.com/cezjah/jaws">https://github.com/cezjah/jaws</a>. Each release is aligned to a tutorial phase, making it possible to inspect the code, run the tests, deploy the platform, and compare each implementation phase against the documented Microsoft Agent Framework concepts.
+          The full step-by-step source code is available on GitHub at <a href="https://github.com/cezjah/jaws">https://github.com/cezjah/jaws</a>. Each release is aligned to a tutorial phase, making it possible to inspect the code, run the tests, and compare each implementation phase against the documented Microsoft Agent Framework concepts.
         </div>
 
                 <h2 id="jaws-platform-overview">JAWS Platform Overview</h2>
-        <p>The JAWS GitHub repository is the system of record for the reference implementation. It contains the source code, tutorial documentation, release history, test cases, and installation guidance needed to understand and deploy the platform.</p>
+        <p>The JAWS GitHub repository is the system of record for the reference implementation. It contains the source code, tutorial documentation, release history, and test cases needed to understand and validate the platform code as it grows.</p>
 
         <h3>Repository Contents</h3>
         <ul>
           <li><code>src/Jaws.AgentFramework</code> contains the agent implementation code, starting with the first agent and expanding into role-oriented support, governance, deploy, and workflow agents.</li>
-          <li><code>src/Jaws.Api</code> contains the API surface that exposes agent execution, health checks, Teams-facing routes, workflow endpoints, and integration callbacks as the tutorial progresses. The code tutorial runs this API locally; the installation process hosts it in Azure.</li>
+          <li><code>src/Jaws.Api</code> contains the API surface that exposes agent execution, health checks, Teams-facing routes, workflow endpoints, and integration callbacks as the tutorial progresses. The code tutorial runs this API locally; the future hosted deployment path will run it in Azure.</li>
           <li><code>tests</code> contains release-aligned tests and validation runners so each phase can be verified independently.</li>
-          <li><code>docs</code> contains the HTML tutorial, test-case documentation, and the installation guide when the platform reaches the release that introduces deployment packaging.</li>
+          <li><code>docs</code> contains the HTML tutorial, test-case documentation, and later deployment guidance when the platform reaches release <code>1.0</code>.</li>
         </ul>
 
         <h3>Release-Aligned Learning Path</h3>
@@ -467,15 +467,15 @@
             <tr><td>Local configuration</td><td><code>src/Jaws.Api/appsettings.Development.json</code></td><td>Non-secret tutorial defaults such as endpoint, deployment name, agent name, and instructions.</td></tr>
             <tr><td>Local secrets</td><td><code>src/Jaws.Api/appsettings.Development.local.json</code></td><td>Local API key for model validation. This file is ignored by Git.</td></tr>
             <tr><td>Tests</td><td><code>tests</code></td><td>Release-aligned validation tests for the code tutorial.</td></tr>
-            <tr><td>Documentation</td><td><code>docs</code></td><td>HTML tutorial, test cases, examples, and later installation guidance.</td></tr>
+            <tr><td>Documentation</td><td><code>docs</code></td><td>HTML tutorial, test cases, examples, and later release <code>1.0</code> deployment guidance.</td></tr>
           </tbody>
         </table>
 
         <h3>Two Validation Tracks</h3>
         <p>The code tutorial is a standalone learning path. It explains the source code and validates each release from the repository, using local configuration and local API execution where a live model call is required. It does not create Azure hosting infrastructure.</p>
-        <p>The installation process is a separate path. It collects deployment inputs from the user, or reads them from a deployment bootstrap JSON, then creates the hosted JAWS platform in Azure according to naming conventions, selected compliance profile, managed identity, Key Vault, App Service, Teams packaging, and SaaS integration settings.</p>
-        <p>The installation package does not rely on <code>DefaultAzureCredential</code>. Model endpoint keys and SaaS credentials are collected as installation inputs and stored as Key Vault secrets or Key Vault-backed application settings. Azure-hosted resource operations use explicitly configured managed identity and RBAC assignments rather than a broad local-development credential chain. This keeps local tutorial validation, hosted runtime secrets, and Azure authorization decisions separate and auditable.</p>
-        <p>Test cases live in GitHub with the source code. Code tutorial tests validate the repository. Installation tests validate the deployed platform.</p>
+        <p>The hosted deployment path is intentionally separate from the code tutorial and will be documented when the platform reaches release <code>1.0</code>. That later path will collect deployment inputs, protect secrets, provision Azure resources, package Teams integration, and configure SaaS integrations. Until then, this tutorial stays focused on source code, local configuration, local execution, and release-aligned validation.</p>
+        <p>The standalone code tutorial does not use <code>DefaultAzureCredential</code>. Local model validation uses an explicit endpoint API key so the reader can validate agent behavior without depending on Azure CLI login, Visual Studio identity, managed identity, or other local credential-chain state. Future hosted deployment guidance will use managed identity and RBAC for Azure-hosted resource operations where appropriate.</p>
+        <p>Test cases live in GitHub with the source code. Code tutorial tests validate the repository; hosted deployment tests will be added with the release <code>1.0</code> deployment guide.</p>
 
         <h2 id="concept-of-operations">Concept of Operations</h2>
         <p>JAWS is an agentic operations platform that lets a user chat in Microsoft Teams, investigate an operational need, deliberate with specialized agents, approve a governed action, and deploy an evidence-backed change across Azure, Datadog, and ServiceNow.</p>
@@ -537,7 +537,7 @@
         </ul>
         <h3>Authentication For Local Validation</h3>
         <p>The standalone Step 1 code tutorial uses an Azure AI or Azure OpenAI endpoint API key through <code>AzureKeyCredential</code>. This keeps local validation focused on the first agent instead of requiring Azure RBAC, managed identity, or a tenant-specific credential chain before the installer exists.</p>
-        <p>The tutorial does not use <code>DefaultAzureCredential</code>. That credential chain is useful in many Azure-hosted scenarios, but it can silently try multiple identity sources and makes the first local validation depend on Azure CLI login, Visual Studio identity, managed identity, or other environment-specific state. JAWS keeps that concern out of Step 1. Hosted installation can later use Key Vault-backed settings and, where appropriate, a narrower managed-identity path.</p>
+        <p>The tutorial does not use <code>DefaultAzureCredential</code>. That credential chain is useful in many Azure-hosted scenarios, but it can silently try multiple identity sources and makes the first local validation depend on Azure CLI login, Visual Studio identity, managed identity, or other environment-specific state. JAWS keeps that concern out of Step 1. Future hosted deployment can use Key Vault-backed settings and, where appropriate, a narrower managed-identity path.</p>
         <p>Put the real key in <code>src/Jaws.Api/appsettings.Development.local.json</code> or in the <code>JAWS_AGENT_API_KEY</code> environment variable. Do not put real keys in source files, committed JSON, screenshots, or issue reports.</p>
         <p>Development configuration shape:</p>
         <div class="code-block">
@@ -771,16 +771,16 @@ print(result)</code></pre>
         <p>A response that asks for more context can still be a valid Step 1 result. At this point, JAWS has no tools, memory, operational context, Teams routing, or workflow state. Step 1 proves only that the local API can load configuration, construct the first Agent Framework agent, call the configured model deployment, and return the model response through <code>/api/agent/run</code>.</p>
         <p>The next step adds the custom MCP server that will become the controlled extension boundary for future tools.</p>
         <h2 id="step-2">Step 2: Add MCP Server</h2>
-        <p>This release introduces the custom JAWS MCP server as the platform boundary between agents and operational capabilities. The server exposes capabilities through standards-aligned MCP tool contracts instead of ad hoc HTTP endpoints or prompt-only conventions.</p>
-        <p>The custom MCP server gives JAWS a durable place to define tool names, schemas, input validation, result contracts, correlation IDs, and provider adapters. This matters because the final operations scenario depends on multiple systems: Azure inventory and policy evidence, Datadog monitor and synthetic configuration, webhook validation, ServiceNow CMDB lookup, and ServiceNow incident creation.</p>
-        <p>Source files in this section should show the server startup, MCP request handling, tool registry shape, JSON schema validation, and a minimal status or registry tool. At this point, tools can be listed and called through the MCP protocol, but write-capable operational tools are not yet enabled.</p>
-        <p>The extensibility model is intentional: additional tools can be added after installation by registering a new tool contract, binding it to an approved provider adapter, defining its required configuration, and assigning it only to the agents that need it. This supports future tool families such as Azure Monitor, Sentinel, Defender, Azure Policy, Datadog, ServiceNow, and customer-specific operational systems without changing the agent prompt every time a capability is added.</p>
+        <p>Step 2 begins in release <code>v0.2</code>. After the Step 1 first-agent validation passes, fetch tags, check out <code>v0.2</code>, and follow the Step 2 section from that release. Step 2 adds the local custom MCP server that becomes the extension boundary for future tools.</p>
+        <div class="code-block">
+          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-command">git</span> fetch <span class="token-param">--tags</span>
+<span class="token-command">git</span> checkout v0.2
+<span class="token-command">git</span> describe <span class="token-param">--tags</span> <span class="token-param">--exact-match</span></code></pre>
+        </div>
 
         <h2 id="step-3">Step 3: Secure MCP Server</h2>
-        <p>This release hardens the custom MCP server before JAWS begins adding operational tools. The security work is based on the Wiz-style MCP risk areas reviewed for the project: unsafe unauthenticated tool access, overbroad tool permissions, weak input validation, untrusted tool output, missing auditability, and insufficient separation between read-only and write-capable actions.</p>
-        <p>The hardened server should enforce authentication, authorization, strict JSON schema validation, approved tool allowlists, correlation IDs, structured audit logs, request size limits, safe error handling, and explicit blocking for write-capable tools unless an approval reference is present. Tool responses should be treated as evidence from a provider, not blindly trusted instructions to the agent.</p>
-        <p>This section is also where JAWS documents the operational security contract: read tools can support investigation, but write tools require human-in-the-loop approval, provider-specific credentials, least-privilege configuration, and auditable evidence. That contract is a prerequisite for adding tools because exposing tools before securing the boundary would make the platform harder to reason about and harder to govern.</p>
-        <p>Expected results for this section should include MCP initialize/list/call validation, rejection of unknown tools, rejection of malformed inputs, rejection of unauthorized calls, and rejection of write-capable calls without approval. These tests prove the boundary works before Datadog, ServiceNow, Azure, or future post-install tools are exposed through it.</p>
+        <p>Step 3 begins in release <code>v0.3</code>. It hardens the MCP boundary with safe unsupported-method errors, schema validation, hardened status metadata, and read-only tool annotations. Validate Step 2 before moving to this release.</p>
 
         <h2 id="step-4">Step 4: Add Tools</h2>
         <p>This release adds Agent Framework tool calling on top of the secured MCP foundation. The C# snippets reference the source files that define function tools, MCP-backed tool adapters, tool registration, and agent-specific tool assignment, including <code>ToolRegistry.cs</code> and <code>AgentToolFactory.cs</code>.</p>

@@ -391,11 +391,13 @@
         <a href="#how-to-follow">How To Follow The Tutorial</a>
         <a href="#concept-of-operations">Concept of Operations</a>
         <a href="#step-1">Step 1: Your First Agent</a>
-        <a href="#step-2">Step 2: Add Tools</a>
-        <a href="#step-3">Step 3: Multi-Turn Conversations</a>
-        <a href="#step-4">Step 4: Memory and Persistence</a>
-        <a href="#step-5">Step 5: Workflows</a>
-        <a href="#step-6">Step 6: Host Your Agent</a>
+        <a href="#step-2">Step 2: Add MCP Server</a>
+        <a href="#step-3">Step 3: Secure MCP Server</a>
+        <a href="#step-4">Step 4: Add Tools</a>
+        <a href="#step-5">Step 5: Multi-Turn Conversations</a>
+        <a href="#step-6">Step 6: Memory and Persistence</a>
+        <a href="#step-7">Step 7: Workflows</a>
+        <a href="#step-8">Step 8: Host Your Agent</a>
         <a href="#sources">Sources</a>
       </nav>
     </aside>
@@ -411,7 +413,7 @@
 
         <p>JAWS uses the Microsoft Agent Framework tutorial as scaffolding for a real operational scenario. Rather than treating the Microsoft tutorial as a set of isolated code samples, this tutorial incrementally builds an agentic operations platform that can inspect Azure resources, recommend Datadog monitors or synthetic tests, use a hardened custom MCP server, validate alert delivery through an approved webhook contract, and create a ServiceNow incident with evidence and operational reasoning.</p>
 
-        <p>The goal is to show how each Microsoft Agent Framework concept becomes part of a working enterprise architecture. Step 1 begins with the first agent. Step 2 adds tools. Step 3 introduces multi-turn conversation state. Step 4 adds memory and external knowledge. Later steps extend the same platform into workflows, hosting, deployment, and operational governance. Each section explains the concept, shows the implementation, and defines test cases with expected results.</p>
+        <p>The goal is to show how each Microsoft Agent Framework concept becomes part of a working enterprise architecture. Step 1 begins with the first agent. Step 2 adds the custom MCP server that becomes the controlled tool boundary. Step 3 secures that MCP boundary. Step 4 adds tools on top of the secured foundation. Later steps introduce multi-turn conversation state, memory, workflows, hosting, deployment, and operational governance. Each section explains the concept, shows the implementation, and defines test cases with expected results.</p>
 
         <p>The value to the reader is practical and cumulative. By following the tutorial, you are not only learning how to call an LLM from C#. You are learning how to assemble agents, tools, MCP boundaries, memory, SaaS integrations, Azure deployment assets, and verification tests into a platform that can be deployed into your own Azure environment. The tutorial is designed for architects, developers, and platform engineers who need to understand both the code and the operational decisions behind it.</p>
 
@@ -448,7 +450,7 @@
 <span class="token-command">git</span> checkout v0.1</code></pre>
         </div>
         <p>Open the folder that contains <code>Jaws.slnx</code>, <code>src</code>, <code>tests</code>, and <code>docs</code>. Do not open only <code>src/Jaws.Api</code> or an individual project folder, because the tutorial commands assume they are run from the repository root.</p>
-        <p>For each release, follow the same rhythm: check out the release tag, configure only the values required for that step, build the solution, run the tests, run any local API validation described in the section, compare the output with the expected results, then continue to the next release tag.</p>
+        <p>For each release, follow the same rhythm: check out the release tag, configure only the values required for that section, build the solution, run the tests, run any local API validation described in the section, compare the output with the expected results, then continue to the next release tag.</p>
         <div class="code-block">
           <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
           <pre><code><span class="token-comment"># After Step 1 succeeds, move to the Step 2 release.</span>
@@ -698,6 +700,19 @@ Console.WriteLine(response.Text);</code></pre>
   <span class="token-param">-ContentType</span> <span class="token-string">"application/json"</span> `
   <span class="token-param">-Body</span> <span class="token-string">'{ "message": "What does this JAWS agent prove?" }'</span></code></pre>
           </div>
+          <p>For an objective pass/fail check, validate response fields rather than exact model wording:</p>
+          <div class="code-block">
+            <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+            <pre><code><span class="token-variable">$health</span> = <span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Get <span class="token-param">-Uri</span> <span class="token-string">"http://localhost:5124/health"</span>
+<span class="token-variable">$agent</span> = <span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Post <span class="token-param">-Uri</span> <span class="token-string">"http://localhost:5124/api/agent/run"</span> `
+  <span class="token-param">-ContentType</span> <span class="token-string">"application/json"</span> `
+  <span class="token-param">-Body</span> <span class="token-string">'{ "message": "What does this JAWS agent prove?" }'</span>
+
+[pscustomobject]@{
+  HealthPass = <span class="token-variable">$health</span>.status <span class="token-operator">-eq</span> <span class="token-string">"healthy"</span> <span class="token-operator">-and</span> <span class="token-variable">$health</span>.release <span class="token-operator">-eq</span> <span class="token-string">"0.1"</span> <span class="token-operator">-and</span> <span class="token-variable">$health</span>.configurationErrors.PSObject.Properties.Count <span class="token-operator">-eq</span> 0
+  AgentPass = <span class="token-variable">$agent</span>.agentName <span class="token-operator">-eq</span> <span class="token-string">"JawsFirstAgent"</span> <span class="token-operator">-and</span> <span class="token-variable">$agent</span>.release <span class="token-operator">-eq</span> <span class="token-string">"0.1"</span> <span class="token-operator">-and</span> -not [string]::IsNullOrWhiteSpace(<span class="token-variable">$agent</span>.answer)
+}</code></pre>
+          </div>
         </section>
 
         <section class="language-panel" id="lang-python" data-language-panel="python" hidden>
@@ -738,34 +753,48 @@ print(result)</code></pre>
         </section>
 
         <h3>Expected Results</h3>
-        <p>The health request should return <code>status</code> as <code>healthy</code>, release <code>0.1</code>, and no configuration errors. The agent request should return an <code>answer</code> field from the configured model. The exact wording is not deterministic because the response is generated by the model at runtime.</p>
+        <p>The objective pass condition is configuration based: <code>HealthPass</code> should be <code>True</code> and <code>AgentPass</code> should be <code>True</code>. This proves the API loaded configuration, exposed a healthy runtime, constructed the first agent, called the configured model deployment, and returned response metadata with a non-empty answer.</p>
+        <p>The exact answer text is not deterministic because the response is generated by the model at runtime. The natural-language answer can vary across runs, deployments, model versions, and prompt wording.</p>
         <p>A response that asks for more context can still be a valid Step 1 result. At this point, JAWS has no tools, memory, operational context, Teams routing, or workflow state. Step 1 proves only that the local API can load configuration, construct the first Agent Framework agent, call the configured model deployment, and return the model response through <code>/api/agent/run</code>.</p>
-        <p>Step 2 adds tools. That is where JAWS begins to move from a basic model-backed agent toward an operations assistant that can call approved functions and later reach MCP-backed capabilities.</p>
-        <h2 id="step-2">Step 2: Add Tools</h2>
-        <p>This release adds tool calling and introduces the JAWS tool extensibility contract. The C# snippets reference the source files that define tool contracts and tool registration, including <code>ToolRegistry.cs</code> and <code>AgentToolFactory.cs</code>. The hardened custom MCP boundary follows in the next release.</p>
+        <p>The next step adds the custom MCP server that will become the controlled extension boundary for future tools.</p>
+        <h2 id="step-2">Step 2: Add MCP Server</h2>
+        <p>This release introduces the custom JAWS MCP server as the platform boundary between agents and operational capabilities. The server exposes capabilities through standards-aligned MCP tool contracts instead of ad hoc HTTP endpoints or prompt-only conventions.</p>
+        <p>The custom MCP server gives JAWS a durable place to define tool names, schemas, input validation, result contracts, correlation IDs, and provider adapters. This matters because the final operations scenario depends on multiple systems: Azure inventory and policy evidence, Datadog monitor and synthetic configuration, webhook validation, ServiceNow CMDB lookup, and ServiceNow incident creation.</p>
+        <p>Source files in this section should show the server startup, MCP request handling, tool registry shape, JSON schema validation, and a minimal status or registry tool. At this point, tools can be listed and called through the MCP protocol, but write-capable operational tools are not yet enabled.</p>
+        <p>The extensibility model is intentional: additional tools can be added after installation by registering a new tool contract, binding it to an approved provider adapter, defining its required configuration, and assigning it only to the agents that need it. This supports future tool families such as Azure Monitor, Sentinel, Defender, Azure Policy, Datadog, ServiceNow, and customer-specific operational systems without changing the agent prompt every time a capability is added.</p>
 
-        <h2 id="step-3">Step 3: Multi-Turn Conversations</h2>
+        <h2 id="step-3">Step 3: Secure MCP Server</h2>
+        <p>This release hardens the custom MCP server before JAWS begins adding operational tools. The security work is based on the Wiz-style MCP risk areas reviewed for the project: unsafe unauthenticated tool access, overbroad tool permissions, weak input validation, untrusted tool output, missing auditability, and insufficient separation between read-only and write-capable actions.</p>
+        <p>The hardened server should enforce authentication, authorization, strict JSON schema validation, approved tool allowlists, correlation IDs, structured audit logs, request size limits, safe error handling, and explicit blocking for write-capable tools unless an approval reference is present. Tool responses should be treated as evidence from a provider, not blindly trusted instructions to the agent.</p>
+        <p>This section is also where JAWS documents the operational security contract: read tools can support investigation, but write tools require human-in-the-loop approval, provider-specific credentials, least-privilege configuration, and auditable evidence. That contract is a prerequisite for adding tools because exposing tools before securing the boundary would make the platform harder to reason about and harder to govern.</p>
+        <p>Expected results for this section should include MCP initialize/list/call validation, rejection of unknown tools, rejection of malformed inputs, rejection of unauthorized calls, and rejection of write-capable calls without approval. These tests prove the boundary works before Datadog, ServiceNow, Azure, or future post-install tools are exposed through it.</p>
+
+        <h2 id="step-4">Step 4: Add Tools</h2>
+        <p>This release adds Agent Framework tool calling on top of the secured MCP foundation. The C# snippets reference the source files that define function tools, MCP-backed tool adapters, tool registration, and agent-specific tool assignment, including <code>ToolRegistry.cs</code> and <code>AgentToolFactory.cs</code>.</p>
+        <p>This step focuses on how tools become available to agents, how tool descriptions shape model selection, and how JAWS keeps local function tools, custom MCP tools, and future Azure MCP Server tools behind explicit contracts. The extensibility framework introduced by the MCP sections remains the governing pattern for adding additional tools after installation.</p>
+
+        <h2 id="step-5">Step 5: Multi-Turn Conversations</h2>
         <p>This release adds session continuity for Teams and API conversations. The C# snippets reference the conversation/session files that keep role-agent context connected across turns.</p>
 
-        <h2 id="step-4">Step 4: Memory and Persistence</h2>
+        <h2 id="step-6">Step 6: Memory and Persistence</h2>
         <p>This release adds curated context, RAG provider options, and persistence guidance. The C# snippets reference the retrieval provider files and the role-agent context-loading files used by support, governance, deploy, and workflow agents.</p>
 
-        <h2 id="step-5">Step 5: Workflows</h2>
+        <h2 id="step-7">Step 7: Workflows</h2>
         <p>This release adds the human-in-the-loop workflow for Datadog monitor or synthetic creation, webhook validation, and ServiceNow incident creation. The workflow snippets reference the C# files that coordinate the support, governance, deploy, and workflow agents from recommendation through approval, execution, validation, and evidence reporting.</p>
 
-        <h2 id="step-6">Step 6: Host Your Agent</h2>
+        <h2 id="step-8">Step 8: Host Your Agent</h2>
         <p>This release completes hosting, deployment, and production-readiness guidance.</p>
 
         <h2 id="sources">Sources</h2>
         <ul class="source-list">
           <li><a href="https://learn.microsoft.com/en-us/agent-framework/overview/?pivots=programming-language-csharp">Microsoft Agent Framework overview</a></li>
           <li><a href="https://learn.microsoft.com/en-us/agent-framework/get-started/your-first-agent?pivots=programming-language-csharp">Step 1: Your First Agent</a></li>
-          <li><a href="https://learn.microsoft.com/en-us/agent-framework/get-started/add-tools?pivots=programming-language-csharp">Step 2: Add Tools</a></li>
-          <li><a href="https://learn.microsoft.com/en-us/agent-framework/get-started/multi-turn?pivots=programming-language-csharp">Step 3: Multi-Turn Conversations</a></li>
-          <li><a href="https://learn.microsoft.com/en-us/agent-framework/get-started/memory?pivots=programming-language-csharp">Step 4: Memory and Persistence</a></li>
+          <li><a href="https://learn.microsoft.com/en-us/agent-framework/get-started/add-tools?pivots=programming-language-csharp">Microsoft topic: Add Tools</a></li>
+          <li><a href="https://learn.microsoft.com/en-us/agent-framework/get-started/multi-turn?pivots=programming-language-csharp">Microsoft topic: Multi-Turn Conversations</a></li>
+          <li><a href="https://learn.microsoft.com/en-us/agent-framework/get-started/memory?pivots=programming-language-csharp">Microsoft topic: Memory and Persistence</a></li>
           <li><a href="https://learn.microsoft.com/en-us/agent-framework/agents/conversations/storage?pivots=programming-language-csharp">Agent conversation storage</a></li>
-          <li><a href="https://learn.microsoft.com/en-us/agent-framework/get-started/workflows?pivots=programming-language-csharp">Step 5: Workflows</a></li>
-          <li><a href="https://learn.microsoft.com/en-us/agent-framework/get-started/hosting">Step 6: Host Your Agent</a></li>
+          <li><a href="https://learn.microsoft.com/en-us/agent-framework/get-started/workflows?pivots=programming-language-csharp">Microsoft topic: Workflows</a></li>
+          <li><a href="https://learn.microsoft.com/en-us/agent-framework/get-started/hosting">Microsoft topic: Host Your Agent</a></li>
         </ul>
 
         <footer>

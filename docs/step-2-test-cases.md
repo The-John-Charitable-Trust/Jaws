@@ -16,4 +16,4 @@ JAWS tutorial step: Step 2: Add MCP Server
 
 Local validation for release `0.2` is `dotnet build Jaws.slnx -c Release` plus `dotnet run --project tests/Jaws.FirstAgent.Tests/Jaws.FirstAgent.Tests.csproj`. To validate the live MCP path, run `src/Jaws.Api` locally with the `http` launch profile and confirm the objective Step 2 tutorial result: `ListPass=True`, `StatusPass=True`, and `WriteToolsDisabled=True`.
 
-Step 2 intentionally exposes only read-only MCP tools. Authentication, authorization, request limits, audit hardening, and write-tool approval checks are introduced in Step 3.
+Step 2 intentionally exposes only read-only MCP tools. Step 3 introduces the first MCP hardening slice: stricter request validation, safe errors, schema checks, read/write tool metadata, and explicit denial for write-capable tools unless a later approval path enables them.

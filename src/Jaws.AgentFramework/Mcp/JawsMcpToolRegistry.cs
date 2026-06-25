@@ -10,7 +10,7 @@ namespace Jaws.AgentFramework.Mcp;
 /// </summary>
 public sealed class JawsMcpToolRegistry
 {
-    public const string Release = "0.2";
+    public const string Release = "0.3";
     public const string ServerName = "jaws-custom-mcp";
 
     private readonly IReadOnlyDictionary<string, JawsMcpTool> _tools;
@@ -23,18 +23,21 @@ public sealed class JawsMcpToolRegistry
                 Name: "jaws_mcp_status",
                 Description: "Returns the local JAWS MCP server status and release metadata.",
                 InputSchema: EmptyObjectSchema(),
+                IsWriteTool: false,
                 Invoke: _ => new JsonObject
                 {
                     ["status"] = "ok",
                     ["server"] = ServerName,
                     ["release"] = Release,
                     ["mode"] = "local",
-                    ["writeToolsEnabled"] = false
+                    ["writeToolsEnabled"] = false,
+                    ["securityMode"] = "hardened-local"
                 }),
             new JawsMcpTool(
                 Name: "jaws_tool_registry",
                 Description: "Returns the tools currently registered with the local JAWS MCP server.",
                 InputSchema: EmptyObjectSchema(),
+                IsWriteTool: false,
                 Invoke: _ => new JsonObject
                 {
                     ["status"] = "ok",

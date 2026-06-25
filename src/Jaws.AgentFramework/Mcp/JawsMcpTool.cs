@@ -12,4 +12,5 @@ public sealed record JawsMcpTool(
     string Name,
     string Description,
     JsonObject InputSchema,
+    bool IsWriteTool,
     Func<JsonObject?, JsonObject> Invoke);

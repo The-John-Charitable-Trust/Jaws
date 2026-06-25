@@ -16,7 +16,7 @@ Planned deliverables:
 
 ## Step 2: Add MCP Server
 
-Status: In progress on `codex/0.2-add-mcp-server`.
+Status: Released as `v0.2`.
 
 Planned deliverables:
 
@@ -28,7 +28,17 @@ Planned deliverables:
 
 ## Step 3: Secure MCP Server
 
-Status: Pending Step 2 completion.
+Status: Released as `v0.3`.
+
+Planned deliverables:
+
+- MCP security metadata for read-only and write-capable tools
+- JSON-RPC request validation
+- Safe MCP error responses with correlation IDs
+- Schema-based rejection of undeclared tool arguments
+- Explicit write-tool blocking unless writes are enabled through an approval path
+- CoSAI MCP Security-aligned Step 3 tutorial and expected results
+- Step 3 security test cases
 
 ## Step 4: Add Tools
 

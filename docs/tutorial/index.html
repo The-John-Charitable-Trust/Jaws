@@ -450,11 +450,16 @@
 <span class="token-command">git</span> checkout v0.1</code></pre>
         </div>
         <p>Open the folder that contains <code>Jaws.slnx</code>, <code>src</code>, <code>tests</code>, and <code>docs</code>. Do not open only <code>src/Jaws.Api</code> or an individual project folder, because the tutorial commands assume they are run from the repository root.</p>
-        <p>For each release, follow the same rhythm: check out the release tag, configure only the values required for that section, build the solution, run the tests, run any local API validation described in the section, compare the output with the expected results, then continue to the next release tag.</p>
+        <p>For each published release, follow the same rhythm: check out the release tag, configure only the values required for that section, build the solution, run the tests, run any local API validation described in the section, compare the output with the expected results, then continue to the next published release tag. If a tag is not listed on <a href="https://github.com/cezjah/jaws/releases">GitHub releases</a>, that release is not available yet.</p>
         <div class="code-block">
           <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
-          <pre><code><span class="token-comment"># After Step 1 succeeds, move to the Step 2 release.</span>
-<span class="token-command">git</span> checkout v0.2</code></pre>
+          <pre><code><span class="token-command">git</span> fetch <span class="token-param">--tags</span>
+<span class="token-command">git</span> tag <span class="token-param">--list</span>
+
+<span class="token-comment"># Move through the published tutorial releases in order.</span>
+<span class="token-command">git</span> checkout v0.1
+<span class="token-command">git</span> checkout v0.2
+<span class="token-command">git</span> checkout v0.3</code></pre>
         </div>
         <p>Readers who do not want to use Git tags can download the matching release ZIP from <a href="https://github.com/cezjah/jaws/releases">GitHub releases</a> for each phase. The tutorial commands still assume the extracted repository root is the working directory. Release <code>1.0</code> is the complete codebase for the full JAWS platform scenario; earlier releases are smaller snapshots for learning and validation.</p>
         <table>
@@ -778,13 +783,6 @@ print(result)</code></pre>
           <pre><code><span class="token-command">git</span> fetch <span class="token-param">--tags</span>
 <span class="token-command">git</span> checkout v0.2</code></pre>
         </div>
-        <p>While Step 2 is still under development, use the working branch instead:</p>
-        <div class="code-block">
-          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
-          <pre><code><span class="token-command">git</span> fetch origin
-<span class="token-command">git</span> switch codex/0.2-add-mcp-server
-<span class="token-command">git</span> pull</code></pre>
-        </div>
         <p>Microsoft describes MCP as an open standard for giving large language models consistent access to tools and contextual data. Agent Framework can connect to MCP servers, list their tools, convert those tools into Agent Framework tools, and make them available to an agent. JAWS adds a custom MCP server before adding operational tools so tool contracts, schemas, result shapes, and provider adapters have a stable home.</p>
         <p>The installation package will use the hosted MCP pattern later. In that mode, Foundry-backed agents can be connected to a remote MCP server URL with a server label, allowed tools, and approval settings. That is the production direction for installed JAWS environments. Step 2 stays local so the reader can inspect and test the MCP boundary before cloud hosting, approval workflows, or SaaS credentials are introduced.</p>
 
@@ -897,13 +895,155 @@ app.MapPost(<span class="token-string">"/mcp"</span>, (JsonElement request, Jaws
 -------- ---------- ------------------
     True       True               True</code></pre>
         </div>
-        <p>Step 2 proves that the MCP boundary exists and can be exercised locally. It does not yet prove authentication, authorization, write-tool approval, request limits, or provider-specific hardening. Those controls are the purpose of Step 3.</p>
+        <p>Step 2 proves that the MCP boundary exists and can be exercised locally. It does not yet prove hardened request validation, safe error handling, read/write tool metadata, schema checks, or provider-specific governance. Those controls begin in Step 3.</p>
 
         <h2 id="step-3">Step 3: Secure MCP Server</h2>
-        <p>This release hardens the custom MCP server before JAWS begins adding operational tools. The security work is based on the Wiz-style MCP risk areas reviewed for the project: unsafe unauthenticated tool access, overbroad tool permissions, weak input validation, untrusted tool output, missing auditability, and insufficient separation between read-only and write-capable actions.</p>
-        <p>The hardened server should enforce authentication, authorization, strict JSON schema validation, approved tool allowlists, correlation IDs, structured audit logs, request size limits, safe error handling, and explicit blocking for write-capable tools unless an approval reference is present. Tool responses should be treated as evidence from a provider, not blindly trusted instructions to the agent.</p>
-        <p>This section is also where JAWS documents the operational security contract: read tools can support investigation, but write tools require human-in-the-loop approval, provider-specific credentials, least-privilege configuration, and auditable evidence. That contract is a prerequisite for adding tools because exposing tools before securing the boundary would make the platform harder to reason about and harder to govern.</p>
-        <p>Expected results for this section should include MCP initialize/list/call validation, rejection of unknown tools, rejection of malformed inputs, rejection of unauthorized calls, and rejection of write-capable calls without approval. These tests prove the boundary works before Datadog, ServiceNow, Azure, or future post-install tools are exposed through it.</p>
+        <p>Release <code>0.3</code> hardens the custom MCP server before JAWS begins adding operational tools. Step 2 proved that the MCP boundary exists. Step 3 makes that boundary safer by adding explicit security metadata, stricter request validation, schema-based argument checks, safe error responses, correlation IDs, and read/write separation.</p>
+        <p>If the reader already cloned release <code>0.2</code>, release <code>0.3</code> does not require a new clone. Fetch the latest tags and check out the next release in the same local repository:</p>
+        <div class="code-block">
+          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-command">git</span> fetch <span class="token-param">--tags</span>
+<span class="token-command">git</span> checkout v0.3</code></pre>
+        </div>
+        <p>The security rationale comes from <a href="https://github.com/cosai-oasis/ws4-secure-design-agentic-systems/blob/main/model-context-protocol-security.md">Model Context Protocol (MCP) Security</a>, published by CoSAI Workstream 4: Secure Design Patterns for Agentic Systems and approved by the CoSAI Project Governing Board. The document treats MCP as a protocol, tool, identity, and trust-boundary surface. Its controls include agent identity, secure delegation and access control, input and data sanitization, sandboxing and isolation, transport security, secure tool and UX design, human-in-the-loop, logging, lifecycle governance, and resource management.</p>
+        <p>In this code tutorial, Step 3 focuses on the application-level controls that can be tested locally. Hosted installation will later add the infrastructure and deployment controls, including identity, RBAC, Key Vault, network restrictions, transport security, logging pipelines, rate limits, and deployment hardening.</p>
+
+        <h3>Security Reference Mapping</h3>
+        <table>
+          <thead><tr><th>CoSAI MCP Security Area</th><th>Step 3 Local Implementation</th><th>Later Platform Work</th></tr></thead>
+          <tbody>
+            <tr><td>Secure delegation and access control</td><td>Explicit tool registry and unknown-tool rejection.</td><td>Hosted authentication, authorization, RBAC, and tenant-aware access policies.</td></tr>
+            <tr><td>Input and data sanitization</td><td>JSON-RPC validation and schema-based rejection of undeclared arguments.</td><td>Provider-specific validation for Azure, Datadog, ServiceNow, and customer tools.</td></tr>
+            <tr><td>Secure tool and UX design</td><td>Read-only and destructive tool annotations.</td><td>Teams approval UX and workflow evidence before write execution.</td></tr>
+            <tr><td>Human-in-the-loop</td><td>Write-capable tools are denied by default.</td><td>Approval references unlock controlled workflow execution.</td></tr>
+            <tr><td>Logging and auditability</td><td>Safe error responses include correlation IDs.</td><td>Structured audit logs, telemetry, and incident evidence records.</td></tr>
+            <tr><td>Transport, network, resource management, and lifecycle governance</td><td>Documented as Step 3 security requirements.</td><td>Implemented in hosted installation and later deployment hardening.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Get Release 0.3 Code</h3>
+        <p>Release <code>0.3</code> is available only after it appears in <a href="https://github.com/cezjah/jaws/releases">GitHub releases</a>. If <code>v0.3</code> is not listed there, continue with the latest published release and return to this section after the Step 3 release is published.</p>
+
+        <h3>Referenced Files</h3>
+        <table>
+          <thead><tr><th>File</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><code>src/Jaws.AgentFramework/Mcp/JawsMcpTool.cs</code></td><td>Adds security intent to each tool through the <code>IsWriteTool</code> property.</td></tr>
+            <tr><td><code>src/Jaws.AgentFramework/Mcp/JawsMcpToolRegistry.cs</code></td><td>Declares the local read-only tools and reports hardened local MCP status.</td></tr>
+            <tr><td><code>src/Jaws.AgentFramework/Mcp/JawsMcpServer.cs</code></td><td>Validates JSON-RPC requests, rejects unsafe inputs, blocks write tools when disabled, and returns safe errors with correlation IDs.</td></tr>
+            <tr><td><code>tests/Jaws.FirstAgent.Tests/Program.cs</code></td><td>Contains the Step 3 security validation tests.</td></tr>
+            <tr><td><code>docs/step-3-test-cases.md</code></td><td>Lists the Step 3 test cases and expected results.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Security Contract</h3>
+        <p>Each MCP tool declares whether it is read-only or write-capable. Read-only tools can support investigation. Write-capable tools are denied unless the platform explicitly enables writes and supplies an approval path. Later workflow releases add human-in-the-loop approval references before Datadog, ServiceNow, Azure, or other external systems can be changed.</p>
+        <div class="code-block">
+          <div class="code-header"><span>C# - src/Jaws.AgentFramework/Mcp/JawsMcpTool.cs</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-keyword">public sealed record</span> JawsMcpTool(
+    <span class="token-keyword">string</span> Name,
+    <span class="token-keyword">string</span> Description,
+    JsonObject InputSchema,
+    <span class="token-keyword">bool</span> IsWriteTool,
+    Func&lt;JsonObject?, JsonObject&gt; Invoke);</code></pre>
+        </div>
+
+        <h3>Safe Tool Metadata</h3>
+        <p>The MCP tool list includes annotations that tell clients whether a tool is read-only or destructive. This maps to CoSAI guidance for secure tool and UX design, where clients must distinguish low-risk context gathering from sensitive execution.</p>
+        <div class="code-block">
+          <div class="code-header"><span>C# - src/Jaws.AgentFramework/Mcp/JawsMcpServer.cs</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-keyword">private static</span> JsonObject ToToolMetadata(JawsMcpTool tool) =&gt; <span class="token-keyword">new</span>()
+{
+    [<span class="token-string">"name"</span>] = tool.Name,
+    [<span class="token-string">"description"</span>] = tool.Description,
+    [<span class="token-string">"inputSchema"</span>] = tool.InputSchema.DeepClone(),
+    [<span class="token-string">"annotations"</span>] = <span class="token-keyword">new</span> JsonObject
+    {
+        [<span class="token-string">"readOnlyHint"</span>] = !tool.IsWriteTool,
+        [<span class="token-string">"destructiveHint"</span>] = tool.IsWriteTool
+    }
+};</code></pre>
+        </div>
+
+        <h3>Safe Error Handling</h3>
+        <p>The server returns safe, generic error messages and a correlation ID. It does not echo caller-supplied method names, tool names, or arguments in security-sensitive error paths.</p>
+        <div class="code-block">
+          <div class="code-header"><span>C# - src/Jaws.AgentFramework/Mcp/JawsMcpServer.cs</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-keyword">private static</span> JsonObject Error(JsonNode? id, <span class="token-keyword">int</span> code, <span class="token-keyword">string</span> message, <span class="token-keyword">string</span> correlationId) =&gt; <span class="token-keyword">new</span>()
+{
+    [<span class="token-string">"jsonrpc"</span>] = JsonRpcVersion,
+    [<span class="token-string">"id"</span>] = id?.DeepClone(),
+    [<span class="token-string">"error"</span>] = <span class="token-keyword">new</span> JsonObject
+    {
+        [<span class="token-string">"code"</span>] = code,
+        [<span class="token-string">"message"</span>] = message,
+        [<span class="token-string">"data"</span>] = <span class="token-keyword">new</span> JsonObject
+        {
+            [<span class="token-string">"correlationId"</span>] = correlationId
+        }
+    }
+};</code></pre>
+        </div>
+
+        <h3>Local Validation</h3>
+        <p>Build the solution and run the release-aligned tests:</p>
+        <div class="code-block">
+          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-command">dotnet</span> build Jaws.slnx <span class="token-param">-c</span> Release
+
+<span class="token-command">dotnet</span> run <span class="token-param">--project</span> tests\Jaws.FirstAgent.Tests\Jaws.FirstAgent.Tests.csproj</code></pre>
+        </div>
+        <p>The test runner should include these Step 3 security passes:</p>
+        <div class="code-block">
+          <div class="code-header"><span>Expected test output excerpt</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code>PASS: MCP server rejects invalid JSON-RPC version
+PASS: MCP server returns safe unsupported method errors
+PASS: MCP server rejects undeclared tool arguments
+PASS: MCP tool metadata declares read-only annotations
+
+Summary: 14/14 passed.</code></pre>
+        </div>
+
+        <h3>Live Local MCP Security Probe</h3>
+        <p>Start the local API and leave it running. If a previous tutorial API is already running from an earlier release, stop that terminal first so the new build can update its local binaries.</p>
+        <div class="code-block">
+          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-command">dotnet</span> run <span class="token-param">--project</span> src\Jaws.Api\Jaws.Api.csproj <span class="token-param">--launch-profile</span> http</code></pre>
+        </div>
+        <p>Open a second terminal and run objective security probes against the local MCP endpoint:</p>
+        <div class="code-block">
+          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-variable">$unsupported</span> = <span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Post <span class="token-param">-Uri</span> <span class="token-string">"http://localhost:5124/mcp"</span> `
+  <span class="token-param">-ContentType</span> <span class="token-string">"application/json"</span> `
+  <span class="token-param">-Body</span> <span class="token-string">'{ "jsonrpc": "2.0", "id": 10, "method": "dangerous/deleteEverything" }'</span>
+
+<span class="token-variable">$badArguments</span> = <span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Post <span class="token-param">-Uri</span> <span class="token-string">"http://localhost:5124/mcp"</span> `
+  <span class="token-param">-ContentType</span> <span class="token-string">"application/json"</span> `
+  <span class="token-param">-Body</span> <span class="token-string">'{ "jsonrpc": "2.0", "id": 11, "method": "tools/call", "params": { "name": "jaws_mcp_status", "arguments": { "unexpected": "value" } } }'</span>
+
+<span class="token-variable">$status</span> = <span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Post <span class="token-param">-Uri</span> <span class="token-string">"http://localhost:5124/mcp"</span> `
+  <span class="token-param">-ContentType</span> <span class="token-string">"application/json"</span> `
+  <span class="token-param">-Body</span> <span class="token-string">'{ "jsonrpc": "2.0", "id": 12, "method": "tools/call", "params": { "name": "jaws_mcp_status", "arguments": {} } }'</span>
+
+<span class="token-variable">$list</span> = <span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Post <span class="token-param">-Uri</span> <span class="token-string">"http://localhost:5124/mcp"</span> `
+  <span class="token-param">-ContentType</span> <span class="token-string">"application/json"</span> `
+  <span class="token-param">-Body</span> <span class="token-string">'{ "jsonrpc": "2.0", "id": 13, "method": "tools/list" }'</span>
+
+[pscustomobject]@{
+  SafeMethodError = <span class="token-variable">$unsupported</span>.error.code <span class="token-operator">-eq</span> -32601 <span class="token-operator">-and</span> <span class="token-variable">$unsupported</span>.error.message <span class="token-operator">-eq</span> <span class="token-string">"Unsupported MCP method."</span> <span class="token-operator">-and</span> <span class="token-variable">$unsupported</span>.error.data.correlationId
+  SchemaValidation = <span class="token-variable">$badArguments</span>.error.code <span class="token-operator">-eq</span> -32602 <span class="token-operator">-and</span> <span class="token-variable">$badArguments</span>.error.message <span class="token-operator">-eq</span> <span class="token-string">"Tool arguments failed validation."</span>
+  StatusHardened = <span class="token-variable">$status</span>.result.structuredContent.release <span class="token-operator">-eq</span> <span class="token-string">"0.3"</span> <span class="token-operator">-and</span> <span class="token-variable">$status</span>.result.structuredContent.securityMode <span class="token-operator">-eq</span> <span class="token-string">"hardened-local"</span>
+  ReadOnlyAnnotations = @(<span class="token-variable">$list</span>.result.tools | Where-Object { <span class="token-variable">$_</span>.annotations.readOnlyHint <span class="token-operator">-eq</span> <span class="token-variable">$true</span> <span class="token-operator">-and</span> <span class="token-variable">$_</span>.annotations.destructiveHint <span class="token-operator">-eq</span> <span class="token-variable">$false</span> }).Count <span class="token-operator">-eq</span> <span class="token-variable">$list</span>.result.tools.Count
+}</code></pre>
+        </div>
+        <p>Expected output:</p>
+        <div class="code-block">
+          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code>SafeMethodError SchemaValidation StatusHardened ReadOnlyAnnotations
+--------------- ---------------- -------------- -------------------
+           True             True           True                True</code></pre>
+        </div>
+        <p>Step 3 proves the MCP boundary has local security controls before external provider tools are attached. It still does not create Datadog monitors, ServiceNow incidents, or Azure changes. Those come after the secured boundary, starting with Step 4.</p>
 
         <h2 id="step-4">Step 4: Add Tools</h2>
         <p>This release adds Agent Framework tool calling on top of the secured MCP foundation. The C# snippets reference the source files that define function tools, MCP-backed tool adapters, tool registration, and agent-specific tool assignment, including <code>ToolRegistry.cs</code> and <code>AgentToolFactory.cs</code>.</p>
@@ -927,6 +1067,7 @@ app.MapPost(<span class="token-string">"/mcp"</span>, (JsonElement request, Jaws
           <li><a href="https://learn.microsoft.com/en-us/agent-framework/get-started/your-first-agent?pivots=programming-language-csharp">Step 1: Your First Agent</a></li>
           <li><a href="https://learn.microsoft.com/en-us/agent-framework/agents/tools/local-mcp-tools?pivots=programming-language-csharp">Microsoft topic: Local MCP tools</a></li>
           <li><a href="https://learn.microsoft.com/en-us/agent-framework/agents/tools/hosted-mcp-tools?pivots=programming-language-csharp">Microsoft topic: Hosted MCP tools</a></li>
+          <li><a href="https://github.com/cosai-oasis/ws4-secure-design-agentic-systems/blob/main/model-context-protocol-security.md">Model Context Protocol (MCP) Security</a>, CoSAI Workstream 4: Secure Design Patterns for Agentic Systems.</li>
           <li><a href="https://learn.microsoft.com/en-us/agent-framework/get-started/add-tools?pivots=programming-language-csharp">Microsoft topic: Add Tools</a></li>
           <li><a href="https://learn.microsoft.com/en-us/agent-framework/get-started/multi-turn?pivots=programming-language-csharp">Microsoft topic: Multi-Turn Conversations</a></li>
           <li><a href="https://learn.microsoft.com/en-us/agent-framework/get-started/memory?pivots=programming-language-csharp">Microsoft topic: Memory and Persistence</a></li>

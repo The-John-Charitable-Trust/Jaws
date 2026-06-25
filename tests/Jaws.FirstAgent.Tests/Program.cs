@@ -15,7 +15,11 @@ var tests = new List<(string Name, Action Test)>
     ("MCP server initializes", McpServerInitializes),
     ("MCP server lists tools", McpServerListsTools),
     ("MCP server calls status tool", McpServerCallsStatusTool),
-    ("MCP server rejects unknown tools", McpServerRejectsUnknownTools)
+    ("MCP server rejects unknown tools", McpServerRejectsUnknownTools),
+    ("MCP server rejects invalid JSON-RPC version", McpServerRejectsInvalidJsonRpcVersion),
+    ("MCP server returns safe unsupported method errors", McpServerReturnsSafeUnsupportedMethodErrors),
+    ("MCP server rejects undeclared tool arguments", McpServerRejectsUndeclaredToolArguments),
+    ("MCP tool metadata declares read-only annotations", McpToolMetadataDeclaresReadOnlyAnnotations)
 };
 
 var failures = new List<string>();
@@ -136,7 +140,7 @@ static void McpServerInitializes()
 
     AssertEqual("2.0", response["jsonrpc"]?.GetValue<string>(), "JSON-RPC version");
     AssertEqual("jaws-custom-mcp", result?["serverInfo"]?["name"]?.GetValue<string>(), "MCP initialize server name");
-    AssertEqual("0.2", result?["serverInfo"]?["version"]?.GetValue<string>(), "MCP initialize server version");
+    AssertEqual("0.3", result?["serverInfo"]?["version"]?.GetValue<string>(), "MCP initialize server version");
 }
 
 static void McpServerListsTools()
@@ -165,8 +169,9 @@ static void McpServerCallsStatusTool()
 
     AssertEqual("ok", structuredContent?["status"]?.GetValue<string>(), "MCP status");
     AssertEqual("jaws-custom-mcp", structuredContent?["server"]?.GetValue<string>(), "MCP server name");
-    AssertEqual("0.2", structuredContent?["release"]?.GetValue<string>(), "MCP release");
+    AssertEqual("0.3", structuredContent?["release"]?.GetValue<string>(), "MCP release");
     AssertEqual(false, structuredContent?["writeToolsEnabled"]?.GetValue<bool>(), "write tools flag");
+    AssertEqual("hardened-local", structuredContent?["securityMode"]?.GetValue<string>(), "MCP security mode");
 }
 
 static void McpServerRejectsUnknownTools()
@@ -180,8 +185,75 @@ static void McpServerRejectsUnknownTools()
     var error = response["error"];
 
     AssertEqual(-32602, error?["code"]?.GetValue<int>(), "unknown tool error code");
-    AssertTrue(error?["message"]?.GetValue<string>().Contains("Unknown MCP tool", StringComparison.Ordinal) == true,
-        "unknown tool error message");
+    AssertEqual("Unknown MCP tool.", error?["message"]?.GetValue<string>(), "unknown tool error message");
+    AssertTrue(!error?["message"]?.GetValue<string>().Contains("unknown_tool", StringComparison.Ordinal) == true,
+        "unknown tool error should not echo caller-supplied tool name");
+    AssertTrue(!string.IsNullOrWhiteSpace(error?["data"]?["correlationId"]?.GetValue<string>()),
+        "unknown tool error correlation ID");
+}
+
+static void McpServerRejectsInvalidJsonRpcVersion()
+{
+    var server = new JawsMcpServer(new JawsMcpToolRegistry());
+    using var document = JsonDocument.Parse("""
+        {"jsonrpc":"1.0","id":4,"method":"tools/list"}
+        """);
+
+    var response = server.Handle(document.RootElement);
+    var error = response["error"];
+
+    AssertEqual(-32600, error?["code"]?.GetValue<int>(), "invalid JSON-RPC version error code");
+    AssertEqual("Invalid MCP request.", error?["message"]?.GetValue<string>(), "invalid JSON-RPC version error message");
+    AssertTrue(!string.IsNullOrWhiteSpace(error?["data"]?["correlationId"]?.GetValue<string>()),
+        "invalid JSON-RPC version correlation ID");
+}
+
+static void McpServerReturnsSafeUnsupportedMethodErrors()
+{
+    var server = new JawsMcpServer(new JawsMcpToolRegistry());
+    using var document = JsonDocument.Parse("""
+        {"jsonrpc":"2.0","id":5,"method":"dangerous/deleteEverything"}
+        """);
+
+    var response = server.Handle(document.RootElement);
+    var error = response["error"];
+
+    AssertEqual(-32601, error?["code"]?.GetValue<int>(), "unsupported method error code");
+    AssertEqual("Unsupported MCP method.", error?["message"]?.GetValue<string>(), "unsupported method error message");
+    AssertTrue(!error?["message"]?.GetValue<string>().Contains("dangerous", StringComparison.Ordinal) == true,
+        "unsupported method error should not echo caller-supplied method");
+}
+
+static void McpServerRejectsUndeclaredToolArguments()
+{
+    var server = new JawsMcpServer(new JawsMcpToolRegistry());
+    using var document = JsonDocument.Parse("""
+        {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"jaws_mcp_status","arguments":{"unexpected":"value"}}}
+        """);
+
+    var response = server.Handle(document.RootElement);
+    var error = response["error"];
+
+    AssertEqual(-32602, error?["code"]?.GetValue<int>(), "undeclared argument error code");
+    AssertEqual("Tool arguments failed validation.", error?["message"]?.GetValue<string>(), "undeclared argument error message");
+}
+
+static void McpToolMetadataDeclaresReadOnlyAnnotations()
+{
+    var server = new JawsMcpServer(new JawsMcpToolRegistry());
+    using var document = JsonDocument.Parse("""
+        {"jsonrpc":"2.0","id":7,"method":"tools/list"}
+        """);
+
+    var response = server.Handle(document.RootElement);
+    var tools = response["result"]?["tools"]?.AsArray();
+
+    AssertTrue(tools is not null && tools.Count > 0, "MCP tools should be listed");
+    foreach (var tool in tools!)
+    {
+        AssertEqual(true, tool?["annotations"]?["readOnlyHint"]?.GetValue<bool>(), "read-only tool annotation");
+        AssertEqual(false, tool?["annotations"]?["destructiveHint"]?.GetValue<bool>(), "destructive tool annotation");
+    }
 }
 
 static void AssertTrue(bool condition, string message)

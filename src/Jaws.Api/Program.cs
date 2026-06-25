@@ -70,8 +70,8 @@ app.MapPost("/api/agent/run", async (
 app.MapPost("/mcp", (JsonElement request, JawsMcpServer mcpServer) =>
 {
     // Step 2 exposes the local MCP boundary. The initial endpoint supports
-    // initialize, tools/list, and read-only tools/call. Step 3 adds boundary
-    // hardening before operational tools are exposed.
+    // initialize, tools/list, and read-only tools/call. Step 3 hardens local
+    // request handling before operational provider tools are exposed.
     return Results.Json(mcpServer.Handle(request));
 });
 

@@ -1,4 +1,6 @@
 using Jaws.AgentFramework.FirstAgent;
+using Jaws.AgentFramework.Mcp;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -38,6 +40,8 @@ var firstAgentOptions = new FirstAgentOptions
 
 builder.Services.AddSingleton(firstAgentOptions);
 builder.Services.AddSingleton<IFirstAgent, FirstAgent>();
+builder.Services.AddSingleton<JawsMcpToolRegistry>();
+builder.Services.AddSingleton<JawsMcpServer>();
 
 var app = builder.Build();
 
@@ -61,6 +65,14 @@ app.MapPost("/api/agent/run", async (
     // routing, sessions, memory, and workflow endpoints.
     var response = await agent.RunAsync(request, cancellationToken);
     return Results.Ok(response);
+});
+
+app.MapPost("/mcp", (JsonElement request, JawsMcpServer mcpServer) =>
+{
+    // Step 2 exposes the local MCP boundary. The initial endpoint supports
+    // initialize, tools/list, and read-only tools/call. Step 3 adds boundary
+    // hardening before operational tools are exposed.
+    return Results.Json(mcpServer.Handle(request));
 });
 
 app.Run();

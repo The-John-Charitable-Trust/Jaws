@@ -771,10 +771,131 @@ print(result)</code></pre>
         <p>A response that asks for more context can still be a valid Step 1 result. At this point, JAWS has no tools, memory, operational context, Teams routing, or workflow state. Step 1 proves only that the local API can load configuration, construct the first Agent Framework agent, call the configured model deployment, and return the model response through <code>/api/agent/run</code>.</p>
         <p>The next step adds the custom MCP server that will become the controlled extension boundary for future tools.</p>
         <h2 id="step-2">Step 2: Add MCP Server</h2>
-        <p>This release introduces the custom JAWS MCP server as the platform boundary between agents and operational capabilities. The server exposes capabilities through standards-aligned MCP tool contracts instead of ad hoc HTTP endpoints or prompt-only conventions.</p>
-        <p>The custom MCP server gives JAWS a durable place to define tool names, schemas, input validation, result contracts, correlation IDs, and provider adapters. This matters because the final operations scenario depends on multiple systems: Azure inventory and policy evidence, Datadog monitor and synthetic configuration, webhook validation, ServiceNow CMDB lookup, and ServiceNow incident creation.</p>
-        <p>Source files in this section should show the server startup, MCP request handling, tool registry shape, JSON schema validation, and a minimal status or registry tool. At this point, tools can be listed and called through the MCP protocol, but write-capable operational tools are not yet enabled.</p>
-        <p>The extensibility model is intentional: additional tools can be added after installation by registering a new tool contract, binding it to an approved provider adapter, defining its required configuration, and assigning it only to the agents that need it. This supports future tool families such as Azure Monitor, Sentinel, Defender, Azure Policy, Datadog, ServiceNow, and customer-specific operational systems without changing the agent prompt every time a capability is added.</p>
+        <p>Release <code>0.2</code> adds the custom JAWS MCP server. This is the controlled extension boundary that will later expose Azure, Datadog, ServiceNow, and customer-specific tools to agents. The goal is intentionally narrow: prove that JAWS can expose a standards-shaped MCP endpoint, list registered tools, call a read-only status tool, and reject an unknown tool.</p>
+        <p>If the reader already cloned release <code>0.1</code>, release <code>0.2</code> does not require a new clone. Fetch the latest tags and check out the next release in the same local repository:</p>
+        <div class="code-block">
+          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-command">git</span> fetch <span class="token-param">--tags</span>
+<span class="token-command">git</span> checkout v0.2</code></pre>
+        </div>
+        <p>While Step 2 is still under development, use the working branch instead:</p>
+        <div class="code-block">
+          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-command">git</span> fetch origin
+<span class="token-command">git</span> switch codex/0.2-add-mcp-server</code></pre>
+        </div>
+        <p>Microsoft describes MCP as an open standard for giving large language models consistent access to tools and contextual data. Agent Framework can connect to MCP servers, list their tools, convert those tools into Agent Framework tools, and make them available to an agent. JAWS adds a custom MCP server before adding operational tools so tool contracts, schemas, result shapes, and provider adapters have a stable home.</p>
+        <p>The installation package will use the hosted MCP pattern later. In that mode, Foundry-backed agents can be connected to a remote MCP server URL with a server label, allowed tools, and approval settings. That is the production direction for installed JAWS environments. Step 2 stays local so the reader can inspect and test the MCP boundary before cloud hosting, approval workflows, or SaaS credentials are introduced.</p>
+
+        <h3>Source Layout</h3>
+        <table>
+          <thead>
+            <tr><th>Path</th><th>Purpose</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>src/Jaws.AgentFramework/Mcp/JawsMcpTool.cs</code></td><td>Defines the local MCP tool contract used by the registry.</td></tr>
+            <tr><td><code>src/Jaws.AgentFramework/Mcp/JawsMcpToolRegistry.cs</code></td><td>Registers the first read-only MCP tools.</td></tr>
+            <tr><td><code>src/Jaws.AgentFramework/Mcp/JawsMcpServer.cs</code></td><td>Dispatches JSON-RPC MCP requests for <code>initialize</code>, <code>tools/list</code>, and <code>tools/call</code>.</td></tr>
+            <tr><td><code>src/Jaws.Api/Program.cs</code></td><td>Exposes the local MCP endpoint at <code>/mcp</code>.</td></tr>
+            <tr><td><code>tests/Jaws.FirstAgent.Tests/Program.cs</code></td><td>Adds Step 2 validation for the MCP registry and server dispatcher.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Step 2 Tutorial Snippets</h3>
+        <p>The registry makes tool extensibility explicit. A tool must have a name, description, JSON input schema, and handler before it can be exposed through the MCP endpoint.</p>
+        <p>Source file: <code>src/Jaws.AgentFramework/Mcp/JawsMcpToolRegistry.cs</code></p>
+        <div class="code-block">
+          <div class="code-header"><span>C#</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-keyword">public sealed class</span> JawsMcpToolRegistry
+{
+    <span class="token-keyword">public const string</span> Release = <span class="token-string">"0.2"</span>;
+    <span class="token-keyword">public const string</span> ServerName = <span class="token-string">"jaws-custom-mcp"</span>;
+
+    <span class="token-comment">// Step 2 exposes read-only tools only. Operational write tools arrive later.</span>
+    <span class="token-keyword">new</span> JawsMcpTool(
+        Name: <span class="token-string">"jaws_mcp_status"</span>,
+        Description: <span class="token-string">"Returns the local JAWS MCP server status and release metadata."</span>,
+        InputSchema: EmptyObjectSchema(),
+        Invoke: _ =&gt; <span class="token-keyword">new</span> JsonObject
+        {
+            [<span class="token-string">"status"</span>] = <span class="token-string">"ok"</span>,
+            [<span class="token-string">"server"</span>] = ServerName,
+            [<span class="token-string">"release"</span>] = Release,
+            [<span class="token-string">"mode"</span>] = <span class="token-string">"local"</span>,
+            [<span class="token-string">"writeToolsEnabled"</span>] = <span class="token-keyword">false</span>
+        });
+}</code></pre>
+        </div>
+        <p>The MCP server accepts JSON-RPC requests and routes them to the supported MCP methods.</p>
+        <p>Source file: <code>src/Jaws.AgentFramework/Mcp/JawsMcpServer.cs</code></p>
+        <div class="code-block">
+          <div class="code-header"><span>C#</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-keyword">public</span> JsonObject Handle(JsonElement request)
+{
+    <span class="token-keyword">var</span> id = TryReadId(request);
+    <span class="token-keyword">var</span> method = TryReadStringProperty(request, <span class="token-string">"method"</span>);
+
+    <span class="token-keyword">return</span> method <span class="token-keyword">switch</span>
+    {
+        <span class="token-string">"initialize"</span> =&gt; Success(id, <span class="token-keyword">new</span> JsonObject { <span class="token-comment">/* serverInfo and capabilities */</span> }),
+        <span class="token-string">"tools/list"</span> =&gt; Success(id, <span class="token-keyword">new</span> JsonObject { <span class="token-comment">/* registered tool metadata */</span> }),
+        <span class="token-string">"tools/call"</span> =&gt; HandleToolCall(id, request),
+        _ =&gt; Error(id, -32601, <span class="token-string">"Unsupported MCP method."</span>)
+    };
+}</code></pre>
+        </div>
+        <p>The API hosts the local MCP endpoint.</p>
+        <p>Source file: <code>src/Jaws.Api/Program.cs</code></p>
+        <div class="code-block">
+          <div class="code-header"><span>C# Minimal API</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code>builder.Services.AddSingleton&lt;JawsMcpToolRegistry&gt;();
+builder.Services.AddSingleton&lt;JawsMcpServer&gt;();
+
+app.MapPost(<span class="token-string">"/mcp"</span>, (JsonElement request, JawsMcpServer mcpServer) =&gt;
+{
+    <span class="token-comment">// Step 2 exposes initialize, tools/list, and read-only tools/call.</span>
+    <span class="token-keyword">return</span> Results.Json(mcpServer.Handle(request));
+});</code></pre>
+        </div>
+
+        <h3>Local Validation</h3>
+        <p>Build the solution and run the release-aligned tests:</p>
+        <div class="code-block">
+          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-command">dotnet</span> build Jaws.slnx <span class="token-param">-c</span> Release
+
+<span class="token-command">dotnet</span> run <span class="token-param">--project</span> tests\Jaws.FirstAgent.Tests\Jaws.FirstAgent.Tests.csproj</code></pre>
+        </div>
+        <p>Start the local API and leave it running:</p>
+        <div class="code-block">
+          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-command">dotnet</span> run <span class="token-param">--project</span> src\Jaws.Api\Jaws.Api.csproj <span class="token-param">--launch-profile</span> http</code></pre>
+        </div>
+        <p>Open a second terminal and validate the MCP endpoint:</p>
+        <div class="code-block">
+          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-variable">$list</span> = <span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Post <span class="token-param">-Uri</span> <span class="token-string">"http://localhost:5124/mcp"</span> `
+  <span class="token-param">-ContentType</span> <span class="token-string">"application/json"</span> `
+  <span class="token-param">-Body</span> <span class="token-string">'{ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }'</span>
+
+<span class="token-variable">$status</span> = <span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Post <span class="token-param">-Uri</span> <span class="token-string">"http://localhost:5124/mcp"</span> `
+  <span class="token-param">-ContentType</span> <span class="token-string">"application/json"</span> `
+  <span class="token-param">-Body</span> <span class="token-string">'{ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "jaws_mcp_status", "arguments": {} } }'</span>
+
+[pscustomobject]@{
+  ListPass = <span class="token-variable">$list</span>.jsonrpc <span class="token-operator">-eq</span> <span class="token-string">"2.0"</span> <span class="token-operator">-and</span> <span class="token-variable">$list</span>.result.tools.Count <span class="token-operator">-eq</span> 2
+  StatusPass = <span class="token-variable">$status</span>.result.structuredContent.status <span class="token-operator">-eq</span> <span class="token-string">"ok"</span> <span class="token-operator">-and</span> <span class="token-variable">$status</span>.result.structuredContent.release <span class="token-operator">-eq</span> <span class="token-string">"0.2"</span>
+  WriteToolsDisabled = <span class="token-variable">$status</span>.result.structuredContent.writeToolsEnabled <span class="token-operator">-eq</span> <span class="token-variable">$false</span>
+}</code></pre>
+        </div>
+        <p>Expected output:</p>
+        <div class="code-block">
+          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code>ListPass StatusPass WriteToolsDisabled
+-------- ---------- ------------------
+    True       True               True</code></pre>
+        </div>
+        <p>Step 2 proves that the MCP boundary exists and can be exercised locally. It does not yet prove authentication, authorization, write-tool approval, request limits, or provider-specific hardening. Those controls are the purpose of Step 3.</p>
 
         <h2 id="step-3">Step 3: Secure MCP Server</h2>
         <p>This release hardens the custom MCP server before JAWS begins adding operational tools. The security work is based on the Wiz-style MCP risk areas reviewed for the project: unsafe unauthenticated tool access, overbroad tool permissions, weak input validation, untrusted tool output, missing auditability, and insufficient separation between read-only and write-capable actions.</p>
@@ -802,6 +923,8 @@ print(result)</code></pre>
         <ul class="source-list">
           <li><a href="https://learn.microsoft.com/en-us/agent-framework/overview/?pivots=programming-language-csharp">Microsoft Agent Framework overview</a></li>
           <li><a href="https://learn.microsoft.com/en-us/agent-framework/get-started/your-first-agent?pivots=programming-language-csharp">Step 1: Your First Agent</a></li>
+          <li><a href="https://learn.microsoft.com/en-us/agent-framework/agents/tools/local-mcp-tools?pivots=programming-language-csharp">Microsoft topic: Local MCP tools</a></li>
+          <li><a href="https://learn.microsoft.com/en-us/agent-framework/agents/tools/hosted-mcp-tools?pivots=programming-language-csharp">Microsoft topic: Hosted MCP tools</a></li>
           <li><a href="https://learn.microsoft.com/en-us/agent-framework/get-started/add-tools?pivots=programming-language-csharp">Microsoft topic: Add Tools</a></li>
           <li><a href="https://learn.microsoft.com/en-us/agent-framework/get-started/multi-turn?pivots=programming-language-csharp">Microsoft topic: Multi-Turn Conversations</a></li>
           <li><a href="https://learn.microsoft.com/en-us/agent-framework/get-started/memory?pivots=programming-language-csharp">Microsoft topic: Memory and Persistence</a></li>

@@ -1,6 +1,8 @@
 using Jaws.AgentFramework.Agents;
 using Jaws.AgentFramework.Configuration;
 using Jaws.AgentFramework.FirstAgent;
+using Jaws.AgentFramework.Mcp;
+using System.Text.Json;
 
 var tests = new List<(string Name, Action Test)>
 {
@@ -8,7 +10,12 @@ var tests = new List<(string Name, Action Test)>
     ("First agent options accept valid configuration", FirstAgentOptionsAcceptValidConfiguration),
     ("Role agent catalog includes workflow agents", RoleAgentCatalogIncludesWorkflowAgents),
     ("Deploy agent requires approval", DeployAgentRequiresApproval),
-    ("Naming policy generates expected resource names", NamingPolicyGeneratesExpectedNames)
+    ("Naming policy generates expected resource names", NamingPolicyGeneratesExpectedNames),
+    ("MCP registry exposes Step 2 read-only tools", McpRegistryExposesReadOnlyTools),
+    ("MCP server initializes", McpServerInitializes),
+    ("MCP server lists tools", McpServerListsTools),
+    ("MCP server calls status tool", McpServerCallsStatusTool),
+    ("MCP server rejects unknown tools", McpServerRejectsUnknownTools)
 };
 
 var failures = new List<string>();
@@ -103,6 +110,78 @@ static void NamingPolicyGeneratesExpectedNames()
     AssertTrue(names.KeyVault.StartsWith("kv-aiops-contoso-jaws", StringComparison.Ordinal), "key vault prefix");
     AssertTrue(names.KeyVault.Length <= 24, "key vault length");
     AssertEqual("aiopscontosojawsdev001", names.StorageAccount, "storage account");
+}
+
+static void McpRegistryExposesReadOnlyTools()
+{
+    var registry = new JawsMcpToolRegistry();
+    var toolNames = registry.Tools.Select(tool => tool.Name).ToHashSet(StringComparer.Ordinal);
+
+    AssertEqual(2, registry.Tools.Count, "Step 2 MCP tool count");
+    AssertTrue(toolNames.Contains("jaws_mcp_status"), "MCP status tool missing");
+    AssertTrue(toolNames.Contains("jaws_tool_registry"), "MCP registry tool missing");
+    AssertTrue(registry.Tools.All(tool => tool.InputSchema["additionalProperties"]?.GetValue<bool>() == false),
+        "Step 2 tools should reject undeclared input properties");
+}
+
+static void McpServerInitializes()
+{
+    var server = new JawsMcpServer(new JawsMcpToolRegistry());
+    using var document = JsonDocument.Parse("""
+        {"jsonrpc":"2.0","id":0,"method":"initialize"}
+        """);
+
+    var response = server.Handle(document.RootElement);
+    var result = response["result"];
+
+    AssertEqual("2.0", response["jsonrpc"]?.GetValue<string>(), "JSON-RPC version");
+    AssertEqual("jaws-custom-mcp", result?["serverInfo"]?["name"]?.GetValue<string>(), "MCP initialize server name");
+    AssertEqual("0.2", result?["serverInfo"]?["version"]?.GetValue<string>(), "MCP initialize server version");
+}
+
+static void McpServerListsTools()
+{
+    var server = new JawsMcpServer(new JawsMcpToolRegistry());
+    using var document = JsonDocument.Parse("""
+        {"jsonrpc":"2.0","id":1,"method":"tools/list"}
+        """);
+
+    var response = server.Handle(document.RootElement);
+    var tools = response["result"]?["tools"]?.AsArray();
+
+    AssertEqual("2.0", response["jsonrpc"]?.GetValue<string>(), "JSON-RPC version");
+    AssertEqual(2, tools?.Count ?? 0, "listed MCP tool count");
+}
+
+static void McpServerCallsStatusTool()
+{
+    var server = new JawsMcpServer(new JawsMcpToolRegistry());
+    using var document = JsonDocument.Parse("""
+        {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"jaws_mcp_status","arguments":{}}}
+        """);
+
+    var response = server.Handle(document.RootElement);
+    var structuredContent = response["result"]?["structuredContent"];
+
+    AssertEqual("ok", structuredContent?["status"]?.GetValue<string>(), "MCP status");
+    AssertEqual("jaws-custom-mcp", structuredContent?["server"]?.GetValue<string>(), "MCP server name");
+    AssertEqual("0.2", structuredContent?["release"]?.GetValue<string>(), "MCP release");
+    AssertEqual(false, structuredContent?["writeToolsEnabled"]?.GetValue<bool>(), "write tools flag");
+}
+
+static void McpServerRejectsUnknownTools()
+{
+    var server = new JawsMcpServer(new JawsMcpToolRegistry());
+    using var document = JsonDocument.Parse("""
+        {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"unknown_tool","arguments":{}}}
+        """);
+
+    var response = server.Handle(document.RootElement);
+    var error = response["error"];
+
+    AssertEqual(-32602, error?["code"]?.GetValue<int>(), "unknown tool error code");
+    AssertTrue(error?["message"]?.GetValue<string>().Contains("Unknown MCP tool", StringComparison.Ordinal) == true,
+        "unknown tool error message");
 }
 
 static void AssertTrue(bool condition, string message)

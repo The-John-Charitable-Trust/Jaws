@@ -782,7 +782,8 @@ print(result)</code></pre>
         <div class="code-block">
           <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
           <pre><code><span class="token-command">git</span> fetch origin
-<span class="token-command">git</span> switch codex/0.2-add-mcp-server</code></pre>
+<span class="token-command">git</span> switch codex/0.2-add-mcp-server
+<span class="token-command">git</span> pull</code></pre>
         </div>
         <p>Microsoft describes MCP as an open standard for giving large language models consistent access to tools and contextual data. Agent Framework can connect to MCP servers, list their tools, convert those tools into Agent Framework tools, and make them available to an agent. JAWS adds a custom MCP server before adding operational tools so tool contracts, schemas, result shapes, and provider adapters have a stable home.</p>
         <p>The installation package will use the hosted MCP pattern later. In that mode, Foundry-backed agents can be connected to a remote MCP server URL with a server label, allowed tools, and approval settings. That is the production direction for installed JAWS environments. Step 2 stays local so the reader can inspect and test the MCP boundary before cloud hosting, approval workflows, or SaaS credentials are introduced.</p>
@@ -867,6 +868,7 @@ app.MapPost(<span class="token-string">"/mcp"</span>, (JsonElement request, Jaws
 <span class="token-command">dotnet</span> run <span class="token-param">--project</span> tests\Jaws.FirstAgent.Tests\Jaws.FirstAgent.Tests.csproj</code></pre>
         </div>
         <p>Start the local API and leave it running:</p>
+        <p>If a previous Step 1 API process is already running on <code>http://localhost:5124</code>, stop that process first. The Step 2 local API uses the same launch profile and port.</p>
         <div class="code-block">
           <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
           <pre><code><span class="token-command">dotnet</span> run <span class="token-param">--project</span> src\Jaws.Api\Jaws.Api.csproj <span class="token-param">--launch-profile</span> http</code></pre>

@@ -526,6 +526,15 @@
           <li><code>src/Jaws.AgentFramework/FirstAgent.cs</code> creates the Agent Framework agent and calls <code>RunAsync</code>.</li>
           <li><code>src/Jaws.AgentFramework/FirstAgentContracts.cs</code> defines the request and response records.</li>
         </ul>
+        <h3>Authentication For Local Validation</h3>
+        <p>The Step 1 code tutorial does not ask the reader to paste an Azure AI API key into JSON or source code. The C# implementation in <code>src/Jaws.AgentFramework/FirstAgent.cs</code> uses <code>DefaultAzureCredential</code>, which means local validation authenticates with the developer&apos;s Azure identity, commonly through Azure CLI login.</p>
+        <p>Before running the local API against a live model, sign in with Azure CLI using an account that has permission to call the configured Azure AI Foundry or Azure OpenAI deployment:</p>
+        <div class="code-block">
+          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-command">az</span> login
+<span class="token-command">az</span> account set <span class="token-param">--subscription</span> <span class="token-string">"&lt;your-subscription-id&gt;"</span></code></pre>
+        </div>
+        <p>If a future installation uses key-based authentication for a customer environment, that secret belongs in Key Vault and installation configuration, not in the standalone code tutorial&apos;s local bootstrap JSON.</p>
         <p>Local bootstrap JSON shape:</p>
         <div class="code-block">
           <div class="code-header"><span>src/Jaws.Api/appsettings.Development.json</span><button class="copy-button" type="button">Copy</button></div>

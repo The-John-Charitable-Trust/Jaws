@@ -501,7 +501,7 @@
 
         <h3>Source Layout</h3>
         <p>In this release, you add the first JAWS agent implementation. The code follows Microsoft Agent Framework Step 1 by creating an <code>AIAgent</code>, configuring it with the selected model deployment and instructions, and calling <code>RunAsync</code> to return a response.</p>
-        <p>The implementation includes comments at the important decision points so you can see why each part exists: where the model endpoint comes from, how Azure credentials are selected, how the agent is created, and where the first agent execution happens.</p>
+        <p>The implementation includes comments at the important decision points so the tutorial is easy to follow: where the model endpoint comes from, why the standalone tutorial uses an API key, how the agent is created, and where the first agent execution happens.</p>
         <p>The initial source layout separates the API surface, agent implementation, and configuration model:</p>
         <table>
           <thead>
@@ -514,12 +514,13 @@
         </table>
 
         <h3>Configuration Model</h3>
-        <p>The first-agent API uses typed options that can be validated before the agent is created. <code>FirstAgentOptions</code> holds the agent endpoint, deployment name, agent name, and instructions.</p>
-        <p>The first-agent code reads four runtime settings: <code>Endpoint</code>, <code>DeploymentName</code>, <code>AgentName</code>, and <code>Instructions</code>. The API accepts these values from ASP.NET Core configuration keys such as <code>Jaws:Agent:Endpoint</code> and <code>Jaws:Agent:DeploymentName</code>, or from environment variables such as <code>JAWS_AGENT_ENDPOINT</code>, <code>JAWS_AGENT_DEPLOYMENT_NAME</code>, <code>JAWS_AGENT_NAME</code>, and <code>JAWS_AGENT_INSTRUCTIONS</code>.</p>
-        <p>For standalone code tutorial validation, add these values to the local bootstrap/configuration file <code>src/Jaws.Api/appsettings.Development.json</code>. The values come from the reader&apos;s Azure AI Foundry or Azure OpenAI setup: project or service endpoint, model deployment name, agent display name, and instructions. The installation process uses a separate deployment bootstrap JSON and writes equivalent settings into the hosted platform later.</p>
+        <p>The first-agent API uses typed options that can be validated before the agent is created. <code>FirstAgentOptions</code> holds the agent endpoint, deployment name, API key, agent name, and instructions.</p>
+        <p>The first-agent code reads five runtime settings: <code>Endpoint</code>, <code>DeploymentName</code>, <code>ApiKey</code>, <code>AgentName</code>, and <code>Instructions</code>. The API accepts these values from ASP.NET Core configuration keys such as <code>Jaws:Agent:Endpoint</code> and <code>Jaws:Agent:ApiKey</code>, or from environment variables such as <code>JAWS_AGENT_ENDPOINT</code>, <code>JAWS_AGENT_DEPLOYMENT_NAME</code>, <code>JAWS_AGENT_API_KEY</code>, <code>JAWS_AGENT_NAME</code>, and <code>JAWS_AGENT_INSTRUCTIONS</code>.</p>
+        <p>For standalone code tutorial validation, keep non-secret defaults in <code>src/Jaws.Api/appsettings.Development.json</code> and put the real API key in <code>src/Jaws.Api/appsettings.Development.local.json</code>. The local file is loaded only in development and is ignored by Git. The values come from the reader&apos;s Azure AI Foundry or Azure OpenAI setup: endpoint, model deployment name, endpoint API key, agent display name, and instructions.</p>
         <p>Configuration files and code to inspect:</p>
         <ul>
-          <li><code>src/Jaws.Api/appsettings.Development.json</code> stores local tutorial validation values.</li>
+          <li><code>src/Jaws.Api/appsettings.Development.json</code> stores committed local tutorial defaults without secrets.</li>
+          <li><code>src/Jaws.Api/appsettings.Development.local.json</code> stores the reader&apos;s real local API key and is ignored by Git.</li>
           <li><code>src/Jaws.Api/Properties/launchSettings.json</code> defines the local API URL, including <code>http://localhost:5124</code>.</li>
           <li><code>src/Jaws.Api/Program.cs</code> reads the local configuration and exposes <code>/health</code> and <code>/api/agent/run</code>.</li>
           <li><code>src/Jaws.AgentFramework/FirstAgentOptions.cs</code> defines and validates the required agent settings.</li>
@@ -527,14 +528,9 @@
           <li><code>src/Jaws.AgentFramework/FirstAgentContracts.cs</code> defines the request and response records.</li>
         </ul>
         <h3>Authentication For Local Validation</h3>
-        <p>The Step 1 code tutorial does not ask the reader to paste an Azure AI API key into JSON or source code. The C# implementation in <code>src/Jaws.AgentFramework/FirstAgent.cs</code> uses <code>DefaultAzureCredential</code>, which means local validation authenticates with the developer&apos;s Azure identity, commonly through Azure CLI login.</p>
-        <p>Before running the local API against a live model, sign in with Azure CLI using an account that has permission to call the configured Azure AI Foundry or Azure OpenAI deployment:</p>
-        <div class="code-block">
-          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
-          <pre><code><span class="token-command">az</span> login
-<span class="token-command">az</span> account set <span class="token-param">--subscription</span> <span class="token-string">"&lt;your-subscription-id&gt;"</span></code></pre>
-        </div>
-        <p>If a future installation uses key-based authentication for a customer environment, that secret belongs in Key Vault and installation configuration, not in the standalone code tutorial&apos;s local bootstrap JSON.</p>
+        <p>The standalone Step 1 code tutorial uses an Azure AI or Azure OpenAI endpoint API key through <code>AzureKeyCredential</code>. This keeps local validation focused on the first agent instead of requiring Azure RBAC, managed identity, or a tenant-specific credential chain before the installer exists.</p>
+        <p>The tutorial does not use <code>DefaultAzureCredential</code>. That credential chain is useful in many Azure-hosted scenarios, but it can silently try multiple identity sources and makes the first local validation depend on Azure CLI login, Visual Studio identity, managed identity, or other environment-specific state. JAWS keeps that concern out of Step 1. Hosted installation can later use Key Vault-backed settings and, where appropriate, a narrower managed-identity path.</p>
+        <p>Put the real key in <code>src/Jaws.Api/appsettings.Development.local.json</code> or in the <code>JAWS_AGENT_API_KEY</code> environment variable. Do not put real keys in source files, committed JSON, screenshots, or issue reports.</p>
         <p>Local bootstrap JSON shape:</p>
         <div class="code-block">
           <div class="code-header"><span>src/Jaws.Api/appsettings.Development.json</span><button class="copy-button" type="button">Copy</button></div>
@@ -549,6 +545,7 @@
     <span class="token-string">"Agent"</span>: {
       <span class="token-string">"Endpoint"</span>: <span class="token-string">"https://&lt;your-ai-foundry-or-azure-openai-endpoint&gt;/"</span>,
       <span class="token-string">"DeploymentName"</span>: <span class="token-string">"&lt;your-model-deployment-name&gt;"</span>,
+      <span class="token-string">"ApiKey"</span>: <span class="token-string">""</span>,
       <span class="token-string">"AgentName"</span>: <span class="token-string">"JawsFirstAgent"</span>,
       <span class="token-string">"Instructions"</span>: <span class="token-string">"You are JAWS, a concise agentic operations assistant. Answer directly and do not use tools unless tools are explicitly configured."</span>
     }
@@ -614,9 +611,9 @@
           <p>Install the Agent Framework packages required for the first C# agent:</p>
           <div class="code-block">
             <div class="code-header"><span>.NET CLI</span><button class="copy-button" type="button">Copy</button></div>
-            <pre><code><span class="token-command">dotnet</span> add package Azure.AI.Projects <span class="token-param">--prerelease</span>
-<span class="token-command">dotnet</span> add package Azure.Identity
-<span class="token-command">dotnet</span> add package Microsoft.Agents.AI.Foundry <span class="token-param">--prerelease</span></code></pre>
+            <pre><code><span class="token-command">dotnet</span> add package Azure.AI.OpenAI <span class="token-param">--prerelease</span>
+<span class="token-command">dotnet</span> add package Microsoft.Agents.AI.Foundry <span class="token-param">--prerelease</span>
+<span class="token-command">dotnet</span> add package Microsoft.Extensions.AI.OpenAI</code></pre>
           </div>
 
           <p>Create the agent:</p>
@@ -624,27 +621,35 @@
           <div class="code-block">
             <div class="code-header"><span>C#</span><button class="copy-button" type="button">Copy</button></div>
             <pre><code><span class="token-keyword">using</span> System;
-<span class="token-keyword">using</span> Azure.AI.Projects;
-<span class="token-keyword">using</span> Azure.Identity;
+<span class="token-keyword">using</span> Azure;
+<span class="token-keyword">using</span> Azure.AI.OpenAI;
 <span class="token-keyword">using</span> Microsoft.Agents.AI;
+<span class="token-keyword">using</span> Microsoft.Extensions.AI;
 
-<span class="token-comment">// Create the first minimal JAWS agent. Tools, memory, and workflows are added later.</span>
+<span class="token-comment">// These values come from ASP.NET Core configuration in the runnable code.</span>
 <span class="token-keyword">var</span> endpoint = Environment.GetEnvironmentVariable(<span class="token-string">"JAWS_AGENT_ENDPOINT"</span>)
-    ?? <span class="token-keyword">throw new</span> InvalidOperationException(<span class="token-string">"Set JAWS_AGENT_ENDPOINT from your Azure AI project endpoint."</span>);
+    ?? <span class="token-keyword">throw new</span> InvalidOperationException(<span class="token-string">"Set JAWS_AGENT_ENDPOINT from your Azure AI endpoint."</span>);
 
 <span class="token-keyword">var</span> deploymentName = Environment.GetEnvironmentVariable(<span class="token-string">"JAWS_AGENT_DEPLOYMENT_NAME"</span>)
     ?? <span class="token-keyword">throw new</span> InvalidOperationException(<span class="token-string">"Set JAWS_AGENT_DEPLOYMENT_NAME from your model deployment."</span>);
 
-<span class="token-comment">// DefaultAzureCredential lets local developers use Azure CLI login and hosted apps use managed identity.</span>
-<span class="token-keyword">var</span> credential = <span class="token-keyword">new</span> DefaultAzureCredential();
+<span class="token-keyword">var</span> apiKey = Environment.GetEnvironmentVariable(<span class="token-string">"JAWS_AGENT_API_KEY"</span>)
+    ?? <span class="token-keyword">throw new</span> InvalidOperationException(<span class="token-string">"Set JAWS_AGENT_API_KEY for local tutorial validation."</span>);
 
-<span class="token-comment">// AIProjectClient connects to the configured Azure AI project endpoint.</span>
-<span class="token-comment">// AsAIAgent creates the Agent Framework agent used by this API.</span>
-<span class="token-type">AIAgent</span> agent = <span class="token-keyword">new</span> AIProjectClient(<span class="token-keyword">new</span> Uri(endpoint), credential)
-    .AsAIAgent(
-        model: deploymentName,
-        name: <span class="token-string">"JawsFirstAgent"</span>,
-        instructions: <span class="token-string">"You are JAWS, a concise agentic operations assistant. Answer directly and do not use tools unless tools are explicitly configured."</span>);
+<span class="token-comment">// AzureKeyCredential is explicit and predictable for standalone local validation.</span>
+<span class="token-keyword">var</span> azureOpenAiClient = <span class="token-keyword">new</span> AzureOpenAIClient(
+    <span class="token-keyword">new</span> Uri(endpoint),
+    <span class="token-keyword">new</span> AzureKeyCredential(apiKey));
+
+<span class="token-comment">// GetChatClient targets the model deployment; AsIChatClient adapts it for Agent Framework.</span>
+<span class="token-keyword">var</span> chatClient = azureOpenAiClient
+    .GetChatClient(deploymentName)
+    .AsIChatClient();
+
+<span class="token-comment">// AsAIAgent creates the Microsoft Agent Framework agent used by this API.</span>
+<span class="token-type">AIAgent</span> agent = chatClient.AsAIAgent(
+    name: <span class="token-string">"JawsFirstAgent"</span>,
+    instructions: <span class="token-string">"You are JAWS, a concise agentic operations assistant. Answer directly and do not use tools unless tools are explicitly configured."</span>);
 
 <span class="token-comment">// RunAsync sends one request to the agent and returns the model response.</span>
 <span class="token-type">AgentRunResponse</span> response = <span class="token-keyword">await</span> agent.RunAsync(<span class="token-string">"Explain what this JAWS agent proves."</span>);
@@ -666,7 +671,7 @@ Console.WriteLine(response.Text);</code></pre>
 <span class="token-keyword">public sealed record</span> FirstAgentRequest(<span class="token-keyword">string</span> Message);</code></pre>
           </div>
 
-          <p>Validate the code tutorial locally after <code>src/Jaws.Api/appsettings.Development.json</code> contains the reader&apos;s model values. First, build the solution and run the unit tests:</p>
+          <p>Validate the code tutorial locally after <code>src/Jaws.Api/appsettings.Development.json</code> contains non-secret model values and <code>src/Jaws.Api/appsettings.Development.local.json</code> contains the local API key. First, build the solution and run the unit tests:</p>
           <div class="code-block">
             <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
             <pre><code><span class="token-command">dotnet</span> build Jaws.slnx

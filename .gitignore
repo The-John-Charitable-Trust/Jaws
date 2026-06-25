@@ -15,6 +15,7 @@ obj/
 # Secrets and generated config
 local.settings.json
 secrets.json
+appsettings.Development.local.json
 *.tfstate
 *.tfstate.backup
 *.generated.json

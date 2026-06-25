@@ -2,7 +2,16 @@ using Jaws.AgentFramework.FirstAgent;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Read non-secret agent runtime settings from ASP.NET Core configuration: App Service settings, local app settings, user secrets, or environment variables.
+if (builder.Environment.IsDevelopment())
+{
+    // Keep real local secrets out of the committed tutorial config.
+    builder.Configuration.AddJsonFile("appsettings.Development.local.json", optional: true, reloadOnChange: true);
+}
+
+// Read first-agent runtime settings from ASP.NET Core configuration.
+// For the standalone tutorial, appsettings.Development.local.json usually
+// supplies the API key. Hosted deployments should source secrets from Key Vault
+// or Key Vault-backed application settings.
 var firstAgentOptions = new FirstAgentOptions
 {
     Endpoint = FirstConfiguredValue(
@@ -13,6 +22,10 @@ var firstAgentOptions = new FirstAgentOptions
         builder.Configuration["Jaws:Agent:DeploymentName"],
         builder.Configuration["JAWS_AGENT_DEPLOYMENT_NAME"],
         Environment.GetEnvironmentVariable("JAWS_AGENT_DEPLOYMENT_NAME")),
+    ApiKey = FirstConfiguredValue(
+        builder.Configuration["Jaws:Agent:ApiKey"],
+        builder.Configuration["JAWS_AGENT_API_KEY"],
+        Environment.GetEnvironmentVariable("JAWS_AGENT_API_KEY")),
     AgentName = FirstConfiguredValue(
         builder.Configuration["Jaws:Agent:AgentName"],
         Environment.GetEnvironmentVariable("JAWS_AGENT_NAME"),
@@ -54,4 +67,3 @@ app.Run();
 
 static string FirstConfiguredValue(params string?[] values) =>
     values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
-

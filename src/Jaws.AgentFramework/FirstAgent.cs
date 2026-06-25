@@ -1,6 +1,7 @@
-using Azure.AI.Projects;
-using Azure.Identity;
+using Azure;
+using Azure.AI.OpenAI;
 using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
 
 namespace Jaws.AgentFramework.FirstAgent;
 
@@ -34,18 +35,31 @@ public sealed class FirstAgent : IFirstAgent
             throw new ArgumentException("Message is required.", nameof(request));
         }
 
-        // Create AIProjectClient with a project endpoint and Azure credential,
-        // convert it into an AIAgent, then call RunAsync with a user message.
-        // DefaultAzureCredential supports Azure CLI during local development and
-        // managed identity once the API is deployed to Azure.
-        AIAgent agent = new AIProjectClient(
-                new Uri(_options.Endpoint),
-                new DefaultAzureCredential())
-            .AsAIAgent(
-                model: _options.DeploymentName,
-                instructions: _options.Instructions,
-                name: _options.AgentName);
+        // The standalone tutorial uses an explicit endpoint API key so the
+        // reader can validate agent construction without Azure RBAC, managed
+        // identity, or a tenant-specific credential chain. The hosted installer
+        // can later move this secret into Key Vault-backed configuration.
+        var azureOpenAiClient = new AzureOpenAIClient(
+            new Uri(_options.Endpoint),
+            new AzureKeyCredential(_options.ApiKey));
 
+        // GetChatClient targets the configured model deployment. AsIChatClient
+        // adapts the Azure OpenAI SDK client into the Microsoft.Extensions.AI
+        // abstraction used by the Agent Framework ChatClientAgent.
+        var chatClient = azureOpenAiClient
+            .GetChatClient(_options.DeploymentName)
+            .AsIChatClient();
+
+        // AsAIAgent wraps the chat client as a Microsoft Agent Framework agent.
+        // This keeps the first tutorial focused on agent construction and
+        // execution while leaving tools, memory, Teams, and workflows for later.
+        AIAgent agent = chatClient.AsAIAgent(
+            instructions: _options.Instructions,
+            name: _options.AgentName);
+
+        // RunAsync sends the user's message to the configured agent and returns
+        // the model response. Later releases add tools, memory, and workflows
+        // around this same execution boundary.
         var runResult = await agent.RunAsync(request.Message, cancellationToken: cancellationToken);
 
         return new FirstAgentResponse(

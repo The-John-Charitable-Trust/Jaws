@@ -46,6 +46,7 @@ static void FirstAgentOptionsValidateRequiredFields()
     AssertTrue(errors.Count >= 2, "empty options should produce validation errors");
     AssertTrue(errors.Any(error => error.Contains("Endpoint", StringComparison.Ordinal)), "endpoint error missing");
     AssertTrue(errors.Any(error => error.Contains("DeploymentName", StringComparison.Ordinal)), "deployment name error missing");
+    AssertTrue(errors.Any(error => error.Contains("ApiKey", StringComparison.Ordinal)), "API key error missing");
 }
 
 static void FirstAgentOptionsAcceptValidConfiguration()
@@ -53,7 +54,8 @@ static void FirstAgentOptionsAcceptValidConfiguration()
     var options = new FirstAgentOptions
     {
         Endpoint = "https://example-project.services.ai.azure.com/api/projects/example-project",
-        DeploymentName = "gpt-4.1-mini"
+        DeploymentName = "gpt-4.1-mini",
+        ApiKey = "test-api-key"
     };
 
     AssertTrue(options.IsConfigured, "valid options should be configured");

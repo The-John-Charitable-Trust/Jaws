@@ -13,6 +13,8 @@ public sealed class FirstAgentOptions
 
     public string DeploymentName { get; init; } = string.Empty;
 
+    public string ApiKey { get; init; } = string.Empty;
+
     public string AgentName { get; init; } = "JawsFirstAgent";
 
     public string Instructions { get; init; } =
@@ -21,6 +23,7 @@ public sealed class FirstAgentOptions
     public bool IsConfigured =>
         Uri.TryCreate(Endpoint, UriKind.Absolute, out _) &&
         !string.IsNullOrWhiteSpace(DeploymentName) &&
+        !string.IsNullOrWhiteSpace(ApiKey) &&
         !string.IsNullOrWhiteSpace(AgentName) &&
         !string.IsNullOrWhiteSpace(Instructions);
 
@@ -36,6 +39,11 @@ public sealed class FirstAgentOptions
         if (string.IsNullOrWhiteSpace(DeploymentName))
         {
             errors.Add("Jaws:Agent:DeploymentName is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(ApiKey))
+        {
+            errors.Add("Jaws:Agent:ApiKey is required for standalone local tutorial validation.");
         }
 
         if (string.IsNullOrWhiteSpace(AgentName))

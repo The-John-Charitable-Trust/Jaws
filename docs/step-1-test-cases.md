@@ -10,8 +10,8 @@ Microsoft documentation step: Step 1: Your First Agent
 | ST1-003 | Role agent catalog includes support, governance, deploy, and workflow agents | `dotnet run --project tests/Jaws.FirstAgent.Tests` | PASS |
 | ST1-004 | Deploy agent requires approval and evidence settings | `dotnet run --project tests/Jaws.FirstAgent.Tests` | PASS |
 | ST1-005 | Solution builds | `dotnet build Jaws.slnx` | PASS |
-| ST1-006 | API health endpoint reports configuration state | `GET /health` | Returns `healthy` or actionable configuration errors |
-| ST1-007 | First agent executes against configured model | `POST /api/agent/run` | Returns model answer with agent name and release metadata |
+| ST1-006 | Optional hosted API health endpoint reports configuration state | `GET /health` against a deployed API | Returns `healthy` or actionable configuration errors |
+| ST1-007 | Optional hosted first agent executes against configured model | `POST /api/agent/run` against a deployed API | Returns model answer with agent name and release metadata |
 
-Live tests require an Azure login, reachable project endpoint, and model deployment.
+Local validation for release `0.1` is `dotnet build Jaws.slnx` plus `dotnet run --project tests/Jaws.FirstAgent.Tests`. Hosted API validation is optional at this point because the Step 1 code tutorial does not provision Azure App Service. Hosted validation requires a deployed API, configured runtime settings, Azure login or managed identity, a reachable Azure AI endpoint, and a model deployment.
 

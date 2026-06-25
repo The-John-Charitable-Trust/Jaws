@@ -2,13 +2,13 @@
 
 JAWS is an agentic operations platform being rebuilt from a clean open-source foundation using the Microsoft Agent Framework tutorial path as scaffolding.
 
-The tutorial source, tests, and documentation grow release by release. The Step 1 code establishes a runnable first agent and local API validation path; later releases add tools, multi-turn conversations, memory, workflows, hosting, Teams integration, and the Datadog-to-ServiceNow operations scenario.
+The tutorial source, tests, and documentation grow release by release. The Step 1 code establishes a runnable first agent and local API validation path; later releases add the MCP boundary, MCP hardening, tools, multi-turn conversations, memory, workflows, hosting, Teams integration, and the Datadog-to-ServiceNow operations scenario.
 
 ## Credential Model
 
 The standalone code tutorial does not use `DefaultAzureCredential`. Local model validation uses an explicit Azure AI or Azure OpenAI endpoint key through `AzureKeyCredential`, with real local secrets kept in `appsettings.Development.local.json` or environment variables that are ignored by Git.
 
-The installation package uses a different boundary: installation inputs provide model, Datadog, ServiceNow, and Teams credentials; secrets are stored in Azure Key Vault or Key Vault-backed application settings; Azure-hosted resource operations use explicitly configured managed identity and RBAC assignments instead of a broad default credential chain.
+Hosted deployment guidance is intentionally separate from the code tutorial and will be documented with the release `1.0` deployment path. The code tutorial uses local configuration and an explicit endpoint API key for model validation; the future hosted path will protect secrets in Azure Key Vault or Key Vault-backed application settings and use managed identity with RBAC for Azure-hosted resource operations where appropriate.
 
 ## Current Scope
 

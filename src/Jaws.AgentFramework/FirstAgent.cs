@@ -37,8 +37,8 @@ public sealed class FirstAgent : IFirstAgent
 
         // The standalone tutorial uses an explicit endpoint API key so the
         // reader can validate agent construction without Azure RBAC, managed
-        // identity, or a tenant-specific credential chain. The hosted installer
-        // can later move this secret into Key Vault-backed configuration.
+        // identity, or a tenant-specific credential chain. Future hosted
+        // deployment can move this secret into Key Vault-backed configuration.
         var azureOpenAiClient = new AzureOpenAIClient(
             new Uri(_options.Endpoint),
             new AzureKeyCredential(_options.ApiKey));
@@ -58,8 +58,9 @@ public sealed class FirstAgent : IFirstAgent
             name: _options.AgentName);
 
         // RunAsync sends the user's message to the configured agent and returns
-        // the model response. Later releases add tools, memory, and workflows
-        // around this same execution boundary.
+        // the model response. This first-agent surface keeps release 0.1 in its
+        // response metadata; later MCP, memory, and workflow surfaces report
+        // their own release values around this same execution boundary.
         var runResult = await agent.RunAsync(request.Message, cancellationToken: cancellationToken);
 
         return new FirstAgentResponse(

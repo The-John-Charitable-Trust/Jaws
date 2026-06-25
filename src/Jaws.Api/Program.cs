@@ -12,8 +12,8 @@ if (builder.Environment.IsDevelopment())
 
 // Read first-agent runtime settings from ASP.NET Core configuration.
 // For the standalone tutorial, appsettings.Development.local.json usually
-// supplies the API key. Hosted deployments should source secrets from Key Vault
-// or Key Vault-backed application settings.
+// supplies the API key. Future hosted deployments should source secrets from
+// Key Vault or Key Vault-backed application settings.
 var firstAgentOptions = new FirstAgentOptions
 {
     Endpoint = FirstConfiguredValue(
@@ -51,7 +51,12 @@ app.MapGet("/health", () =>
     return Results.Ok(new
     {
         status = errors.Count == 0 ? "healthy" : "configuration_incomplete",
+        surface = "first-agent",
+        // The health endpoint validates the first-agent surface introduced in
+        // release 0.1. MCP endpoints report their own MCP release value so each
+        // tutorial validation block checks the surface it is exercising.
         release = "0.1",
+        mcpRelease = JawsMcpToolRegistry.Release,
         configurationErrors = errors
     });
 });

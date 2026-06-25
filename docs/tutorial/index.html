@@ -629,16 +629,19 @@ Console.WriteLine(response.Text);</code></pre>
 <span class="token-keyword">public sealed record</span> FirstAgentRequest(<span class="token-keyword">string</span> Message);</code></pre>
           </div>
 
-          <p>Validate the code tutorial locally after <code>src/Jaws.Api/appsettings.Development.json</code> contains the reader&apos;s model values:</p>
+          <p>Validate the code tutorial locally after <code>src/Jaws.Api/appsettings.Development.json</code> contains the reader&apos;s model values. First, build the solution and run the unit tests:</p>
           <div class="code-block">
             <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
             <pre><code><span class="token-command">dotnet</span> build Jaws.slnx
 
-<span class="token-command">dotnet</span> run <span class="token-param">--project</span> tests\Jaws.FirstAgent.Tests\Jaws.FirstAgent.Tests.csproj
-
-<span class="token-command">dotnet</span> run <span class="token-param">--project</span> src\Jaws.Api\Jaws.Api.csproj <span class="token-param">--launch-profile</span> http</code></pre>
+<span class="token-command">dotnet</span> run <span class="token-param">--project</span> tests\Jaws.FirstAgent.Tests\Jaws.FirstAgent.Tests.csproj</code></pre>
           </div>
-          <p>With the local API running at <code>http://localhost:5124</code>, call the local endpoints from another terminal:</p>
+          <p>Next, start the local API and leave this terminal running. The <code>http</code> launch profile comes from <code>src/Jaws.Api/Properties/launchSettings.json</code> and listens on <code>http://localhost:5124</code>.</p>
+          <div class="code-block">
+            <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+            <pre><code><span class="token-command">dotnet</span> run <span class="token-param">--project</span> src\Jaws.Api\Jaws.Api.csproj <span class="token-param">--launch-profile</span> http</code></pre>
+          </div>
+          <p>Open a second terminal and call the local endpoints:</p>
           <div class="code-block">
             <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
             <pre><code><span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Get <span class="token-param">-Uri</span> <span class="token-string">"http://localhost:5124/health"</span>

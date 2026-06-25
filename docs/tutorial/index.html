@@ -388,6 +388,7 @@
       <nav aria-label="Tutorial navigation">
         <a class="active" href="#introduction">Introduction</a>
         <a href="#jaws-platform-overview">JAWS Platform Overview</a>
+        <a href="#how-to-follow">How To Follow The Tutorial</a>
         <a href="#concept-of-operations">Concept of Operations</a>
         <a href="#about-the-code">About The Code</a>
         <a href="#step-1">Step 1: Your First Agent</a>
@@ -436,6 +437,24 @@
         <h3>Release-Aligned Learning Path</h3>
         <p>Each GitHub release corresponds to a tutorial phase. The source code grows alongside the Microsoft Agent Framework concepts: first agent, tools, conversations, memory, workflows, hosting, and the final JAWS operations scenario. This lets the reader compare a small working codebase at each release instead of jumping directly to the finished platform.</p>
 
+        <h2 id="how-to-follow">How To Follow The Tutorial</h2>
+        <p>Clone the repository once, then move through the tutorial by checking out the release tag for each phase. Each release is a working snapshot with its own source code, configuration expectations, tests, and expected results.</p>
+        <div class="code-block">
+          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-command">git</span> clone https://github.com/cezjah/jaws.git
+<span class="token-command">cd</span> jaws
+
+<span class="token-comment"># Start with the first tutorial release.</span>
+<span class="token-command">git</span> checkout v0.1</code></pre>
+        </div>
+        <p>For each release, follow the same rhythm: check out the release tag, configure only the values required for that step, build the solution, run the tests, run any local API validation described in the section, compare the output with the expected results, then continue to the next release tag.</p>
+        <div class="code-block">
+          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-comment"># After Step 1 succeeds, move to the Step 2 release.</span>
+<span class="token-command">git</span> checkout v0.2</code></pre>
+        </div>
+        <p>Readers who do not want to use Git tags can download the matching release ZIP from GitHub releases for each phase. The tutorial commands still assume the extracted repository root is the working directory.</p>
+
         <h3>Two Validation Tracks</h3>
         <p>The code tutorial is a standalone learning path. It explains the source code and validates each release from the repository, using local configuration and local API execution where a live model call is required. It does not create Azure hosting infrastructure.</p>
         <p>The installation process is a separate path. It collects deployment inputs from the user, or reads them from a deployment bootstrap JSON, then creates the hosted JAWS platform in Azure according to naming conventions, selected compliance profile, managed identity, Key Vault, App Service, Teams packaging, and SaaS integration settings.</p>
@@ -470,7 +489,7 @@
         <p>The scenario is complete when the user can verify the Datadog monitor or synthetic test in Datadog, see the approved webhook configuration, trigger or observe a Datadog notification, confirm JAWS received the event, and inspect the ServiceNow incident that includes operational reasoning, evidence, affected resource context, and the workflow test result.</p>
 
         <h2 id="about-the-code">About The Code</h2>
-        <p>The code tutorial assumes the reader is working from a local copy of the JAWS GitHub repository. Download a release archive from <a href="https://github.com/cezjah/jaws/releases">GitHub releases</a> or clone the repository from <a href="https://github.com/cezjah/jaws">https://github.com/cezjah/jaws</a>.</p>
+        <p>The code tutorial assumes the reader is working from a local copy of the JAWS GitHub repository. Clone the repository once and check out the release tag named by the current section. Alternatively, download the matching release archive from <a href="https://github.com/cezjah/jaws/releases">GitHub releases</a>.</p>
         <p>Each tutorial release contains the code required for that phase. Release <code>1.0</code> is the full codebase download for the complete JAWS platform scenario. Earlier releases are smaller snapshots that let the reader validate each concept before the platform reaches the full end-to-end implementation.</p>
         <p>After downloading or cloning the repository, open the repository root folder in Visual Studio Code. This is the folder that contains <code>Jaws.slnx</code>, <code>src</code>, <code>tests</code>, and <code>docs</code>. Do not open only <code>src/Jaws.Api</code> or an individual project folder, because the tutorial commands assume they are run from the repository root.</p>
         <div class="code-block">
@@ -731,6 +750,11 @@ result = <span class="token-keyword">await</span> agent.run(<span class="token-s
 print(result)</code></pre>
           </div>
         </section>
+
+        <h3>Expected Results</h3>
+        <p>The health request should return <code>status</code> as <code>healthy</code>, release <code>0.1</code>, and no configuration errors. The agent request should return an <code>answer</code> field from the configured model. The exact wording is not deterministic because the response is generated by the model at runtime.</p>
+        <p>A response that asks for more context can still be a valid Step 1 result. At this point, JAWS has no tools, memory, operational context, Teams routing, or workflow state. Step 1 proves only that the local API can load configuration, construct the first Agent Framework agent, call the configured model deployment, and return the model response through <code>/api/agent/run</code>.</p>
+        <p>Step 2 adds tools. That is where JAWS begins to move from a basic model-backed agent toward an operations assistant that can call approved functions and later reach MCP-backed capabilities.</p>
         <h2 id="step-2">Step 2: Add Tools</h2>
         <p>This release adds tool calling and introduces the JAWS tool extensibility contract. The C# snippets reference the source files that define tool contracts and tool registration, including <code>ToolRegistry.cs</code> and <code>AgentToolFactory.cs</code>. The hardened custom MCP boundary follows in the next release.</p>
 

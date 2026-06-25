@@ -859,7 +859,7 @@ app.MapPost(<span class="token-string">"/mcp"</span>, (JsonElement request, Jaws
 });</code></pre>
         </div>
 
-        <h3>Local Validation</h3>
+        <h3>Step 2 Local Validation Only</h3>
         <p>Build the solution and run the release-aligned tests:</p>
         <div class="code-block">
           <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
@@ -873,7 +873,8 @@ app.MapPost(<span class="token-string">"/mcp"</span>, (JsonElement request, Jaws
           <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
           <pre><code><span class="token-command">dotnet</span> run <span class="token-param">--project</span> src\Jaws.Api\Jaws.Api.csproj <span class="token-param">--launch-profile</span> http</code></pre>
         </div>
-        <p>Open a second terminal and validate the MCP endpoint:</p>
+        <p>Open a second terminal and validate the Step 2 MCP endpoint:</p>
+        <p>This validation block belongs only to release <code>0.2</code>. Do not use this block for Step 3, because it checks for <code>release=0.2</code>.</p>
         <div class="code-block">
           <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
           <pre><code><span class="token-variable">$list</span> = <span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Post <span class="token-param">-Uri</span> <span class="token-string">"http://localhost:5124/mcp"</span> `
@@ -990,7 +991,7 @@ app.MapPost(<span class="token-string">"/mcp"</span>, (JsonElement request, Jaws
 };</code></pre>
         </div>
 
-        <h3>Local Validation</h3>
+        <h3>Step 3 Security Validation</h3>
         <p>Build the solution and run the release-aligned tests:</p>
         <div class="code-block">
           <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
@@ -1009,7 +1010,7 @@ PASS: MCP tool metadata declares read-only annotations
 Summary: 14/14 passed.</code></pre>
         </div>
 
-        <h3>Live Local MCP Security Probe</h3>
+        <h3>Step 3 Live Security Probe</h3>
         <p>Start the local API and leave it running. If a previous tutorial API is already running from an earlier release, stop that terminal first so the new build can update its local binaries.</p>
         <div class="code-block">
           <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>

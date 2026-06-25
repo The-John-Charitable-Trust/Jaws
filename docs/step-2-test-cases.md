@@ -14,7 +14,7 @@ JAWS tutorial step: Step 2: Add MCP Server
 | ST2-007 | Local MCP endpoint lists registered tools | `POST http://localhost:5124/mcp` with `tools/list` | Returns JSON-RPC `2.0` and two registered tools |
 | ST2-008 | Local MCP endpoint calls status tool | `POST http://localhost:5124/mcp` with `tools/call` for `jaws_mcp_status` | Returns `status=ok`, `server=jaws-custom-mcp`, `release=0.2`, and `writeToolsEnabled=false` |
 
-Local validation for release `0.2` is `dotnet build Jaws.slnx -c Release` plus `dotnet run --project tests/Jaws.FirstAgent.Tests/Jaws.FirstAgent.Tests.csproj`. To validate the live MCP path, check out `v0.2`, confirm `git describe --tags --exact-match` returns `v0.2`, run `src/Jaws.Api` locally with the `http` launch profile, and confirm the objective Step 2 tutorial result: `ListPass=True`, `StatusPass=True`, and `WriteToolsDisabled=True`.
+Local validation for release `0.2` only is `dotnet build Jaws.slnx -c Release` plus `dotnet run --project tests/Jaws.FirstAgent.Tests/Jaws.FirstAgent.Tests.csproj`. To validate the live MCP path, check out `v0.2`, confirm `git describe --tags --exact-match` returns `v0.2`, run `src/Jaws.Api` locally with the `http` launch profile, and confirm the objective Step 2 tutorial result: `ListPass=True`, `StatusPass=True`, and `WriteToolsDisabled=True`.
 
 If `StatusPass=False` and the MCP status response reports `release=0.3`, the Step 2 validation is being run against Step 3 code or a still-running Step 3 API process. Stop the API, check out `v0.2`, and restart the API before rerunning the Step 2 validation.
 

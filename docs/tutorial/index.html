@@ -390,7 +390,6 @@
         <a href="#jaws-platform-overview">JAWS Platform Overview</a>
         <a href="#how-to-follow">How To Follow The Tutorial</a>
         <a href="#concept-of-operations">Concept of Operations</a>
-        <a href="#about-the-code">About The Code</a>
         <a href="#step-1">Step 1: Your First Agent</a>
         <a href="#step-2">Step 2: Add Tools</a>
         <a href="#step-3">Step 3: Multi-Turn Conversations</a>
@@ -438,22 +437,37 @@
         <p>Each GitHub release corresponds to a tutorial phase. The source code grows alongside the Microsoft Agent Framework concepts: first agent, tools, conversations, memory, workflows, hosting, and the final JAWS operations scenario. This lets the reader compare a small working codebase at each release instead of jumping directly to the finished platform.</p>
 
         <h2 id="how-to-follow">How To Follow The Tutorial</h2>
-        <p>Clone the repository once, then move through the tutorial by checking out the release tag for each phase. Each release is a working snapshot with its own source code, configuration expectations, tests, and expected results.</p>
+        <p>Work from a local copy of the JAWS GitHub repository. Clone the repository once, open the repository root in Visual Studio Code, then move through the tutorial by checking out the release tag for each phase. Each release is a working snapshot with its own source code, configuration expectations, tests, and expected results.</p>
         <div class="code-block">
           <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
           <pre><code><span class="token-command">git</span> clone https://github.com/cezjah/jaws.git
 <span class="token-command">cd</span> jaws
+<span class="token-command">code</span> .
 
 <span class="token-comment"># Start with the first tutorial release.</span>
 <span class="token-command">git</span> checkout v0.1</code></pre>
         </div>
+        <p>Open the folder that contains <code>Jaws.slnx</code>, <code>src</code>, <code>tests</code>, and <code>docs</code>. Do not open only <code>src/Jaws.Api</code> or an individual project folder, because the tutorial commands assume they are run from the repository root.</p>
         <p>For each release, follow the same rhythm: check out the release tag, configure only the values required for that step, build the solution, run the tests, run any local API validation described in the section, compare the output with the expected results, then continue to the next release tag.</p>
         <div class="code-block">
           <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
           <pre><code><span class="token-comment"># After Step 1 succeeds, move to the Step 2 release.</span>
 <span class="token-command">git</span> checkout v0.2</code></pre>
         </div>
-        <p>Readers who do not want to use Git tags can download the matching release ZIP from GitHub releases for each phase. The tutorial commands still assume the extracted repository root is the working directory.</p>
+        <p>Readers who do not want to use Git tags can download the matching release ZIP from <a href="https://github.com/cezjah/jaws/releases">GitHub releases</a> for each phase. The tutorial commands still assume the extracted repository root is the working directory. Release <code>1.0</code> is the complete codebase for the full JAWS platform scenario; earlier releases are smaller snapshots for learning and validation.</p>
+        <table>
+          <thead>
+            <tr><th>Area</th><th>Path</th><th>What the reader edits or inspects</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Agent code</td><td><code>src/Jaws.AgentFramework</code></td><td>Agent construction, role-agent definitions, job-description contracts, and shared agent logic.</td></tr>
+            <tr><td>API code</td><td><code>src/Jaws.Api</code></td><td>Local API endpoints, configuration loading, health checks, and request routing.</td></tr>
+            <tr><td>Local configuration</td><td><code>src/Jaws.Api/appsettings.Development.json</code></td><td>Non-secret tutorial defaults such as endpoint, deployment name, agent name, and instructions.</td></tr>
+            <tr><td>Local secrets</td><td><code>src/Jaws.Api/appsettings.Development.local.json</code></td><td>Local API key for model validation. This file is ignored by Git.</td></tr>
+            <tr><td>Tests</td><td><code>tests</code></td><td>Release-aligned validation tests for the code tutorial.</td></tr>
+            <tr><td>Documentation</td><td><code>docs</code></td><td>HTML tutorial, test cases, examples, and later installation guidance.</td></tr>
+          </tbody>
+        </table>
 
         <h3>Two Validation Tracks</h3>
         <p>The code tutorial is a standalone learning path. It explains the source code and validates each release from the repository, using local configuration and local API execution where a live model call is required. It does not create Azure hosting infrastructure.</p>
@@ -487,34 +501,6 @@
 
         <h3>Definition Of Done</h3>
         <p>The scenario is complete when the user can verify the Datadog monitor or synthetic test in Datadog, see the approved webhook configuration, trigger or observe a Datadog notification, confirm JAWS received the event, and inspect the ServiceNow incident that includes operational reasoning, evidence, affected resource context, and the workflow test result.</p>
-
-        <h2 id="about-the-code">About The Code</h2>
-        <p>The code tutorial assumes the reader is working from a local copy of the JAWS GitHub repository. Clone the repository once and check out the release tag named by the current section. Alternatively, download the matching release archive from <a href="https://github.com/cezjah/jaws/releases">GitHub releases</a>.</p>
-        <p>Each tutorial release contains the code required for that phase. Release <code>1.0</code> is the full codebase download for the complete JAWS platform scenario. Earlier releases are smaller snapshots that let the reader validate each concept before the platform reaches the full end-to-end implementation.</p>
-        <p>After downloading or cloning the repository, open the repository root folder in Visual Studio Code. This is the folder that contains <code>Jaws.slnx</code>, <code>src</code>, <code>tests</code>, and <code>docs</code>. Do not open only <code>src/Jaws.Api</code> or an individual project folder, because the tutorial commands assume they are run from the repository root.</p>
-        <div class="code-block">
-          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
-          <pre><code><span class="token-comment"># Option 1: clone the repository into a local project folder.</span>
-<span class="token-command">git</span> clone https://github.com/cezjah/jaws.git
-<span class="token-command">cd</span> jaws
-<span class="token-command">code</span> .
-
-<span class="token-comment"># Option 2: download a release ZIP from GitHub, extract it, open the extracted root folder, then run:</span>
-<span class="token-command">code</span> .</code></pre>
-        </div>
-        <p>Use the root folder as the working directory for build, test, and local API commands. When a tutorial section names a source file, the path is relative to this repository root.</p>
-        <table>
-          <thead>
-            <tr><th>Area</th><th>Path</th><th>What the reader edits or inspects</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>Agent code</td><td><code>src/Jaws.AgentFramework</code></td><td>Agent construction, role-agent definitions, job-description contracts, and shared agent logic.</td></tr>
-            <tr><td>API code</td><td><code>src/Jaws.Api</code></td><td>Local API endpoints, configuration loading, health checks, and request routing.</td></tr>
-            <tr><td>Local configuration</td><td><code>src/Jaws.Api/appsettings.Development.json</code></td><td>Reader-supplied model endpoint, deployment name, agent name, and instructions for code tutorial validation.</td></tr>
-            <tr><td>Tests</td><td><code>tests</code></td><td>Release-aligned validation tests for the code tutorial.</td></tr>
-            <tr><td>Documentation</td><td><code>docs</code></td><td>HTML tutorial, test cases, examples, and later installation guidance.</td></tr>
-          </tbody>
-        </table>
 
         <h2 id="step-1">Step 1: Your First Agent</h2>
         <p>Release <code>0.1</code> implements the first JAWS agent in alignment with Microsoft Agent Framework Step 1. The goal is intentionally narrow: create a minimal, well-documented agent that can receive a request, call the configured model, and return a response from the JAWS API surface running locally.</p>

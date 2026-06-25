@@ -427,7 +427,7 @@
         <h3>Repository Contents</h3>
         <ul>
           <li><code>src/Jaws.AgentFramework</code> contains the agent implementation code, starting with the first agent and expanding into role-oriented support, governance, deploy, and workflow agents.</li>
-          <li><code>src/Jaws.Api</code> contains the hosted API surface that exposes agent execution, health checks, Teams-facing routes, workflow endpoints, and integration callbacks as the tutorial progresses.</li>
+          <li><code>src/Jaws.Api</code> contains the API surface that exposes agent execution, health checks, Teams-facing routes, workflow endpoints, and integration callbacks as the tutorial progresses. The code tutorial runs this API locally; the installation process hosts it in Azure.</li>
           <li><code>tests</code> contains release-aligned tests and validation runners so each phase can be verified independently.</li>
           <li><code>docs</code> contains the HTML tutorial, test-case documentation, and the installation guide when the platform reaches the release that introduces deployment packaging.</li>
         </ul>
@@ -435,8 +435,10 @@
         <h3>Release-Aligned Learning Path</h3>
         <p>Each GitHub release corresponds to a tutorial phase. The source code grows alongside the Microsoft Agent Framework concepts: first agent, tools, conversations, memory, workflows, hosting, and the final JAWS operations scenario. This lets the reader compare a small working codebase at each release instead of jumping directly to the finished platform.</p>
 
-        <h3>Installation And Tests</h3>
-        <p>The installation guide lives in GitHub with the source code and is maintained separately from the code tutorial. It covers prerequisites, Azure deployment choices, naming and tagging inputs, SaaS credentials, Teams packaging, Key Vault usage, and optional compliance profiles. Test cases also live in GitHub and describe how to validate local code, live Azure behavior, Teams interaction, Datadog webhook delivery, and ServiceNow incident creation.</p>
+        <h3>Two Validation Tracks</h3>
+        <p>The code tutorial is a standalone learning path. It explains the source code and validates each release from the repository, using local configuration and local API execution where a live model call is required. It does not create Azure hosting infrastructure.</p>
+        <p>The installation process is a separate path. It collects deployment inputs from the user, or reads them from a deployment bootstrap JSON, then creates the hosted JAWS platform in Azure according to naming conventions, selected compliance profile, managed identity, Key Vault, App Service, Teams packaging, and SaaS integration settings.</p>
+        <p>Test cases live in GitHub with the source code. Code tutorial tests validate the repository. Installation tests validate the deployed platform.</p>
 
         <h2 id="concept-of-operations">Concept of Operations</h2>
         <p>JAWS is an agentic operations platform that lets a user chat in Microsoft Teams, investigate an operational need, deliberate with specialized agents, approve a governed action, and deploy an evidence-backed change across Azure, Datadog, and ServiceNow.</p>
@@ -467,7 +469,7 @@
 
 
         <h2 id="step-1">Step 1: Your First Agent</h2>
-        <p>Release <code>0.1</code> implements the first JAWS agent in alignment with Microsoft Agent Framework Step 1. The goal is intentionally narrow: create a minimal, well-documented agent that can receive a request, call the configured model, and return a response from the JAWS API surface. Release <code>0.1</code> does not provision Azure App Service; hosted validation requires a separate deployment path or an existing hosted API.</p>
+        <p>Release <code>0.1</code> implements the first JAWS agent in alignment with Microsoft Agent Framework Step 1. The goal is intentionally narrow: create a minimal, well-documented agent that can receive a request, call the configured model, and return a response from the JAWS API surface running locally.</p>
 
         <h3>Source Layout</h3>
         <p>In this release, you add the first JAWS agent implementation. The code follows Microsoft Agent Framework Step 1 by creating an <code>AIAgent</code>, configuring it with the selected model deployment and instructions, and calling <code>RunAsync</code> to return a response.</p>
@@ -486,7 +488,36 @@
         <h3>Configuration Model</h3>
         <p>The first-agent API uses typed options that can be validated before the agent is created. <code>FirstAgentOptions</code> holds the agent endpoint, deployment name, agent name, and instructions.</p>
         <p>The first-agent code reads four runtime settings: <code>Endpoint</code>, <code>DeploymentName</code>, <code>AgentName</code>, and <code>Instructions</code>. The API accepts these values from ASP.NET Core configuration keys such as <code>Jaws:Agent:Endpoint</code> and <code>Jaws:Agent:DeploymentName</code>, or from environment variables such as <code>JAWS_AGENT_ENDPOINT</code>, <code>JAWS_AGENT_DEPLOYMENT_NAME</code>, <code>JAWS_AGENT_NAME</code>, and <code>JAWS_AGENT_INSTRUCTIONS</code>.</p>
-        <p>For local development, provide the same settings with environment variables, .NET user secrets, or <code>appsettings.Development.json</code>. When the API is hosted on Azure App Service, the same settings are supplied as App Service application settings. <code>Endpoint</code>, <code>DeploymentName</code>, <code>AgentName</code>, and <code>Instructions</code> are non-secret runtime configuration values. If a hosted value is backed by Key Vault, the app still reads it through the same configuration key after Azure resolves the Key Vault reference.</p>
+        <p>For standalone code tutorial validation, add these values to the local bootstrap/configuration file <code>src/Jaws.Api/appsettings.Development.json</code>. The values come from the reader&apos;s Azure AI Foundry or Azure OpenAI setup: project or service endpoint, model deployment name, agent display name, and instructions. The installation process uses a separate deployment bootstrap JSON and writes equivalent settings into the hosted platform later.</p>
+        <p>Configuration files and code to inspect:</p>
+        <ul>
+          <li><code>src/Jaws.Api/appsettings.Development.json</code> stores local tutorial validation values.</li>
+          <li><code>src/Jaws.Api/Properties/launchSettings.json</code> defines the local API URL, including <code>http://localhost:5124</code>.</li>
+          <li><code>src/Jaws.Api/Program.cs</code> reads the local configuration and exposes <code>/health</code> and <code>/api/agent/run</code>.</li>
+          <li><code>src/Jaws.AgentFramework/FirstAgentOptions.cs</code> defines and validates the required agent settings.</li>
+          <li><code>src/Jaws.AgentFramework/FirstAgent.cs</code> creates the Agent Framework agent and calls <code>RunAsync</code>.</li>
+          <li><code>src/Jaws.AgentFramework/FirstAgentContracts.cs</code> defines the request and response records.</li>
+        </ul>
+        <p>Local bootstrap JSON shape:</p>
+        <div class="code-block">
+          <div class="code-header"><span>src/Jaws.Api/appsettings.Development.json</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code>{
+  <span class="token-string">"Logging"</span>: {
+    <span class="token-string">"LogLevel"</span>: {
+      <span class="token-string">"Default"</span>: <span class="token-string">"Information"</span>,
+      <span class="token-string">"Microsoft.AspNetCore"</span>: <span class="token-string">"Warning"</span>
+    }
+  },
+  <span class="token-string">"Jaws"</span>: {
+    <span class="token-string">"Agent"</span>: {
+      <span class="token-string">"Endpoint"</span>: <span class="token-string">"https://&lt;your-ai-foundry-or-azure-openai-endpoint&gt;/"</span>,
+      <span class="token-string">"DeploymentName"</span>: <span class="token-string">"&lt;your-model-deployment-name&gt;"</span>,
+      <span class="token-string">"AgentName"</span>: <span class="token-string">"JawsFirstAgent"</span>,
+      <span class="token-string">"Instructions"</span>: <span class="token-string">"You are JAWS, a concise agentic operations assistant. Answer directly and do not use tools unless tools are explicitly configured."</span>
+    }
+  }
+}</code></pre>
+        </div>
 
         <h3>Extending To Role Agents</h3>
         <p>This first release creates one runnable first agent and also includes the role-agent scaffolds needed by the end demonstration. The role agents use the same Agent Framework construction pattern; later releases add tools, memory, Teams routing, and workflow execution.</p>
@@ -598,12 +629,21 @@ Console.WriteLine(response.Text);</code></pre>
 <span class="token-keyword">public sealed record</span> FirstAgentRequest(<span class="token-keyword">string</span> Message);</code></pre>
           </div>
 
-          <p>Validate a hosted API only after the API has been deployed and configured. A reader completing only the code tutorial does not yet have an App Service; that deployment path belongs to the installation guide.</p>
+          <p>Validate the code tutorial locally after <code>src/Jaws.Api/appsettings.Development.json</code> contains the reader&apos;s model values:</p>
           <div class="code-block">
             <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
-            <pre><code><span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Get <span class="token-param">-Uri</span> <span class="token-string">"https://&lt;jaws-api-host&gt;/health"</span>
+            <pre><code><span class="token-command">dotnet</span> build Jaws.slnx
 
-<span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Post <span class="token-param">-Uri</span> <span class="token-string">"https://&lt;jaws-api-host&gt;/api/agent/run"</span> `
+<span class="token-command">dotnet</span> run <span class="token-param">--project</span> tests\Jaws.FirstAgent.Tests\Jaws.FirstAgent.Tests.csproj
+
+<span class="token-command">dotnet</span> run <span class="token-param">--project</span> src\Jaws.Api\Jaws.Api.csproj <span class="token-param">--launch-profile</span> http</code></pre>
+          </div>
+          <p>With the local API running at <code>http://localhost:5124</code>, call the local endpoints from another terminal:</p>
+          <div class="code-block">
+            <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+            <pre><code><span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Get <span class="token-param">-Uri</span> <span class="token-string">"http://localhost:5124/health"</span>
+
+<span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Post <span class="token-param">-Uri</span> <span class="token-string">"http://localhost:5124/api/agent/run"</span> `
   <span class="token-param">-ContentType</span> <span class="token-string">"application/json"</span> `
   <span class="token-param">-Body</span> <span class="token-string">'{ "message": "What does this JAWS agent prove?" }'</span></code></pre>
           </div>

@@ -708,10 +708,10 @@ Console.WriteLine(response.Text);</code></pre>
   <span class="token-param">-ContentType</span> <span class="token-string">"application/json"</span> `
   <span class="token-param">-Body</span> <span class="token-string">'{ "message": "What does this JAWS agent prove?" }'</span>
 
-<span class="token-variable">$configurationErrorsJson</span> = <span class="token-variable">$health</span>.configurationErrors | ConvertTo-Json <span class="token-param">-Compress</span>
+<span class="token-variable">$hasNoConfigurationErrors</span> = <span class="token-variable">$null</span> <span class="token-operator">-eq</span> <span class="token-variable">$health</span>.configurationErrors <span class="token-operator">-or</span> @(<span class="token-variable">$health</span>.configurationErrors).Count <span class="token-operator">-eq</span> 0
 
 [pscustomobject]@{
-  HealthPass = <span class="token-variable">$health</span>.status <span class="token-operator">-eq</span> <span class="token-string">"healthy"</span> <span class="token-operator">-and</span> <span class="token-variable">$health</span>.release <span class="token-operator">-eq</span> <span class="token-string">"0.1"</span> <span class="token-operator">-and</span> <span class="token-variable">$configurationErrorsJson</span> <span class="token-operator">-eq</span> <span class="token-string">"{}"</span>
+  HealthPass = <span class="token-variable">$health</span>.status <span class="token-operator">-eq</span> <span class="token-string">"healthy"</span> <span class="token-operator">-and</span> <span class="token-variable">$health</span>.release <span class="token-operator">-eq</span> <span class="token-string">"0.1"</span> <span class="token-operator">-and</span> <span class="token-variable">$hasNoConfigurationErrors</span>
   AgentPass = <span class="token-variable">$agent</span>.agentName <span class="token-operator">-eq</span> <span class="token-string">"JawsFirstAgent"</span> <span class="token-operator">-and</span> <span class="token-variable">$agent</span>.release <span class="token-operator">-eq</span> <span class="token-string">"0.1"</span> <span class="token-operator">-and</span> -not [string]::IsNullOrWhiteSpace(<span class="token-variable">$agent</span>.answer)
 }</code></pre>
           </div>

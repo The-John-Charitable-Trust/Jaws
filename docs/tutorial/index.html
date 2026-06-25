@@ -715,6 +715,13 @@ Console.WriteLine(response.Text);</code></pre>
   AgentPass = <span class="token-variable">$agent</span>.agentName <span class="token-operator">-eq</span> <span class="token-string">"JawsFirstAgent"</span> <span class="token-operator">-and</span> <span class="token-variable">$agent</span>.release <span class="token-operator">-eq</span> <span class="token-string">"0.1"</span> <span class="token-operator">-and</span> -not [string]::IsNullOrWhiteSpace(<span class="token-variable">$agent</span>.answer)
 }</code></pre>
           </div>
+          <p>Expected output:</p>
+          <div class="code-block">
+            <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+            <pre><code>HealthPass AgentPass
+---------- ---------
+      True      True</code></pre>
+          </div>
         </section>
 
         <section class="language-panel" id="lang-python" data-language-panel="python" hidden>

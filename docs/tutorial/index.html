@@ -439,6 +439,7 @@
         <h3>Two Validation Tracks</h3>
         <p>The code tutorial is a standalone learning path. It explains the source code and validates each release from the repository, using local configuration and local API execution where a live model call is required. It does not create Azure hosting infrastructure.</p>
         <p>The installation process is a separate path. It collects deployment inputs from the user, or reads them from a deployment bootstrap JSON, then creates the hosted JAWS platform in Azure according to naming conventions, selected compliance profile, managed identity, Key Vault, App Service, Teams packaging, and SaaS integration settings.</p>
+        <p>The installation package does not rely on <code>DefaultAzureCredential</code>. Model endpoint keys and SaaS credentials are collected as installation inputs and stored as Key Vault secrets or Key Vault-backed application settings. Azure-hosted resource operations use explicitly configured managed identity and RBAC assignments rather than a broad local-development credential chain. This keeps local tutorial validation, hosted runtime secrets, and Azure authorization decisions separate and auditable.</p>
         <p>Test cases live in GitHub with the source code. Code tutorial tests validate the repository. Installation tests validate the deployed platform.</p>
 
         <h2 id="concept-of-operations">Concept of Operations</h2>

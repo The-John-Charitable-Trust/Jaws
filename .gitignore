@@ -16,6 +16,7 @@ obj/
 local.settings.json
 secrets.json
 appsettings.Development.local.json
+API Specs.txt
 *.tfstate
 *.tfstate.backup
 *.generated.json

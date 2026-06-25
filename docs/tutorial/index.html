@@ -417,11 +417,11 @@
 
         <p>The value to the reader is practical and cumulative. By following the tutorial, you are not only learning how to call an LLM from C#. You are learning how to assemble agents, tools, MCP boundaries, memory, SaaS integrations, Azure deployment assets, and verification tests into a platform that can be deployed into your own Azure environment. The tutorial is designed for architects, developers, and platform engineers who need to understand both the code and the operational decisions behind it.</p>
 
-        <p>This approach is unique because it treats the Microsoft Agent Framework documentation as a product-building path rather than a collection of disconnected examples. Each release of JAWS corresponds to a step in the Microsoft documentation, so the reader can see exactly how the platform evolves from a minimal first agent into a governed, testable, multi-system agentic operations platform.</p>
+        <p>This approach is unique because it treats the Microsoft Agent Framework documentation as a product-building path rather than a collection of disconnected examples. JAWS follows the Microsoft concepts while adding implementation phases required by a governed operations platform, such as a custom MCP boundary and MCP hardening. The reader can see exactly how the platform evolves from a minimal first agent into a governed, testable, multi-system agentic operations platform.</p>
 
         <div class="callout">
           <strong>Source code and releases</strong>
-          The full step-by-step source code is available on GitHub at <a href="https://github.com/cezjah/jaws">https://github.com/cezjah/jaws</a>. Each release is aligned to the corresponding Microsoft Agent Framework tutorial step, making it possible to inspect the code, run the tests, deploy the platform, and compare each implementation phase against the documented concepts.
+          The full step-by-step source code is available on GitHub at <a href="https://github.com/cezjah/jaws">https://github.com/cezjah/jaws</a>. Each release is aligned to a tutorial phase, making it possible to inspect the code, run the tests, deploy the platform, and compare each implementation phase against the documented Microsoft Agent Framework concepts.
         </div>
 
                 <h2 id="jaws-platform-overview">JAWS Platform Overview</h2>
@@ -436,7 +436,7 @@
         </ul>
 
         <h3>Release-Aligned Learning Path</h3>
-        <p>Each GitHub release corresponds to a tutorial phase. The source code grows alongside the Microsoft Agent Framework concepts: first agent, tools, conversations, memory, workflows, hosting, and the final JAWS operations scenario. This lets the reader compare a small working codebase at each release instead of jumping directly to the finished platform.</p>
+        <p>Each GitHub release corresponds to a JAWS tutorial phase. The source code grows alongside the Microsoft Agent Framework concepts and adds required platform architecture where needed: first agent, MCP boundary, MCP hardening, tools, conversations, memory, workflows, hosting, and the final JAWS operations scenario. This lets the reader compare a small working codebase at each release instead of jumping directly to the finished platform.</p>
 
         <h2 id="how-to-follow">How To Follow The Tutorial</h2>
         <p>Work from a local copy of the JAWS GitHub repository. Clone the repository once, open the repository root in Visual Studio Code, then move through the tutorial by checking out the release tag for each phase. Each release is a working snapshot with its own source code, configuration expectations, tests, and expected results.</p>
@@ -539,7 +539,7 @@
         <p>The standalone Step 1 code tutorial uses an Azure AI or Azure OpenAI endpoint API key through <code>AzureKeyCredential</code>. This keeps local validation focused on the first agent instead of requiring Azure RBAC, managed identity, or a tenant-specific credential chain before the installer exists.</p>
         <p>The tutorial does not use <code>DefaultAzureCredential</code>. That credential chain is useful in many Azure-hosted scenarios, but it can silently try multiple identity sources and makes the first local validation depend on Azure CLI login, Visual Studio identity, managed identity, or other environment-specific state. JAWS keeps that concern out of Step 1. Hosted installation can later use Key Vault-backed settings and, where appropriate, a narrower managed-identity path.</p>
         <p>Put the real key in <code>src/Jaws.Api/appsettings.Development.local.json</code> or in the <code>JAWS_AGENT_API_KEY</code> environment variable. Do not put real keys in source files, committed JSON, screenshots, or issue reports.</p>
-        <p>Local bootstrap JSON shape:</p>
+        <p>Development configuration shape:</p>
         <div class="code-block">
           <div class="code-header"><span>src/Jaws.Api/appsettings.Development.json</span><button class="copy-button" type="button">Copy</button></div>
           <pre><code>{
@@ -620,6 +620,7 @@
           <div class="code-block">
             <div class="code-header"><span>.NET CLI</span><button class="copy-button" type="button">Copy</button></div>
             <pre><code><span class="token-command">dotnet</span> add package Azure.AI.OpenAI <span class="token-param">--prerelease</span>
+<span class="token-command">dotnet</span> add package Azure.AI.Projects <span class="token-param">--prerelease</span>
 <span class="token-command">dotnet</span> add package Microsoft.Agents.AI.Foundry <span class="token-param">--prerelease</span>
 <span class="token-command">dotnet</span> add package Microsoft.Extensions.AI.OpenAI</code></pre>
           </div>
@@ -669,11 +670,14 @@ Console.WriteLine(response.Text);</code></pre>
           <p>Source files: <code>src/Jaws.Api/Program.cs</code> and <code>src/Jaws.AgentFramework/FirstAgentContracts.cs</code></p>
           <div class="code-block">
             <div class="code-header"><span>C# Minimal API</span><button class="copy-button" type="button">Copy</button></div>
-            <pre><code>app.MapPost(<span class="token-string">"/api/agent/run"</span>, <span class="token-keyword">async</span> (FirstAgentRequest request, FirstAgent agent) =&gt;
+            <pre><code>app.MapPost(<span class="token-string">"/api/agent/run"</span>, <span class="token-keyword">async</span> (
+    FirstAgentRequest request,
+    IFirstAgent agent,
+    CancellationToken cancellationToken) =&gt;
 {
-    <span class="token-comment">// Keep the request path simple: receive text, call the first agent, return text.</span>
-    <span class="token-keyword">var</span> answer = <span class="token-keyword">await</span> agent.RunAsync(request.Message);
-    <span class="token-keyword">return</span> Results.Ok(<span class="token-keyword">new</span> { answer });
+    <span class="token-comment">// Keep the request path simple: receive text, call the first agent, return metadata.</span>
+    <span class="token-keyword">var</span> response = <span class="token-keyword">await</span> agent.RunAsync(request, cancellationToken);
+    <span class="token-keyword">return</span> Results.Ok(response);
 });
 
 <span class="token-keyword">public sealed record</span> FirstAgentRequest(<span class="token-keyword">string</span> Message);</code></pre>
@@ -807,7 +811,7 @@ print(result)</code></pre>
         </ul>
 
         <footer>
-          <p>This tutorial is updated incrementally as each JAWS release is aligned to a Microsoft Agent Framework step.</p>
+          <p>This tutorial is updated incrementally as each JAWS release implements the next reference-platform phase using Microsoft Agent Framework concepts.</p>
         </footer>
       </main>
     </div>

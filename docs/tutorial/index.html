@@ -1102,8 +1102,8 @@ Summary: 14/14 passed.</code></pre>
         <p>The local code tutorial uses the custom MCP server as the tool registry and execution boundary. The future hosted deployment package will use the hosted MCP pattern, where a hosted agent connects to a remote MCP server URL with approved tools and approval settings. That keeps local learning simple while preserving the production direction.</p>
 
         <h3>Tutorial Scope And Future Tool Scope</h3>
-        <p>The core tools in this release are the tools required by the final tutorial scenario in Step 10: Azure evidence, Datadog coverage recommendation, ServiceNow CMDB context, JAWS extensibility metadata, and the write-capable Datadog and ServiceNow tools that will later be unlocked by workflow approval. Step 4 does not create Datadog monitors, send webhook notifications, or create ServiceNow incidents. It proves that the tool contracts exist, are visible through MCP, can return demo evidence, and still deny write-capable execution until a later approval workflow enables it.</p>
-        <p>The same extensibility pattern can later add tools for Azure MCP Server, Security Copilot, Microsoft Defender, Microsoft Sentinel, Azure AI Content Safety, Azure Policy remediation, customer runbooks, and customer-owned SaaS integrations. Those tools are future-state examples in this tutorial, not part of the Step 4 local validation surface.</p>
+        <p>The core tools in this release support <a href="#step-10">Step 10: End-To-End JAWS Operations Scenario</a>. They cover Azure evidence, Datadog coverage recommendations, ServiceNow CMDB context, JAWS extensibility metadata, and the approval-gated Datadog and ServiceNow write tools needed later in the scenario. Step 4 does not create Datadog monitors, send webhook notifications, or create ServiceNow incidents. It proves that the tool contracts exist, are visible through MCP, can return demo evidence, and still deny write-capable execution until a later approval workflow enables it.</p>
+        <p>A later iteration plans to add the Azure MCP Server as a first-class hosted tool source. That future path can expose related skills and tools for Azure resource queries, Azure Policy, Azure Monitor, Microsoft Defender, Microsoft Sentinel, Security Copilot, Azure AI Content Safety, customer runbooks, and customer-owned SaaS integrations. Those tools are future-state examples in this tutorial, not part of the Step 4 local validation surface.</p>
 
         <h3>Referenced Files</h3>
         <table>
@@ -1138,11 +1138,23 @@ Summary: 14/14 passed.</code></pre>
           </tbody>
         </table>
 
-        <h3>C# Tool Registration</h3>
-        <p>The registry is the local source of truth for the tutorial tool surface. A tool is not available to an agent just because a provider exists; it must be registered with a stable name, description, schema, read/write classification, and handler.</p>
-        <div class="code-block">
-          <div class="code-header"><span>C# - src/Jaws.AgentFramework/Mcp/JawsMcpToolRegistry.cs</span><button class="copy-button" type="button">Copy</button></div>
-          <pre><code><span class="token-keyword">new</span> JawsMcpTool(
+        <h3>Step 4 Tutorial Snippets</h3>
+        <p>The snippets below show how tools are registered and assigned to agents. Choose C# to follow the implemented path in this repository. Choose Python to compare the same tool-registration concept in Python.</p>
+
+        <div class="language-card">
+          <h3>Choose a programming language</h3>
+          <div class="language-tabs" role="tablist" aria-label="Step 4 programming language">
+            <button class="language-tab active" type="button" role="tab" aria-selected="true" aria-controls="step4-csharp" data-language="csharp">C#</button>
+            <button class="language-tab" type="button" role="tab" aria-selected="false" aria-controls="step4-python" data-language="python">Python</button>
+          </div>
+        </div>
+
+        <section class="language-panel" id="step4-csharp" data-language-panel="csharp">
+          <h3>C# Tool Registration</h3>
+          <p>The registry is the local source of truth for the tutorial tool surface. A tool is not available to an agent just because a provider exists; it must be registered with a stable name, description, schema, read/write classification, and handler.</p>
+          <div class="code-block">
+            <div class="code-header"><span>C# - src/Jaws.AgentFramework/Mcp/JawsMcpToolRegistry.cs</span><button class="copy-button" type="button">Copy</button></div>
+            <pre><code><span class="token-keyword">new</span> JawsMcpTool(
     Name: <span class="token-string">"datadog.coverage.recommend"</span>,
     Description: <span class="token-string">"Recommends Datadog monitor or synthetic coverage for an Azure resource."</span>,
     InputSchema: ObjectSchema(
@@ -1158,26 +1170,26 @@ Summary: 14/14 passed.</code></pre>
         [<span class="token-string">"requiresApprovalBeforeCreate"</span>] = <span class="token-keyword">true</span>,
         [<span class="token-string">"nextWriteTools"</span>] = <span class="token-keyword">new</span> JsonArray(<span class="token-string">"datadog.synthetic.create"</span>, <span class="token-string">"datadog.webhook.test"</span>)
     })</code></pre>
-        </div>
+          </div>
 
-        <h3>C# Agent Tool Assignment</h3>
-        <p>The job descriptions decide which tools each role is allowed to use. The support agent gets read-only investigation and recommendation tools. The deploy agent declares write-capable tools, but those calls remain blocked by MCP until the workflow approval step enables execution.</p>
-        <div class="code-block">
-          <div class="code-header"><span>C# - src/Jaws.AgentFramework/Agents/SupportAgent.cs</span><button class="copy-button" type="button">Copy</button></div>
-          <pre><code>AllowedTools: <span class="token-keyword">new</span>[]
+          <h3>C# Agent Tool Assignment</h3>
+          <p>The job descriptions decide which tools each role is allowed to use. The support agent gets read-only investigation and recommendation tools. The deploy agent declares write-capable tools, but those calls remain blocked by MCP until the workflow approval step enables execution.</p>
+          <div class="code-block">
+            <div class="code-header"><span>C# - src/Jaws.AgentFramework/Agents/SupportAgent.cs</span><button class="copy-button" type="button">Copy</button></div>
+            <pre><code>AllowedTools: <span class="token-keyword">new</span>[]
 {
     <span class="token-string">"azure.resource.inventory"</span>,
     <span class="token-string">"azure.monitor.evidence"</span>,
     <span class="token-string">"datadog.coverage.recommend"</span>,
     <span class="token-string">"servicenow.cmdb.lookup"</span>
 }</code></pre>
-        </div>
+          </div>
 
-        <h3>JSON Job Description Extensibility</h3>
-        <p>Tool extensibility is configuration-driven. A future agent role can be described by JSON, reviewed by a platform owner, and loaded after installation. The agent still cannot call arbitrary tools: each requested tool must match an approved MCP registry entry.</p>
-        <div class="code-block">
-          <div class="code-header"><span>JSON - docs/examples/deploy.datadog.synthetic.job-description.json</span><button class="copy-button" type="button">Copy</button></div>
-          <pre><code>{
+          <h3>JSON Job Description Extensibility</h3>
+          <p>Tool extensibility is configuration-driven. A future agent role can be described by JSON, reviewed by a platform owner, and loaded after installation. The agent still cannot call arbitrary tools: each requested tool must match an approved MCP registry entry.</p>
+          <div class="code-block">
+            <div class="code-header"><span>JSON - docs/examples/deploy.datadog.synthetic.job-description.json</span><button class="copy-button" type="button">Copy</button></div>
+            <pre><code>{
   <span class="token-string">"id"</span>: <span class="token-string">"deploy.datadog.synthetic"</span>,
   <span class="token-string">"displayName"</span>: <span class="token-string">"Datadog Synthetic Deploy Agent"</span>,
   <span class="token-string">"role"</span>: <span class="token-string">"deploy"</span>,
@@ -1189,13 +1201,15 @@ Summary: 14/14 passed.</code></pre>
   ],
   <span class="token-string">"requiresApproval"</span>: <span class="token-keyword">true</span>
 }</code></pre>
-        </div>
+          </div>
+        </section>
 
-        <h3>Python Equivalent Concept</h3>
-        <p>The Python idea is the same: declare a tool with a description, keep the tool name stable, and enforce approval outside the prompt before write-capable execution. The C# implementation is the maintained source for this tutorial.</p>
-        <div class="code-block">
-          <div class="code-header"><span>Python - conceptual equivalent</span><button class="copy-button" type="button">Copy</button></div>
-          <pre><code><span class="token-keyword">from</span> agent_framework <span class="token-keyword">import</span> tool
+        <section class="language-panel" id="step4-python" data-language-panel="python" hidden>
+          <h3>Python Equivalent Concept</h3>
+          <p>The Python idea is the same: declare a tool with a description, keep the tool name stable, and enforce approval outside the prompt before write-capable execution. The C# implementation is the maintained source for this tutorial.</p>
+          <div class="code-block">
+            <div class="code-header"><span>Python - conceptual equivalent</span><button class="copy-button" type="button">Copy</button></div>
+            <pre><code><span class="token-keyword">from</span> agent_framework <span class="token-keyword">import</span> tool
 
 <span class="token-comment"># Read-only recommendation tool. Write tools would require approval.</span>
 <span class="token-decorator">@tool</span>
@@ -1206,7 +1220,8 @@ Summary: 14/14 passed.</code></pre>
         <span class="token-string">"requiresApprovalBeforeCreate"</span>: <span class="token-keyword">True</span>,
         <span class="token-string">"nextWriteTools"</span>: [<span class="token-string">"datadog.synthetic.create"</span>, <span class="token-string">"datadog.webhook.test"</span>]
     }</code></pre>
-        </div>
+          </div>
+        </section>
 
         <h3>Step 4 Local Validation</h3>
         <p>Build the solution and run the release-aligned tests:</p>
@@ -1392,6 +1407,9 @@ Summary: 20/20 passed.</code></pre>
   </script>
 </body>
 </html>
+
+
+
 
 
 

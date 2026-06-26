@@ -27,6 +27,8 @@ var tests = new List<(string Name, Action Test)>
     ("MCP server calls Datadog recommendation tool", McpServerCallsDatadogRecommendationTool),
     ("MCP write tools remain approval gated", McpWriteToolsRemainApprovalGated),
     ("MCP tool extensibility describes job descriptions", McpToolExtensibilityDescribesJobDescriptions),
+    ("MCP tool descriptions expose agent interface guidance", McpToolDescriptionsExposeAgentInterfaceGuidance),
+    ("JSON job description includes context reasoning guardrails and tool contracts", JsonJobDescriptionIncludesContextReasoningGuardrailsAndToolContracts),
     ("Conversation store creates conversation IDs", ConversationStoreCreatesConversationIds),
     ("Conversation store increments turns for same conversation", ConversationStoreIncrementsTurns),
     ("Conversation store reset starts a fresh local turn state", ConversationStoreResetStartsFreshState),
@@ -357,6 +359,42 @@ static void McpToolExtensibilityDescribesJobDescriptions()
         "extensibility model should mention job descriptions");
 }
 
+static void McpToolDescriptionsExposeAgentInterfaceGuidance()
+{
+    var registry = new JawsMcpToolRegistry();
+
+    foreach (var tool in registry.Tools)
+    {
+        AssertTrue(tool.Description.Contains("Use", StringComparison.OrdinalIgnoreCase), $"{tool.Name} description should explain when to use the tool");
+        AssertTrue(
+            tool.Description.Contains("Requires", StringComparison.OrdinalIgnoreCase) ||
+            tool.Description.Contains("Accepts", StringComparison.OrdinalIgnoreCase),
+            $"{tool.Name} description should explain required or accepted inputs");
+        AssertTrue(
+            tool.Description.Contains("Returns", StringComparison.OrdinalIgnoreCase) ||
+            tool.Description.Contains("blocked", StringComparison.OrdinalIgnoreCase),
+            $"{tool.Name} description should explain returned evidence or blocking behavior");
+    }
+}
+
+static void JsonJobDescriptionIncludesContextReasoningGuardrailsAndToolContracts()
+{
+    var path = Path.Combine("docs", "examples", "deploy.datadog.synthetic.job-description.json");
+    AssertTrue(File.Exists(path), "job-description JSON example should exist");
+
+    using var document = JsonDocument.Parse(File.ReadAllText(path));
+    var root = document.RootElement;
+
+    AssertTrue(root.GetProperty("responsibilities").GetArrayLength() > 0, "responsibilities should be declared");
+    AssertTrue(root.GetProperty("requiredContext").GetArrayLength() > 0, "required context should be declared");
+    AssertTrue(root.GetProperty("reasoningProcedure").GetArrayLength() > 0, "reasoning procedure should be declared");
+    AssertTrue(root.GetProperty("guardrails").GetArrayLength() > 0, "guardrails should be declared");
+    AssertTrue(root.GetProperty("toolContracts").GetArrayLength() > 0, "tool contracts should be declared");
+
+    var firstContract = root.GetProperty("toolContracts")[0];
+    AssertTrue(firstContract.GetProperty("requiredParameters").GetArrayLength() > 0, "tool contract required parameters should be declared");
+    AssertTrue(firstContract.GetProperty("expectedEvidence").GetArrayLength() > 0, "tool contract expected evidence should be declared");
+}
 static void ConversationStoreCreatesConversationIds()
 {
     var store = new InMemoryConversationStore();

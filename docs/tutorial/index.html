@@ -622,24 +622,43 @@
   <span class="token-string">"id"</span>: <span class="token-string">"deploy.datadog.synthetic"</span>,
   <span class="token-string">"displayName"</span>: <span class="token-string">"Datadog Synthetic Deploy Agent"</span>,
   <span class="token-string">"role"</span>: <span class="token-string">"deploy"</span>,
-  <span class="token-string">"modelDeployment"</span>: <span class="token-string">"gpt-4.1-mini"</span>,
-  <span class="token-string">"instructions"</span>: <span class="token-string">"Create or update Datadog synthetics only after approval is present. Return evidence, links, and validation results."</span>,
+  <span class="token-string">"responsibilities"</span>: [
+    <span class="token-string">"Create approved Datadog synthetic tests for selected Azure resources."</span>,
+    <span class="token-string">"Send controlled Datadog webhook test notifications after the synthetic exists."</span>,
+    <span class="token-string">"Create or update ServiceNow incident evidence after validation completes."</span>
+  ],
+  <span class="token-string">"requiredContext"</span>: [
+    <span class="token-string">"azure.resource.inventory"</span>,
+    <span class="token-string">"azure.monitor.evidence"</span>,
+    <span class="token-string">"datadog.coverage.recommend"</span>,
+    <span class="token-string">"servicenow.cmdb.lookup"</span>,
+    <span class="token-string">"workflow.approvalReference"</span>
+  ],
+  <span class="token-string">"reasoningProcedure"</span>: [
+    <span class="token-string">"Confirm the selected Azure resource and proposed Datadog coverage."</span>,
+    <span class="token-string">"Verify that a human approval reference is present and matches approval policy."</span>,
+    <span class="token-string">"Execute only the approved Datadog and ServiceNow write tools."</span>,
+    <span class="token-string">"Validate Datadog webhook delivery before reporting completion."</span>
+  ],
+  <span class="token-string">"guardrails"</span>: [
+    <span class="token-string">"Do not create or update Datadog assets without approvalReference."</span>,
+    <span class="token-string">"Do not invent Azure resource names, Datadog identifiers, webhook URLs, or ServiceNow incident numbers."</span>
+  ],
   <span class="token-string">"allowedTools"</span>: [
     <span class="token-string">"azure.resource.inventory"</span>,
     <span class="token-string">"datadog.synthetic.create"</span>,
     <span class="token-string">"datadog.webhook.test"</span>,
     <span class="token-string">"servicenow.incident.createOrUpdate"</span>
   ],
-  <span class="token-string">"requiresApproval"</span>: <span class="token-keyword">true</span>,
-  <span class="token-string">"approvalPolicy"</span>: {
-    <span class="token-string">"requiredReferencePattern"</span>: <span class="token-string">"^APP-[0-9]{8,}-[a-z0-9-]+$"</span>,
-    <span class="token-string">"writeActions"</span>: [<span class="token-string">"create"</span>, <span class="token-string">"update"</span>, <span class="token-string">"testNotification"</span>]
-  },
-  <span class="token-string">"evidence"</span>: {
-    <span class="token-string">"includeToolCalls"</span>: <span class="token-keyword">true</span>,
-    <span class="token-string">"includeExternalLinks"</span>: <span class="token-keyword">true</span>,
-    <span class="token-string">"includePassFailTable"</span>: <span class="token-keyword">true</span>
-  }
+  <span class="token-string">"toolContracts"</span>: [
+    {
+      <span class="token-string">"name"</span>: <span class="token-string">"datadog.synthetic.create"</span>,
+      <span class="token-string">"requiredParameters"</span>: [<span class="token-string">"resourceName"</span>, <span class="token-string">"approvalReference"</span>],
+      <span class="token-string">"writeCapable"</span>: <span class="token-keyword">true</span>,
+      <span class="token-string">"expectedEvidence"</span>: [<span class="token-string">"status"</span>, <span class="token-string">"provider"</span>, <span class="token-string">"resourceName"</span>]
+    }
+  ],
+  <span class="token-string">"requiresApproval"</span>: <span class="token-keyword">true</span>
 }</code></pre>
         </div>
 
@@ -1162,7 +1181,7 @@ Summary: 14/14 passed.</code></pre>
             <div class="code-header"><span>C# - src/Jaws.AgentFramework/Mcp/JawsMcpToolRegistry.cs</span><button class="copy-button" type="button">Copy</button></div>
             <pre><code><span class="token-keyword">new</span> JawsMcpTool(
     Name: <span class="token-string">"datadog.coverage.recommend"</span>,
-    Description: <span class="token-string">"Recommends Datadog monitor or synthetic coverage for an Azure resource."</span>,
+    Description: <span class="token-string">"Use when support or workflow agents need to decide which Datadog monitor or synthetic coverage fits an Azure resource. Requires resourceName and resourceType. Returns an approval-gated recommendation, rationale, and the next write-capable tools; it does not create Datadog assets."</span>,
     InputSchema: ObjectSchema(
         (<span class="token-string">"resourceName"</span>, <span class="token-string">"Azure resource name to evaluate."</span>),
         (<span class="token-string">"resourceType"</span>, <span class="token-string">"Azure resource type."</span>)),
@@ -1173,6 +1192,7 @@ Summary: 14/14 passed.</code></pre>
         [<span class="token-string">"provider"</span>] = <span class="token-string">"Datadog"</span>,
         [<span class="token-string">"resourceName"</span>] = ReadString(arguments, <span class="token-string">"resourceName"</span>) ?? <span class="token-string">"app-jaws-api"</span>,
         [<span class="token-string">"recommendation"</span>] = <span class="token-string">"Create an HTTP synthetic for the public health endpoint and monitors for availability, 5xx rate, latency, and dependency failures."</span>,
+        [<span class="token-string">"rationale"</span>] = <span class="token-string">"The resource is a public API surface where availability, latency, and server-error coverage provide actionable operational evidence."</span>,
         [<span class="token-string">"requiresApprovalBeforeCreate"</span>] = <span class="token-keyword">true</span>,
         [<span class="token-string">"nextWriteTools"</span>] = <span class="token-keyword">new</span> JsonArray(<span class="token-string">"datadog.synthetic.create"</span>, <span class="token-string">"datadog.webhook.test"</span>)
     })</code></pre>
@@ -1199,11 +1219,41 @@ Summary: 14/14 passed.</code></pre>
   <span class="token-string">"id"</span>: <span class="token-string">"deploy.datadog.synthetic"</span>,
   <span class="token-string">"displayName"</span>: <span class="token-string">"Datadog Synthetic Deploy Agent"</span>,
   <span class="token-string">"role"</span>: <span class="token-string">"deploy"</span>,
+  <span class="token-string">"responsibilities"</span>: [
+    <span class="token-string">"Create approved Datadog synthetic tests for selected Azure resources."</span>,
+    <span class="token-string">"Send controlled Datadog webhook test notifications after the synthetic exists."</span>,
+    <span class="token-string">"Create or update ServiceNow incident evidence after validation completes."</span>
+  ],
+  <span class="token-string">"requiredContext"</span>: [
+    <span class="token-string">"azure.resource.inventory"</span>,
+    <span class="token-string">"azure.monitor.evidence"</span>,
+    <span class="token-string">"datadog.coverage.recommend"</span>,
+    <span class="token-string">"servicenow.cmdb.lookup"</span>,
+    <span class="token-string">"workflow.approvalReference"</span>
+  ],
+  <span class="token-string">"reasoningProcedure"</span>: [
+    <span class="token-string">"Confirm the selected Azure resource and proposed Datadog coverage."</span>,
+    <span class="token-string">"Verify that a human approval reference is present and matches approval policy."</span>,
+    <span class="token-string">"Execute only the approved Datadog and ServiceNow write tools."</span>,
+    <span class="token-string">"Validate Datadog webhook delivery before reporting completion."</span>
+  ],
+  <span class="token-string">"guardrails"</span>: [
+    <span class="token-string">"Do not create or update Datadog assets without approvalReference."</span>,
+    <span class="token-string">"Do not invent Azure resource names, Datadog identifiers, webhook URLs, or ServiceNow incident numbers."</span>
+  ],
   <span class="token-string">"allowedTools"</span>: [
     <span class="token-string">"azure.resource.inventory"</span>,
     <span class="token-string">"datadog.synthetic.create"</span>,
     <span class="token-string">"datadog.webhook.test"</span>,
     <span class="token-string">"servicenow.incident.createOrUpdate"</span>
+  ],
+  <span class="token-string">"toolContracts"</span>: [
+    {
+      <span class="token-string">"name"</span>: <span class="token-string">"datadog.synthetic.create"</span>,
+      <span class="token-string">"requiredParameters"</span>: [<span class="token-string">"resourceName"</span>, <span class="token-string">"approvalReference"</span>],
+      <span class="token-string">"writeCapable"</span>: <span class="token-keyword">true</span>,
+      <span class="token-string">"expectedEvidence"</span>: [<span class="token-string">"status"</span>, <span class="token-string">"provider"</span>, <span class="token-string">"resourceName"</span>]
+    }
   ],
   <span class="token-string">"requiresApproval"</span>: <span class="token-keyword">true</span>
 }</code></pre>
@@ -1246,8 +1296,10 @@ PASS: MCP server calls Azure inventory tool
 PASS: MCP server calls Datadog recommendation tool
 PASS: MCP write tools remain approval gated
 PASS: MCP tool extensibility describes job descriptions
+PASS: MCP tool descriptions expose agent interface guidance
+PASS: JSON job description includes context reasoning guardrails and tool contracts
 
-Summary: 20/20 passed.</code></pre>
+Summary: 26/26 passed.</code></pre>
         </div>
 
         <h3>Step 4 Live Tool Probe</h3>
@@ -1450,7 +1502,7 @@ PASS: Conversation store increments turns for same conversation
 PASS: Conversation store reset starts a fresh local turn state
 PASS: First agent response exposes conversation metadata
 
-Summary: 24/24 passed.</code></pre>
+Summary: 26/26 passed.</code></pre>
         </div>
 
         <h3>Step 5 Live Conversation Probe</h3>

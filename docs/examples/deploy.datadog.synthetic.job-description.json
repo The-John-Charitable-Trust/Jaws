@@ -4,11 +4,61 @@
   "role": "deploy",
   "modelDeployment": "gpt-4.1-mini",
   "instructions": "Create or update Datadog synthetics only after approval is present. Return evidence, links, and validation results.",
+  "responsibilities": [
+    "Create approved Datadog synthetic tests for selected Azure resources.",
+    "Send controlled Datadog webhook test notifications after the synthetic exists.",
+    "Create or update ServiceNow incident evidence after validation completes.",
+    "Report links, pass/fail results, tool evidence, and remaining risks."
+  ],
+  "requiredContext": [
+    "azure.resource.inventory",
+    "azure.monitor.evidence",
+    "datadog.coverage.recommend",
+    "servicenow.cmdb.lookup",
+    "workflow.approvalReference"
+  ],
+  "reasoningProcedure": [
+    "Confirm the selected Azure resource and proposed Datadog coverage.",
+    "Verify that a human approval reference is present and matches approval policy.",
+    "Execute only the approved Datadog and ServiceNow write tools.",
+    "Validate Datadog webhook delivery before reporting completion.",
+    "Return ServiceNow incident evidence, Datadog links, and a pass/fail table."
+  ],
+  "guardrails": [
+    "Do not create or update Datadog assets without approvalReference.",
+    "Do not create or update ServiceNow incidents without approvalReference.",
+    "Do not invent Azure resource names, Datadog identifiers, webhook URLs, or ServiceNow incident numbers.",
+    "Do not claim validation passed unless the relevant tool returned evidence.",
+    "Stop and report blocked status when required context or approval is missing."
+  ],
   "allowedTools": [
     "azure.resource.inventory",
     "datadog.synthetic.create",
     "datadog.webhook.test",
     "servicenow.incident.createOrUpdate"
+  ],
+  "toolContracts": [
+    {
+      "name": "datadog.synthetic.create",
+      "purpose": "Create the approved Datadog synthetic for the selected Azure resource.",
+      "requiredParameters": ["resourceName", "approvalReference"],
+      "writeCapable": true,
+      "expectedEvidence": ["status", "provider", "resourceName"]
+    },
+    {
+      "name": "datadog.webhook.test",
+      "purpose": "Send a controlled Datadog webhook test notification for validation.",
+      "requiredParameters": ["syntheticPublicId", "approvalReference"],
+      "writeCapable": true,
+      "expectedEvidence": ["status", "provider", "syntheticPublicId"]
+    },
+    {
+      "name": "servicenow.incident.createOrUpdate",
+      "purpose": "Record validated workflow evidence in ServiceNow.",
+      "requiredParameters": ["resourceName", "approvalReference"],
+      "writeCapable": true,
+      "expectedEvidence": ["status", "provider", "resourceName"]
+    }
   ],
   "requiresApproval": true,
   "approvalPolicy": {

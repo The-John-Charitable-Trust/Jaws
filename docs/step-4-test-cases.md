@@ -15,7 +15,8 @@ Release: `0.4`
 | ST4-008 | Local MCP endpoint reports release `0.4` | `tools/call` for `jaws_mcp_status` | Returns `release=0.4`, `toolScope=tutorial-demo`, and `writeToolsEnabled=false` |
 | ST4-009 | Local MCP endpoint calls read-only Azure and Datadog tools | `tools/call` for `azure.resource.inventory` and `datadog.coverage.recommend` | Returns structured provider evidence and approval-gated recommendation |
 | ST4-010 | Local MCP endpoint denies write-capable execution | `tools/call` for `datadog.synthetic.create` | Returns JSON-RPC error `-32050` and `Write-capable MCP tool denied.` |
-| ST4-011 | Tool contracts are documented as agent-computer interface contracts | Review Step 4 tutorial section `Tool Design As Agent-Computer Interface` | Tool guidance covers purpose, provider, required parameters, read/write classification, and evidence returned |
+| ST4-011 | Tool descriptions expose agent-computer interface guidance | `dotnet run --project tests/Jaws.FirstAgent.Tests/Jaws.FirstAgent.Tests.csproj` | PASS |
+| ST4-012 | JSON job description includes context, reasoning, guardrails, and tool contracts | `dotnet run --project tests/Jaws.FirstAgent.Tests/Jaws.FirstAgent.Tests.csproj` | PASS |
 
 Local validation for release `0.4` is `dotnet build Jaws.slnx -c Release` plus `dotnet run --project tests/Jaws.FirstAgent.Tests/Jaws.FirstAgent.Tests.csproj`. To validate the live tool path, run `src/Jaws.Api` locally with the `http` launch profile and confirm the objective Step 4 tutorial result: `ToolListPass=True`, `StatusPass=True`, `AzureToolPass=True`, `DatadogToolPass=True`, `WriteGatePass=True`, and `ExtensibilityPass=True`.
 

@@ -22,7 +22,7 @@ public sealed class JawsMcpToolRegistry
         {
             new JawsMcpTool(
                 Name: "jaws_mcp_status",
-                Description: "Returns the local JAWS MCP server status and release metadata.",
+                Description: "Use when an agent or tester needs to confirm the local MCP boundary is available. Requires no input. Returns server status, release, tool scope, security mode, provider families, and whether write tools are enabled.",
                 InputSchema: EmptyObjectSchema(),
                 IsWriteTool: false,
                 Invoke: _ => new JsonObject
@@ -39,7 +39,7 @@ public sealed class JawsMcpToolRegistry
                 }),
             new JawsMcpTool(
                 Name: "jaws_tool_registry",
-                Description: "Returns the tools currently registered with the local JAWS MCP server.",
+                Description: "Use when an agent needs to discover the approved local MCP tool surface. Requires no input. Returns stable tool names only; the agent must still respect role-based allowedTools and write approval gates.",
                 InputSchema: EmptyObjectSchema(),
                 IsWriteTool: false,
                 Invoke: _ => new JsonObject
@@ -51,8 +51,8 @@ public sealed class JawsMcpToolRegistry
                 }),
             new JawsMcpTool(
                 Name: "azure.resource.inventory",
-                Description: "Returns demo Azure resource candidates that may need Datadog coverage.",
-                InputSchema: ObjectSchema(("scope", "Optional authorized Azure scope or resource group name.")),
+                Description: "Use when support or workflow agents need Azure resource candidates for observability coverage analysis. Accepts an optional authorized scope. Returns resource names, resource types, priority, and recommended Datadog coverage categories; it does not modify Azure.",
+                InputSchema: ObjectSchema(("scope", "Optional authorized Azure scope or resource group name. If omitted, the tutorial-local scope is used for demo evidence.")),
                 IsWriteTool: false,
                 Invoke: arguments => new JsonObject
                 {
@@ -79,8 +79,8 @@ public sealed class JawsMcpToolRegistry
                 }),
             new JawsMcpTool(
                 Name: "azure.policy.evidence",
-                Description: "Returns demo Azure Policy evidence for the selected resource.",
-                InputSchema: ObjectSchema(("resourceName", "Azure resource name to evaluate.")),
+                Description: "Use when governance agents need compliance context for a selected Azure resource. Requires resourceName. Returns policy-oriented evidence and a compliance summary for approval reasoning; it does not create exemptions or change policy.",
+                InputSchema: ObjectSchema(("resourceName", "Azure resource name to evaluate. Use the exact resource name from inventory or user-approved context.")),
                 IsWriteTool: false,
                 Invoke: arguments => new JsonObject
                 {
@@ -92,8 +92,8 @@ public sealed class JawsMcpToolRegistry
                 }),
             new JawsMcpTool(
                 Name: "azure.monitor.evidence",
-                Description: "Returns demo Azure Monitor evidence for operational triage.",
-                InputSchema: ObjectSchema(("resourceName", "Azure resource name to inspect."), ("timeRange", "Optional evidence time range.")),
+                Description: "Use when support agents need operational signals for a selected Azure resource and time range. Requires resourceName and optionally timeRange. Returns evidence signals for triage and Datadog coverage reasoning; it does not query or mutate live alerts in this release.",
+                InputSchema: ObjectSchema(("resourceName", "Azure resource name to inspect. Use the exact resource name from inventory or user-approved context."), ("timeRange", "Optional ISO-8601 evidence time range such as PT1H. Defaults to PT1H.")),
                 IsWriteTool: false,
                 Invoke: arguments => new JsonObject
                 {
@@ -105,8 +105,8 @@ public sealed class JawsMcpToolRegistry
                 }),
             new JawsMcpTool(
                 Name: "datadog.coverage.recommend",
-                Description: "Recommends Datadog monitor or synthetic coverage for an Azure resource.",
-                InputSchema: ObjectSchema(("resourceName", "Azure resource name to evaluate."), ("resourceType", "Azure resource type.")),
+                Description: "Use when support or workflow agents need to decide which Datadog monitor or synthetic coverage fits an Azure resource. Requires resourceName and resourceType. Returns an approval-gated recommendation, rationale, and the next write-capable tools; it does not create Datadog assets.",
+                InputSchema: ObjectSchema(("resourceName", "Azure resource name to evaluate. Use the exact resource name from inventory or user-approved context."), ("resourceType", "Azure resource type.")),
                 IsWriteTool: false,
                 Invoke: arguments => new JsonObject
                 {
@@ -114,13 +114,14 @@ public sealed class JawsMcpToolRegistry
                     ["provider"] = "Datadog",
                     ["resourceName"] = ReadString(arguments, "resourceName") ?? "app-jaws-api",
                     ["recommendation"] = "Create an HTTP synthetic for the public health endpoint and monitors for availability, 5xx rate, latency, and dependency failures.",
+                    ["rationale"] = "The resource is a public API surface where availability, latency, and server-error coverage provide actionable operational evidence.",
                     ["requiresApprovalBeforeCreate"] = true,
                     ["nextWriteTools"] = new JsonArray("datadog.synthetic.create", "datadog.webhook.test")
                 }),
             new JawsMcpTool(
                 Name: "servicenow.cmdb.lookup",
-                Description: "Returns demo ServiceNow CMDB ownership context for a resource.",
-                InputSchema: ObjectSchema(("resourceName", "Azure resource or service name to look up.")),
+                Description: "Use when support, governance, or workflow agents need ownership and service context before recommending or executing work. Requires resourceName. Returns business service, assignment group, and CI match status; it does not create or update ServiceNow records.",
+                InputSchema: ObjectSchema(("resourceName", "Azure resource or service name to look up in CMDB context.")),
                 IsWriteTool: false,
                 Invoke: arguments => new JsonObject
                 {
@@ -133,8 +134,8 @@ public sealed class JawsMcpToolRegistry
                 }),
             new JawsMcpTool(
                 Name: "jaws.tool.extensibility",
-                Description: "Explains how customer-authored JSON job descriptions map agents to approved MCP tools.",
-                InputSchema: ObjectSchema(("agentRole", "Optional role name to explain.")),
+                Description: "Use when platform owners or governance agents need to understand how JSON job descriptions constrain an agent. Accepts an optional agentRole. Returns the job-description path, extensibility model, required approval concepts, and future tool examples.",
+                InputSchema: ObjectSchema(("agentRole", "Optional JAWS role name such as support, governance, deploy, or workflow.")),
                 IsWriteTool: false,
                 Invoke: arguments => new JsonObject
                 {
@@ -142,13 +143,13 @@ public sealed class JawsMcpToolRegistry
                     ["provider"] = "JAWS",
                     ["agentRole"] = ReadString(arguments, "agentRole") ?? "deploy",
                     ["jobDescriptionPath"] = "docs/examples/deploy.datadog.synthetic.job-description.json",
-                    ["extensibilityModel"] = "A job description declares role, instructions, allowedTools, approval policy, and evidence policy. The MCP registry must expose a matching approved tool before the agent can use it.",
+                    ["extensibilityModel"] = "A job description declares role, instructions, responsibilities, allowedTools, requiredContext, reasoningProcedure, guardrails, approval policy, evidence policy, and expected tool contracts. The MCP registry must expose a matching approved tool before the agent can use it.",
                     ["futureToolExamples"] = new JsonArray("securitycopilot.investigate", "defender.recommendation.query", "contentSafety.promptShield.evaluate", "azureMcp.resource.query")
                 }),
             new JawsMcpTool(
                 Name: "datadog.synthetic.create",
-                Description: "Write-capable future workflow tool for creating an approved Datadog synthetic test.",
-                InputSchema: ObjectSchema(("resourceName", "Azure resource name."), ("approvalReference", "Human approval reference.")),
+                Description: "Use only inside an approved workflow when the deploy agent must create a Datadog synthetic for a selected resource. Requires resourceName and approvalReference. Returns creation evidence and Datadog identifiers; blocked unless write tools are enabled by workflow approval.",
+                InputSchema: ObjectSchema(("resourceName", "Azure resource name approved for Datadog synthetic creation."), ("approvalReference", "Human approval reference matching the workflow approval policy.")),
                 IsWriteTool: true,
                 Invoke: arguments => new JsonObject
                 {
@@ -158,8 +159,8 @@ public sealed class JawsMcpToolRegistry
                 }),
             new JawsMcpTool(
                 Name: "datadog.webhook.test",
-                Description: "Write-capable future workflow tool for sending a Datadog webhook test notification.",
-                InputSchema: ObjectSchema(("syntheticPublicId", "Datadog synthetic public ID."), ("approvalReference", "Human approval reference.")),
+                Description: "Use only inside an approved workflow when the deploy agent must validate Datadog-to-JAWS webhook delivery. Requires syntheticPublicId and approvalReference. Returns notification evidence; blocked unless write tools are enabled by workflow approval.",
+                InputSchema: ObjectSchema(("syntheticPublicId", "Datadog synthetic public ID selected for webhook test notification."), ("approvalReference", "Human approval reference matching the workflow approval policy.")),
                 IsWriteTool: true,
                 Invoke: arguments => new JsonObject
                 {
@@ -169,8 +170,8 @@ public sealed class JawsMcpToolRegistry
                 }),
             new JawsMcpTool(
                 Name: "servicenow.incident.createOrUpdate",
-                Description: "Write-capable future workflow tool for creating or updating a ServiceNow incident.",
-                InputSchema: ObjectSchema(("resourceName", "Affected resource name."), ("approvalReference", "Human approval reference.")),
+                Description: "Use only inside an approved workflow when JAWS must record incident evidence in ServiceNow. Requires resourceName and approvalReference. Returns incident creation or update evidence; blocked unless write tools are enabled by workflow approval.",
+                InputSchema: ObjectSchema(("resourceName", "Affected Azure resource name to record in the ServiceNow incident evidence."), ("approvalReference", "Human approval reference matching the workflow approval policy.")),
                 IsWriteTool: true,
                 Invoke: arguments => new JsonObject
                 {
@@ -217,4 +218,3 @@ public sealed class JawsMcpToolRegistry
                 : null;
     }
 }
-

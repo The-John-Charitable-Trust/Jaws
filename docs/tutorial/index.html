@@ -487,6 +487,10 @@
 
         <h3>Main Use Case</h3>
         <p>The main tutorial use case starts in the Teams app. A user asks JAWS which Azure resources need Datadog monitors or synthetic tests. JAWS investigates the authorized Azure environment, retrieves curated observability guidance, evaluates the resource candidates, and explains its recommendation. The user then selects a resource, asks JAWS to proceed, supplies or confirms an approval reference, and JAWS deploys the Datadog monitor or synthetic test, configures the approved webhook path, validates the notification flow, and creates or updates the ServiceNow incident.</p>
+        <div class="callout">
+          <strong>Click-through demo</strong>
+          Open the companion concept-of-operations demo at <a href="../demos/jaws-datadog-conops-demo.html">docs/demos/jaws-datadog-conops-demo.html</a>. It simulates the end user experience from the first Teams-style request through Datadog synthetic creation, webhook validation, and ServiceNow incident evidence. The demo is illustrative; the release-by-release tutorial sections show the code that implements the capability.
+        </div>
 
         <h3>Conversation Flow</h3>
         <p>The expected Teams conversation has four phases. First, JAWS investigates and explains which resources need coverage. Second, JAWS deliberates with the relevant support, governance, and deploy agents to identify the proposed change and required approval. Third, JAWS pauses at a human-in-the-loop approval checkpoint before any write-capable action. Fourth, after approval, JAWS performs the deployment through tool calls behind the custom MCP boundary and validates the result by confirming the Datadog asset, webhook delivery, and ServiceNow incident evidence.</p>
@@ -1162,6 +1166,7 @@ Summary: 14/14 passed.</code></pre>
   </script>
 </body>
 </html>
+
 
 
 

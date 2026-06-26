@@ -1,0 +1,1025 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JAWS Datadog Monitor Concept of Operations</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --surface: #ffffff;
+      --surface-2: #eef2f7;
+      --surface-3: #e7edf5;
+      --ink: #17202a;
+      --muted: #607086;
+      --line: #d6dee8;
+      --blue: #1f6feb;
+      --teal: #007a78;
+      --green: #198754;
+      --amber: #9a6700;
+      --red: #b42318;
+      --purple: #6f42c1;
+      --shadow: 0 16px 38px rgba(22, 34, 51, 0.10);
+      font-family: "Segoe UI", Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+
+    button {
+      font: inherit;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 280px minmax(430px, 1fr) 420px;
+    }
+
+    .sidebar {
+      background: #111827;
+      color: #f9fafb;
+      padding: 22px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .brand-mark {
+      width: 44px;
+      height: 44px;
+      display: grid;
+      place-items: center;
+      background: #f8fafc;
+      color: #111827;
+      border: 2px solid #d1d5db;
+      font-weight: 800;
+      letter-spacing: 0;
+      border-radius: 8px;
+      flex: 0 0 auto;
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .brand p {
+      margin: 3px 0 0;
+      color: #b7c0cc;
+      font-size: 12px;
+      line-height: 1.3;
+    }
+
+    .scenario {
+      border-top: 1px solid rgba(255, 255, 255, 0.14);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+      padding: 14px 0;
+      color: #d8dee9;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .steps {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+
+    .step-button {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 28px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.04);
+      color: #e5e7eb;
+      padding: 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .step-button:hover,
+    .step-button:focus-visible {
+      border-color: rgba(255, 255, 255, 0.45);
+      outline: none;
+    }
+
+    .step-button.active {
+      background: #ffffff;
+      color: #111827;
+      border-color: #ffffff;
+    }
+
+    .step-index {
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      background: rgba(255, 255, 255, 0.14);
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    .step-button.active .step-index {
+      background: var(--blue);
+      color: #ffffff;
+    }
+
+    .step-title {
+      font-size: 13px;
+      font-weight: 650;
+      line-height: 1.25;
+      min-width: 0;
+    }
+
+    .step-state {
+      font-size: 11px;
+      font-weight: 700;
+      color: #8bd1a5;
+    }
+
+    .step-button.active .step-state {
+      color: var(--green);
+    }
+
+    .main {
+      padding: 22px;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      min-width: 0;
+      gap: 14px;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 14px;
+    }
+
+    .topbar h2 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .topbar p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .status-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 28px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--muted);
+      padding: 5px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 99px;
+      background: var(--muted);
+    }
+
+    .dot.green { background: var(--green); }
+    .dot.amber { background: var(--amber); }
+    .dot.blue { background: var(--blue); }
+
+    .conversation {
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding-right: 4px;
+    }
+
+    .message {
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr);
+      gap: 10px;
+      align-items: flex-start;
+      max-width: 900px;
+    }
+
+    .message.user {
+      margin-left: auto;
+      grid-template-columns: minmax(0, 1fr) 42px;
+    }
+
+    .avatar {
+      width: 42px;
+      height: 42px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      color: #ffffff;
+      background: #374151;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+    }
+
+    .user .avatar {
+      grid-column: 2;
+      background: var(--blue);
+    }
+
+    .bubble {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px 14px;
+      box-shadow: 0 4px 12px rgba(22, 34, 51, 0.05);
+      min-width: 0;
+    }
+
+    .user .bubble {
+      grid-column: 1;
+      grid-row: 1;
+      background: #e8f0ff;
+      border-color: #bdd0ff;
+    }
+
+    .agent-name {
+      font-weight: 750;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .bubble p {
+      margin: 0 0 8px;
+      line-height: 1.45;
+      font-size: 14px;
+    }
+
+    .bubble p:last-child {
+      margin-bottom: 0;
+    }
+
+    .bubble ol,
+    .bubble ul {
+      margin: 8px 0 0 20px;
+      padding: 0;
+      line-height: 1.45;
+      font-size: 14px;
+    }
+
+    .bubble li {
+      margin-bottom: 6px;
+    }
+
+    .agent-tag {
+      display: inline-flex;
+      border: 1px solid var(--line);
+      background: var(--surface-2);
+      border-radius: 999px;
+      padding: 2px 7px;
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .controls {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      border-top: 1px solid var(--line);
+      padding-top: 14px;
+    }
+
+    .button-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .control-button {
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink);
+      min-height: 36px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    .control-button.primary {
+      background: var(--blue);
+      color: #ffffff;
+      border-color: var(--blue);
+    }
+
+    .control-button:hover,
+    .control-button:focus-visible {
+      outline: 2px solid rgba(31, 111, 235, 0.20);
+      outline-offset: 2px;
+    }
+
+    .right-panel {
+      border-left: 1px solid var(--line);
+      background: #fbfcfe;
+      padding: 22px 18px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 12px 13px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .panel-header h3 {
+      margin: 0;
+      font-size: 14px;
+      letter-spacing: 0;
+    }
+
+    .panel-body {
+      padding: 13px;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      background: var(--surface-2);
+      border-radius: 8px;
+      padding: 10px;
+      min-height: 72px;
+    }
+
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 5px;
+    }
+
+    .metric strong {
+      font-size: 17px;
+      line-height: 1.2;
+    }
+
+    .evidence-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .evidence-list li {
+      border: 1px solid var(--line);
+      background: var(--surface-2);
+      border-radius: 8px;
+      padding: 9px 10px;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .evidence-list strong {
+      display: block;
+      margin-bottom: 2px;
+    }
+
+    .status-good {
+      color: var(--green);
+      font-weight: 800;
+    }
+
+    .status-wait {
+      color: var(--amber);
+      font-weight: 800;
+    }
+
+    .status-info {
+      color: var(--blue);
+      font-weight: 800;
+    }
+
+    .snow-ticket {
+      border: 1px solid #bdd7c5;
+      background: #f1faf4;
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .snow-ticket h4 {
+      margin: 0 0 6px;
+      font-size: 15px;
+    }
+
+    .field-grid {
+      display: grid;
+      grid-template-columns: 112px minmax(0, 1fr);
+      gap: 8px;
+      font-size: 13px;
+      line-height: 1.35;
+      margin-top: 10px;
+    }
+
+    .field-grid span:nth-child(odd) {
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .reasoning {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .reasoning-row {
+      display: grid;
+      grid-template-columns: 86px minmax(0, 1fr);
+      gap: 8px;
+      align-items: start;
+      border: 1px solid #cbd7e5;
+      border-radius: 8px;
+      background: #f8fafc;
+      padding: 8px;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .reasoning-row strong {
+      color: var(--purple);
+    }
+
+    .diagram {
+      height: 150px;
+      position: relative;
+      border: 1px solid var(--line);
+      background:
+        linear-gradient(90deg, rgba(31,111,235,0.06) 1px, transparent 1px),
+        linear-gradient(0deg, rgba(31,111,235,0.06) 1px, transparent 1px),
+        var(--surface-2);
+      background-size: 22px 22px;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .node {
+      position: absolute;
+      width: 74px;
+      height: 38px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      font-size: 11px;
+      font-weight: 800;
+      color: #ffffff;
+      box-shadow: 0 8px 16px rgba(17, 24, 39, 0.12);
+    }
+
+    .node.datadog { left: 12px; top: 18px; background: var(--purple); }
+    .node.webhook { left: 122px; top: 56px; background: var(--blue); }
+    .node.jaws { right: 108px; top: 18px; background: #111827; }
+    .node.snow { right: 12px; top: 90px; background: var(--green); }
+
+    .line {
+      position: absolute;
+      height: 3px;
+      background: #6b7d94;
+      transform-origin: left center;
+      border-radius: 999px;
+    }
+
+    .line.one { left: 82px; top: 45px; width: 72px; transform: rotate(20deg); }
+    .line.two { left: 192px; top: 68px; width: 74px; transform: rotate(-20deg); }
+    .line.three { right: 82px; top: 75px; width: 70px; transform: rotate(45deg); }
+
+    @media (max-width: 1180px) {
+      .app {
+        grid-template-columns: 240px minmax(390px, 1fr);
+      }
+
+      .right-panel {
+        grid-column: 1 / -1;
+        border-left: 0;
+        border-top: 1px solid var(--line);
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 820px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        min-height: auto;
+      }
+
+      .steps {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .main {
+        padding: 16px;
+      }
+
+      .topbar {
+        flex-direction: column;
+      }
+
+      .status-strip {
+        justify-content: flex-start;
+      }
+
+      .right-panel {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">JAWS</div>
+        <div>
+          <h1>Monitor Execution ConOps</h1>
+          <p>Click-through demo for governed Datadog, webhook, and ServiceNow execution.</p>
+        </div>
+      </div>
+
+      <div class="scenario">
+        Scenario: a user asks JAWS which Azure resources need Datadog coverage, approves a synthetic test for app-jaws-api, and receives proof that Datadog, the webhook, and ServiceNow all worked.
+      </div>
+
+      <nav class="steps" id="steps" aria-label="Demo steps"></nav>
+    </aside>
+
+    <main class="main">
+      <section class="topbar">
+        <div>
+          <h2 id="stage-title">JAWS Workbench</h2>
+          <p id="stage-subtitle">A simulated agentic workbench conversation for the future governed execution flow.</p>
+        </div>
+        <div class="status-strip">
+          <span class="pill"><span class="dot green"></span>Azure scope live</span>
+          <span class="pill"><span class="dot blue"></span>Datadog planned</span>
+          <span class="pill"><span class="dot amber"></span>Approval gated</span>
+        </div>
+      </section>
+
+      <section class="conversation" id="conversation" aria-live="polite"></section>
+
+      <section class="controls" aria-label="Demo controls">
+        <div class="button-row">
+          <button class="control-button" id="back" type="button">Back</button>
+          <button class="control-button" id="reset" type="button">Reset</button>
+        </div>
+        <button class="control-button primary" id="next" type="button">Next</button>
+      </section>
+    </main>
+
+    <aside class="right-panel" aria-label="Workbench evidence panels">
+      <section class="panel">
+        <div class="panel-header">
+          <h3>Execution State</h3>
+          <span class="pill" id="state-pill"><span class="dot amber"></span>Planning</span>
+        </div>
+        <div class="panel-body">
+          <div class="metric-grid">
+            <div class="metric">
+              <span>Target</span>
+              <strong id="target-metric">app-jaws-api</strong>
+            </div>
+            <div class="metric">
+              <span>Mode</span>
+              <strong id="mode-metric">Advisory</strong>
+            </div>
+            <div class="metric">
+              <span>Approval</span>
+              <strong id="approval-metric">Required</strong>
+            </div>
+            <div class="metric">
+              <span>Result</span>
+              <strong id="result-metric">Pending</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h3>Flow Map</h3>
+          <span class="pill"><span class="dot blue"></span>Webhook path</span>
+        </div>
+        <div class="panel-body">
+          <div class="diagram" aria-label="Datadog to JAWS to ServiceNow flow diagram">
+            <div class="node datadog">Datadog</div>
+            <div class="line one"></div>
+            <div class="node webhook">Webhook</div>
+            <div class="line two"></div>
+            <div class="node jaws">JAWS</div>
+            <div class="line three"></div>
+            <div class="node snow">SNOW</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h3>Evidence Ledger</h3>
+          <span class="pill" id="evidence-count"><span class="dot green"></span>0 items</span>
+        </div>
+        <div class="panel-body">
+          <ul class="evidence-list" id="evidence-list"></ul>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h3>ServiceNow Incident</h3>
+          <span class="pill"><span class="dot green"></span>Simulated</span>
+        </div>
+        <div class="panel-body" id="snow-panel"></div>
+      </section>
+    </aside>
+  </div>
+
+  <script>
+    const steps = [
+      {
+        title: "Recommend coverage",
+        state: "Evidence",
+        subtitle: "JAWS answers which Azure resources need Datadog monitors or synthetic tests.",
+        mode: "Advisory",
+        approval: "Not needed",
+        result: "Coverage ranked",
+        messages: [
+          user("@Jaws which Azure resources in the current scope need Datadog monitors or synthetic tests?"),
+          agent("JAWS Support", "@support", "I inspected the authorized Azure inventory and ranked the Datadog coverage candidates. app-jaws-api should get an HTTP synthetic for the public health/API path plus monitors for 5xx rate, latency, availability, restarts, and dependency failures. func-jaws-worker, vm-jaws-demo, storage accounts, Key Vault, Bot Service, App Insights, and Log Analytics also have coverage recommendations."),
+          agent("JAWS Support", "@support", "Boundary: this is a recommendation from sample Azure inventory plus JAWS observability rules. I did not create or modify Datadog monitors.")
+        ],
+        evidence: [
+          ["Azure Resource Graph", "Returned resource inventory for the authorized subscription scope."],
+          ["JAWS rulebook", "Mapped resource types to Datadog monitor and synthetic patterns."]
+        ]
+      },
+      {
+        title: "Select target",
+        state: "Intent",
+        subtitle: "The user asks the appropriate JAWS agent to create and test one recommendation.",
+        mode: "Planning",
+        approval: "Required",
+        result: "Plan requested",
+        messages: [
+          user("@Jaws @deploy create a Datadog HTTP synthetic for app-jaws-api, route alerts to JAWS, test the webhook, create the ServiceNow incident, and report results."),
+          agent("JAWS Deploy", "@deploy", "I can prepare this as a governed execution plan. Target: app-jaws-api. Proposed object: Datadog HTTP synthetic against https://app-jaws-api.azurewebsites.net/health. Notification path: @webhook-jaws-datadog-webhook. Test objective: prove Datadog -> JAWS webhook -> ServiceNow incident creation."),
+          agent("JAWS Deploy", "@deploy", "Execution requires governance approval because it creates an external Datadog object and intentionally triggers an incident workflow.")
+        ],
+        evidence: [
+          ["Target resolved", "app-jaws-api maps to Microsoft.Web/sites in rg-jaws-demo."],
+          ["Execution boundary", "Datadog create and ServiceNow incident creation are write-capable actions."]
+        ]
+      },
+      {
+        title: "Build execution plan",
+        state: "Plan",
+        subtitle: "JAWS composes the exact steps, rollback, and test criteria before anything changes.",
+        mode: "Plan ready",
+        approval: "Required",
+        result: "Awaiting approval",
+        messages: [
+          agent("JAWS Deploy", "@deploy", "Execution plan: 1. Verify Datadog API credentials and webhook. 2. Create HTTP synthetic for /health. 3. Attach @webhook-jaws-datadog-webhook notification. 4. Run a synthetic test. 5. Submit controlled alert payload to the JAWS webhook. 6. Verify ServiceNow incident. 7. Attach results to the session ledger."),
+          agent("JAWS Governance", "@governance", "Risk: Medium. The synthetic is safe, but creating external monitoring objects and intentionally generating an incident requires human approval, audit, and an approval reference."),
+          agent("JAWS Deploy", "@deploy", "Rollback: delete the synthetic test by Datadog public_id and close the generated ServiceNow incident with a demo closure note.")
+        ],
+        evidence: [
+          ["Datadog readiness", "Webhook name and canonical JAWS endpoint are known."],
+          ["Rollback defined", "Delete synthetic and close demo incident if validation fails."]
+        ]
+      },
+      {
+        title: "Approve execution",
+        state: "Approval",
+        subtitle: "Governance produces a durable approval reference for the execution tool.",
+        mode: "Approved",
+        approval: "APP-2026-0624-0942",
+        result: "Execution unlocked",
+        messages: [
+          user("@Jaws @governance approve the Datadog synthetic creation and webhook test for app-jaws-api."),
+          agent("JAWS Governance", "@governance", "Approved with reference APP-2026-0624-0942. Scope: app-jaws-api only. Allowed actions: create one Datadog HTTP synthetic, run one validation test, send one controlled webhook test payload, create or update one ServiceNow incident, report evidence."),
+          agent("JAWS Governance", "@governance", "Not approved: broad monitor creation, remediation, production traffic disruption, deleting existing Datadog objects, or closing unrelated ServiceNow incidents.")
+        ],
+        evidence: [
+          ["Approval record", "APP-2026-0624-0942 authorizes only the named target and test."],
+          ["Policy gate", "Write tool execution may proceed with least-privilege scope."]
+        ]
+      },
+      {
+        title: "Create Datadog test",
+        state: "Execution",
+        subtitle: "The execution tool creates the monitor/synthetic and records the object id.",
+        mode: "Executing",
+        approval: "APP-2026-0624-0942",
+        result: "Synthetic created",
+        messages: [
+          agent("JAWS Executor", "@deploy", "Datadog synthetic created. public_id: syn-jaws-app-jaws-api-001. Name: JAWS - app-jaws-api - health endpoint. Request: GET /health. Assertion: HTTP 200 within 3000 ms. Notification: @webhook-jaws-datadog-webhook."),
+          agent("JAWS Executor", "@deploy", "I verified the synthetic configuration and confirmed the webhook reference is present in the Datadog message body.")
+        ],
+        evidence: [
+          ["Datadog synthetic", "public_id syn-jaws-app-jaws-api-001 created with health endpoint assertion."],
+          ["Webhook binding", "Synthetic notification includes @webhook-jaws-datadog-webhook."]
+        ]
+      },
+      {
+        title: "Run webhook test",
+        state: "Validation",
+        subtitle: "JAWS proves the alert path works from Datadog into the JAWS webhook.",
+        mode: "Testing",
+        approval: "APP-2026-0624-0942",
+        result: "Webhook passed",
+        messages: [
+          agent("JAWS Validator", "@support", "Synthetic test run completed. Datadog reported PASS for /health with HTTP 200 and response time 184 ms."),
+          agent("JAWS Validator", "@support", "Webhook validation completed. JAWS received alert payload alert_id=dd-test-20260624-0944 and monitor_id=syn-jaws-app-jaws-api-001. Signature and endpoint checks passed."),
+          agent("JAWS Support", "@support", "The test payload is marked controlled-demo=true so downstream systems can identify it as a validation incident.")
+        ],
+        evidence: [
+          ["Synthetic run", "HTTP 200 returned in 184 ms."],
+          ["Webhook receipt", "JAWS /v2/incidents/datadog accepted alert_id dd-test-20260624-0944."],
+          ["Security check", "Payload matched the expected webhook route and validation policy."]
+        ]
+      },
+      {
+        title: "Create SNOW incident",
+        state: "Incident",
+        subtitle: "The workflow creates a ServiceNow incident and attaches agent reasoning.",
+        mode: "Incident created",
+        approval: "APP-2026-0624-0942",
+        result: "INC0010092",
+        messages: [
+          agent("JAWS ServiceNow", "@support", "ServiceNow incident created: INC0010092. Short description: Controlled Datadog synthetic validation for app-jaws-api."),
+          agent("JAWS ServiceNow", "@support", "I attached the agent operational reasoning trace, Datadog synthetic id, webhook payload id, target resource id, and validation results to the incident work notes."),
+          agent("JAWS Support", "@support", "CMDB correlation: app-jaws-api matched the app service CI with high confidence.")
+        ],
+        evidence: [
+          ["ServiceNow incident", "INC0010092 created with controlled-demo marker."],
+          ["CMDB correlation", "app-jaws-api matched the ServiceNow CMDB CI."],
+          ["Work notes", "Operational reasoning trace attached to the incident."]
+        ]
+      },
+      {
+        title: "Report results",
+        state: "Complete",
+        subtitle: "JAWS reports pass/fail outcomes, links, ids, evidence, and next steps.",
+        mode: "Complete",
+        approval: "APP-2026-0624-0942",
+        result: "PASS",
+        messages: [
+          agent("JAWS Deploy", "@deploy", "Completed. Datadog synthetic creation: PASS. Datadog webhook binding: PASS. Synthetic test execution: PASS. JAWS webhook receipt: PASS. ServiceNow incident creation: PASS. CMDB correlation: PASS."),
+          agent("JAWS Deploy", "@deploy", "Artifacts: Datadog public_id syn-jaws-app-jaws-api-001; webhook jaws-datadog-webhook; alert_id dd-test-20260624-0944; ServiceNow incident INC0010092; approval APP-2026-0624-0942."),
+          agent("JAWS Governance", "@governance", "No remediation was performed. The only approved write actions were the Datadog synthetic creation, validation payload, and the controlled ServiceNow incident record.")
+        ],
+        evidence: [
+          ["Final result", "All validation checks passed."],
+          ["Audit", "Approval, tool calls, evidence, and incident are linked in the session ledger."],
+          ["Next action", "Promote this pattern into a reusable monitored-resource onboarding workflow."]
+        ]
+      }
+    ];
+
+    let current = 0;
+
+    function user(text) {
+      return { role: "user", name: "User", tag: "Teams", text };
+    }
+
+    function agent(name, tag, text) {
+      return { role: "agent", name, tag, text };
+    }
+
+    function renderSteps() {
+      const container = document.getElementById("steps");
+      container.innerHTML = "";
+      steps.forEach((step, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `step-button${index === current ? " active" : ""}`;
+        button.innerHTML = `
+          <span class="step-index">${index + 1}</span>
+          <span class="step-title">${step.title}</span>
+          <span class="step-state">${index < current ? "Done" : index === current ? "Now" : "Next"}</span>
+        `;
+        button.addEventListener("click", () => {
+          current = index;
+          render();
+        });
+        container.appendChild(button);
+      });
+    }
+
+    function renderConversation() {
+      const container = document.getElementById("conversation");
+      container.innerHTML = "";
+      const visible = steps.slice(0, current + 1).flatMap(step => step.messages);
+      visible.forEach(message => {
+        const wrapper = document.createElement("article");
+        wrapper.className = `message ${message.role}`;
+        const avatar = document.createElement("div");
+        avatar.className = "avatar";
+        avatar.textContent = message.role === "user" ? "YOU" : initials(message.name);
+        const bubble = document.createElement("div");
+        bubble.className = "bubble";
+        bubble.innerHTML = `
+          <div class="agent-name">${message.name}<span class="agent-tag">${message.tag}</span></div>
+          <p>${escapeHtml(message.text)}</p>
+        `;
+        if (message.role === "user") {
+          wrapper.appendChild(bubble);
+          wrapper.appendChild(avatar);
+        } else {
+          wrapper.appendChild(avatar);
+          wrapper.appendChild(bubble);
+        }
+        container.appendChild(wrapper);
+      });
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function renderEvidence() {
+      const step = steps[current];
+      const evidence = steps.slice(0, current + 1).flatMap(item => item.evidence);
+      const list = document.getElementById("evidence-list");
+      list.innerHTML = "";
+      evidence.slice(-8).forEach(([title, detail]) => {
+        const li = document.createElement("li");
+        li.innerHTML = `<strong>${escapeHtml(title)}</strong>${escapeHtml(detail)}`;
+        list.appendChild(li);
+      });
+
+      document.getElementById("evidence-count").innerHTML = `<span class="dot green"></span>${evidence.length} items`;
+      document.getElementById("mode-metric").textContent = step.mode;
+      document.getElementById("approval-metric").textContent = step.approval;
+      document.getElementById("result-metric").textContent = step.result;
+
+      const statePill = document.getElementById("state-pill");
+      const stateClass = current >= 7 ? "green" : current >= 4 ? "blue" : "amber";
+      statePill.innerHTML = `<span class="dot ${stateClass}"></span>${step.state}`;
+    }
+
+    function renderSnow() {
+      const container = document.getElementById("snow-panel");
+      const available = current >= 6;
+      if (!available) {
+        container.innerHTML = `
+          <ul class="evidence-list">
+            <li><strong>Status</strong>Incident will appear after the controlled webhook test reaches the ServiceNow workflow.</li>
+            <li><strong>Reasoning</strong>JAWS will attach operational reasoning only after it has Datadog, Azure, webhook, and CMDB evidence.</li>
+          </ul>
+        `;
+        return;
+      }
+
+      container.innerHTML = `
+        <div class="snow-ticket">
+          <h4>INC0010092</h4>
+          <p style="margin:0; font-size:13px; line-height:1.4;">Controlled Datadog synthetic validation for app-jaws-api.</p>
+          <div class="field-grid">
+            <span>State</span><span>New</span>
+            <span>Severity</span><span>3 - Moderate</span>
+            <span>CI</span><span>app-jaws-api</span>
+            <span>Source</span><span>Datadog webhook</span>
+            <span>Approval</span><span>APP-2026-0624-0942</span>
+          </div>
+        </div>
+        <div class="reasoning">
+          <div class="reasoning-row"><strong>Observe</strong><span>Datadog synthetic returned HTTP 200 from /health and then sent a controlled validation alert.</span></div>
+          <div class="reasoning-row"><strong>Correlate</strong><span>JAWS matched app-jaws-api to the Azure resource and ServiceNow CMDB CI.</span></div>
+          <div class="reasoning-row"><strong>Decide</strong><span>No outage remediation required. This is validation evidence for monitor onboarding.</span></div>
+          <div class="reasoning-row"><strong>Record</strong><span>Incident contains synthetic id, webhook payload id, approval reference, and pass/fail evidence.</span></div>
+        </div>
+      `;
+    }
+
+    function renderHeader() {
+      const step = steps[current];
+      document.getElementById("stage-title").textContent = `${current + 1}. ${step.title}`;
+      document.getElementById("stage-subtitle").textContent = step.subtitle;
+      document.getElementById("back").disabled = current === 0;
+      document.getElementById("next").textContent = current === steps.length - 1 ? "Finish" : "Next";
+    }
+
+    function render() {
+      renderSteps();
+      renderHeader();
+      renderConversation();
+      renderEvidence();
+      renderSnow();
+    }
+
+    function initials(name) {
+      return name
+        .split(/\s+/)
+        .map(part => part[0])
+        .join("")
+        .slice(0, 3)
+        .toUpperCase();
+    }
+
+    function escapeHtml(value) {
+      return value
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    document.getElementById("next").addEventListener("click", () => {
+      current = Math.min(steps.length - 1, current + 1);
+      render();
+    });
+
+    document.getElementById("back").addEventListener("click", () => {
+      current = Math.max(0, current - 1);
+      render();
+    });
+
+    document.getElementById("reset").addEventListener("click", () => {
+      current = 0;
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>
+

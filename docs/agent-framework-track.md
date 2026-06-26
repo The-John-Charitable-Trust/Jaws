@@ -42,20 +42,39 @@ Planned deliverables:
 
 ## Step 4: Add Tools
 
-Status: Pending Step 3 completion.
+Status: Released as `v0.4`.
+
+Planned deliverables:
+
+- Demo-scoped Azure, Datadog, ServiceNow, and JAWS extensibility tools registered behind MCP
+- Read/write tool classification retained from the secured MCP boundary
+- Role-agent allowed tools aligned with the MCP registry
+- JSON job-description extensibility explained and validated
+- Write-capable Datadog and ServiceNow tools registered but blocked until workflow approval
+- Step 4 tutorial and expected results
+- Step 4 test cases
 
 ## Step 5: Multi-turn
 
-Status: Pending Step 4 completion.
+Status: Pending release `v0.5`.
 
 ## Step 6: Memory / External Knowledge
 
-Status: Pending Step 5 completion.
+Status: Pending release `v0.6`.
 
 ## Step 7: Workflows
 
-Status: Pending Step 6 completion.
+Status: Pending release `v0.7`.
 
 ## Step 8: Host Your Agent
 
-Status: Pending Step 7 completion.
+Status: Pending release `v0.8`.
+
+## Step 9: Teams App Integration
+
+Status: Pending release `v0.9`.
+
+## Step 10: End-To-End JAWS Operations Scenario
+
+Status: Pending release `v1.0`.
+

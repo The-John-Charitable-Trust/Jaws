@@ -421,6 +421,8 @@
         <a href="#step-6">Step 6: Memory and Persistence</a>
         <a href="#step-7">Step 7: Workflows</a>
         <a href="#step-8">Step 8: Host Your Agent</a>
+        <a href="#step-9">Step 9: Teams App Integration</a>
+        <a href="#step-10">Step 10: End-To-End JAWS Operations Scenario</a>
         <a href="#sources">Sources</a>
       </nav>
     </aside>
@@ -436,7 +438,7 @@
 
         <p>JAWS uses the Microsoft Agent Framework tutorial as scaffolding for a real operational scenario. Rather than treating the Microsoft tutorial as a set of isolated code samples, this tutorial incrementally builds an agentic operations platform that can inspect Azure resources, recommend Datadog monitors or synthetic tests, use a hardened custom MCP server, validate alert delivery through an approved webhook contract, and create a ServiceNow incident with evidence and operational reasoning.</p>
 
-        <p>The goal is to show how each Microsoft Agent Framework concept becomes part of a working enterprise architecture. Step 1 begins with the first agent. Step 2 adds the custom MCP server that becomes the controlled tool boundary. Step 3 secures that MCP boundary. Step 4 adds tools on top of the secured foundation. Later steps introduce multi-turn conversation state, memory, workflows, hosting, deployment, and operational governance. Each section explains the concept, shows the implementation, and defines test cases with expected results.</p>
+        <p>The goal is to show how each Microsoft Agent Framework concept becomes part of a working enterprise architecture. Step 1 begins with the first agent. Step 2 adds the custom MCP server that becomes the controlled tool boundary. Step 3 secures that MCP boundary. Step 4 adds tools on top of the secured foundation. Later steps introduce multi-turn conversation state, memory, workflows, hosting, Teams integration, and the end-to-end JAWS operations scenario. Each section explains the concept, shows the implementation, and defines test cases with expected results.</p>
 
         <p>The value to the reader is practical and cumulative. By following the tutorial, you are not only learning how to call an LLM from C#. You are learning how to assemble agents, tools, MCP boundaries, memory, SaaS integrations, Azure deployment assets, and verification tests into a platform that can be deployed into your own Azure environment. The tutorial is designed for architects, developers, and platform engineers who need to understand both the code and the operational decisions behind it.</p>
 
@@ -459,7 +461,7 @@
         </ul>
 
         <h3>Release-Aligned Learning Path</h3>
-        <p>Each GitHub release corresponds to a JAWS tutorial phase. The source code grows alongside the Microsoft Agent Framework concepts and adds required platform architecture where needed: first agent, MCP boundary, MCP hardening, tools, conversations, memory, workflows, hosting, and the final JAWS operations scenario. This lets the reader compare a small working codebase at each release instead of jumping directly to the finished platform.</p>
+        <p>Each GitHub release corresponds to a JAWS tutorial phase. The source code grows alongside the Microsoft Agent Framework concepts and adds required platform architecture where needed: first agent, MCP boundary, MCP hardening, tools, conversations, memory, workflows, hosting, Teams integration, and the final JAWS operations scenario. This lets the reader compare a small working codebase at each release instead of jumping directly to the finished platform.</p>
 
         <h2 id="how-to-follow">How To Follow The Tutorial</h2>
         <p>Work from a local copy of the JAWS GitHub repository. Clone the repository once, open the repository root in Visual Studio Code, then move through the tutorial by checking out the release tag for each phase. Each release is a working snapshot with its own source code, configuration expectations, tests, and expected results.</p>
@@ -1085,10 +1087,201 @@ Summary: 14/14 passed.</code></pre>
         <p>Step 3 proves the MCP boundary has local security controls before external provider tools are attached. It still does not create Datadog monitors, ServiceNow incidents, or Azure changes. Those come after the secured boundary, starting with Step 4.</p>
 
         <h2 id="step-4">Step 4: Add Tools</h2>
-        <p>This release adds Agent Framework tool calling on top of the secured MCP foundation. The C# snippets reference the source files that define function tools, MCP-backed tool adapters, tool registration, and agent-specific tool assignment, including <code>ToolRegistry.cs</code> and <code>AgentToolFactory.cs</code>.</p>
-        <p>This step focuses on how tools become available to agents, how tool descriptions shape model selection, and how JAWS keeps local function tools, custom MCP tools, and future Azure MCP Server tools behind explicit contracts. The extensibility framework introduced by the MCP sections remains the governing pattern for adding additional tools after deployment.</p>
+        <p>Release <code>0.4</code> adds the first operational tool surface on top of the secured MCP foundation. Microsoft Agent Framework introduces tools as callable functions that an agent can use when the model decides a tool is relevant. JAWS applies that idea through the hardened MCP boundary from Steps 2 and 3, so provider tools are registered, described, schema-constrained, and classified before any agent can use them.</p>
+        <p>If the reader already cloned release <code>0.3</code>, release <code>0.4</code> does not require a new clone. Fetch the latest tags and check out the next release in the same local repository:</p>
+        <div class="code-block">
+          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-command">git</span> fetch <span class="token-param">--tags</span>
+<span class="token-command">git</span> checkout v0.4
+<span class="token-command">git</span> describe <span class="token-param">--tags</span> <span class="token-param">--exact-match</span></code></pre>
+        </div>
+        <p>The final command should return <code>v0.4</code>. Step 4 has its own expected-result checks. Earlier Step 2 and Step 3 release checks intentionally look for earlier MCP release values and should not be reused against this release.</p>
 
-        <h2 id="step-5">Step 5: Multi-Turn Conversations</h2>
+        <h3>Why Tools Are Added Here</h3>
+        <p>The Microsoft Add Tools tutorial shows the smallest possible pattern: define a callable function with a description and give it to an agent as a tool. JAWS keeps the same principle but applies it to an operations platform. The tool description, input schema, read/write classification, and approved handler are all registered behind the custom MCP server before the tool becomes available to an agent.</p>
+        <p>The local code tutorial uses the custom MCP server as the tool registry and execution boundary. The future hosted deployment package will use the hosted MCP pattern, where a hosted agent connects to a remote MCP server URL with approved tools and approval settings. That keeps local learning simple while preserving the production direction.</p>
+
+        <h3>Tutorial Scope And Future Tool Scope</h3>
+        <p>The core tools in this release are the tools required by the final tutorial scenario in Step 10: Azure evidence, Datadog coverage recommendation, ServiceNow CMDB context, JAWS extensibility metadata, and the write-capable Datadog and ServiceNow tools that will later be unlocked by workflow approval. Step 4 does not create Datadog monitors, send webhook notifications, or create ServiceNow incidents. It proves that the tool contracts exist, are visible through MCP, can return demo evidence, and still deny write-capable execution until a later approval workflow enables it.</p>
+        <p>The same extensibility pattern can later add tools for Azure MCP Server, Security Copilot, Microsoft Defender, Microsoft Sentinel, Azure AI Content Safety, Azure Policy remediation, customer runbooks, and customer-owned SaaS integrations. Those tools are future-state examples in this tutorial, not part of the Step 4 local validation surface.</p>
+
+        <h3>Referenced Files</h3>
+        <table>
+          <thead><tr><th>File</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><code>src/Jaws.AgentFramework/Mcp/JawsMcpToolRegistry.cs</code></td><td>Registers the Step 4 demo-scoped tools behind the hardened MCP boundary.</td></tr>
+            <tr><td><code>src/Jaws.AgentFramework/Mcp/JawsMcpTool.cs</code></td><td>Defines the common MCP tool contract: name, description, schema, read/write classification, and handler.</td></tr>
+            <tr><td><code>src/Jaws.AgentFramework/Mcp/JawsMcpServer.cs</code></td><td>Lists tools, dispatches calls, validates arguments, and denies write-capable tools when writes are disabled.</td></tr>
+            <tr><td><code>src/Jaws.AgentFramework/Agents/SupportAgent.cs</code></td><td>Allows read-only investigation and recommendation tools.</td></tr>
+            <tr><td><code>src/Jaws.AgentFramework/Agents/GovernanceAgent.cs</code></td><td>Allows policy and extensibility tools for approval reasoning.</td></tr>
+            <tr><td><code>src/Jaws.AgentFramework/Agents/DeployAgent.cs</code></td><td>Declares the Datadog and ServiceNow write tools that require approval.</td></tr>
+            <tr><td><code>src/Jaws.AgentFramework/Agents/WorkflowAgent.cs</code></td><td>Declares the read tools used to coordinate recommendation, approval, execution, and evidence.</td></tr>
+            <tr><td><code>docs/examples/deploy.datadog.synthetic.job-description.json</code></td><td>Shows the JSON job-description shape used to make future agent roles and tool assignments configurable.</td></tr>
+            <tr><td><code>tests/Jaws.FirstAgent.Tests/Program.cs</code></td><td>Contains the Step 4 tool registration, role alignment, and MCP call validation tests.</td></tr>
+            <tr><td><code>docs/step-4-test-cases.md</code></td><td>Lists the Step 4 test cases and expected results.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Core Tool Inventory</h3>
+        <table>
+          <thead><tr><th>Tool</th><th>Provider</th><th>Read/Write</th><th>Purpose In The Tutorial Demo</th></tr></thead>
+          <tbody>
+            <tr><td><code>azure.resource.inventory</code></td><td>Azure</td><td>Read</td><td>Returns candidate Azure resources that may need Datadog coverage.</td></tr>
+            <tr><td><code>azure.policy.evidence</code></td><td>Azure Policy</td><td>Read</td><td>Returns policy evidence used by governance reasoning.</td></tr>
+            <tr><td><code>azure.monitor.evidence</code></td><td>Azure Monitor</td><td>Read</td><td>Returns operational signals used by support investigation.</td></tr>
+            <tr><td><code>datadog.coverage.recommend</code></td><td>Datadog</td><td>Read</td><td>Recommends monitor or synthetic coverage for an Azure resource.</td></tr>
+            <tr><td><code>servicenow.cmdb.lookup</code></td><td>ServiceNow</td><td>Read</td><td>Returns service ownership and CMDB context for the affected resource.</td></tr>
+            <tr><td><code>jaws.tool.extensibility</code></td><td>JAWS</td><td>Read</td><td>Explains how JSON job descriptions map future agents to approved MCP tools.</td></tr>
+            <tr><td><code>datadog.synthetic.create</code></td><td>Datadog</td><td>Write</td><td>Future workflow tool for creating the approved Datadog synthetic.</td></tr>
+            <tr><td><code>datadog.webhook.test</code></td><td>Datadog</td><td>Write</td><td>Future workflow tool for sending a controlled webhook test notification.</td></tr>
+            <tr><td><code>servicenow.incident.createOrUpdate</code></td><td>ServiceNow</td><td>Write</td><td>Future workflow tool for recording incident evidence after validation.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>C# Tool Registration</h3>
+        <p>The registry is the local source of truth for the tutorial tool surface. A tool is not available to an agent just because a provider exists; it must be registered with a stable name, description, schema, read/write classification, and handler.</p>
+        <div class="code-block">
+          <div class="code-header"><span>C# - src/Jaws.AgentFramework/Mcp/JawsMcpToolRegistry.cs</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-keyword">new</span> JawsMcpTool(
+    Name: <span class="token-string">"datadog.coverage.recommend"</span>,
+    Description: <span class="token-string">"Recommends Datadog monitor or synthetic coverage for an Azure resource."</span>,
+    InputSchema: ObjectSchema(
+        (<span class="token-string">"resourceName"</span>, <span class="token-string">"Azure resource name to evaluate."</span>),
+        (<span class="token-string">"resourceType"</span>, <span class="token-string">"Azure resource type."</span>)),
+    IsWriteTool: <span class="token-keyword">false</span>,
+    Invoke: arguments =&gt; <span class="token-keyword">new</span> JsonObject
+    {
+        [<span class="token-string">"status"</span>] = <span class="token-string">"ok"</span>,
+        [<span class="token-string">"provider"</span>] = <span class="token-string">"Datadog"</span>,
+        [<span class="token-string">"resourceName"</span>] = ReadString(arguments, <span class="token-string">"resourceName"</span>) ?? <span class="token-string">"app-jaws-api"</span>,
+        [<span class="token-string">"recommendation"</span>] = <span class="token-string">"Create an HTTP synthetic for the public health endpoint and monitors for availability, 5xx rate, latency, and dependency failures."</span>,
+        [<span class="token-string">"requiresApprovalBeforeCreate"</span>] = <span class="token-keyword">true</span>,
+        [<span class="token-string">"nextWriteTools"</span>] = <span class="token-keyword">new</span> JsonArray(<span class="token-string">"datadog.synthetic.create"</span>, <span class="token-string">"datadog.webhook.test"</span>)
+    })</code></pre>
+        </div>
+
+        <h3>C# Agent Tool Assignment</h3>
+        <p>The job descriptions decide which tools each role is allowed to use. The support agent gets read-only investigation and recommendation tools. The deploy agent declares write-capable tools, but those calls remain blocked by MCP until the workflow approval step enables execution.</p>
+        <div class="code-block">
+          <div class="code-header"><span>C# - src/Jaws.AgentFramework/Agents/SupportAgent.cs</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code>AllowedTools: <span class="token-keyword">new</span>[]
+{
+    <span class="token-string">"azure.resource.inventory"</span>,
+    <span class="token-string">"azure.monitor.evidence"</span>,
+    <span class="token-string">"datadog.coverage.recommend"</span>,
+    <span class="token-string">"servicenow.cmdb.lookup"</span>
+}</code></pre>
+        </div>
+
+        <h3>JSON Job Description Extensibility</h3>
+        <p>Tool extensibility is configuration-driven. A future agent role can be described by JSON, reviewed by a platform owner, and loaded after installation. The agent still cannot call arbitrary tools: each requested tool must match an approved MCP registry entry.</p>
+        <div class="code-block">
+          <div class="code-header"><span>JSON - docs/examples/deploy.datadog.synthetic.job-description.json</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code>{
+  <span class="token-string">"id"</span>: <span class="token-string">"deploy.datadog.synthetic"</span>,
+  <span class="token-string">"displayName"</span>: <span class="token-string">"Datadog Synthetic Deploy Agent"</span>,
+  <span class="token-string">"role"</span>: <span class="token-string">"deploy"</span>,
+  <span class="token-string">"allowedTools"</span>: [
+    <span class="token-string">"azure.resource.inventory"</span>,
+    <span class="token-string">"datadog.synthetic.create"</span>,
+    <span class="token-string">"datadog.webhook.test"</span>,
+    <span class="token-string">"servicenow.incident.createOrUpdate"</span>
+  ],
+  <span class="token-string">"requiresApproval"</span>: <span class="token-keyword">true</span>
+}</code></pre>
+        </div>
+
+        <h3>Python Equivalent Concept</h3>
+        <p>The Python idea is the same: declare a tool with a description, keep the tool name stable, and enforce approval outside the prompt before write-capable execution. The C# implementation is the maintained source for this tutorial.</p>
+        <div class="code-block">
+          <div class="code-header"><span>Python - conceptual equivalent</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-keyword">from</span> agent_framework <span class="token-keyword">import</span> tool
+
+<span class="token-comment"># Read-only recommendation tool. Write tools would require approval.</span>
+<span class="token-decorator">@tool</span>
+<span class="token-keyword">def</span> datadog_coverage_recommend(resource_name: str, resource_type: str) -&gt; dict:
+    <span class="token-keyword">return</span> {
+        <span class="token-string">"provider"</span>: <span class="token-string">"Datadog"</span>,
+        <span class="token-string">"resourceName"</span>: resource_name,
+        <span class="token-string">"requiresApprovalBeforeCreate"</span>: <span class="token-keyword">True</span>,
+        <span class="token-string">"nextWriteTools"</span>: [<span class="token-string">"datadog.synthetic.create"</span>, <span class="token-string">"datadog.webhook.test"</span>]
+    }</code></pre>
+        </div>
+
+        <h3>Step 4 Local Validation</h3>
+        <p>Build the solution and run the release-aligned tests:</p>
+        <div class="code-block">
+          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-command">dotnet</span> build Jaws.slnx <span class="token-param">-c</span> Release
+
+<span class="token-command">dotnet</span> run <span class="token-param">--project</span> tests\Jaws.FirstAgent.Tests\Jaws.FirstAgent.Tests.csproj</code></pre>
+        </div>
+        <p>The test runner should include these Step 4 tool passes:</p>
+        <div class="code-block">
+          <div class="code-header"><span>Expected test output excerpt</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code>PASS: MCP registry exposes core demo tools
+PASS: Role agent allowed tools exist in MCP registry
+PASS: MCP server calls Azure inventory tool
+PASS: MCP server calls Datadog recommendation tool
+PASS: MCP write tools remain approval gated
+PASS: MCP tool extensibility describes job descriptions
+
+Summary: 20/20 passed.</code></pre>
+        </div>
+
+        <h3>Step 4 Live Tool Probe</h3>
+        <p>Start the local API and leave it running. If a previous tutorial API is already running from an earlier release, stop that terminal first so the new build can update its local binaries.</p>
+        <div class="code-block">
+          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-command">dotnet</span> run <span class="token-param">--project</span> src\Jaws.Api\Jaws.Api.csproj <span class="token-param">--launch-profile</span> http</code></pre>
+        </div>
+        <p>Open a second terminal and run objective probes against the local MCP endpoint:</p>
+        <div class="code-block">
+          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-variable">$list</span> = <span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Post <span class="token-param">-Uri</span> <span class="token-string">"http://localhost:5124/mcp"</span> `
+  <span class="token-param">-ContentType</span> <span class="token-string">"application/json"</span> `
+  <span class="token-param">-Body</span> <span class="token-string">'{ "jsonrpc": "2.0", "id": 20, "method": "tools/list" }'</span>
+
+<span class="token-variable">$status</span> = <span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Post <span class="token-param">-Uri</span> <span class="token-string">"http://localhost:5124/mcp"</span> `
+  <span class="token-param">-ContentType</span> <span class="token-string">"application/json"</span> `
+  <span class="token-param">-Body</span> <span class="token-string">'{ "jsonrpc": "2.0", "id": 21, "method": "tools/call", "params": { "name": "jaws_mcp_status", "arguments": {} } }'</span>
+
+<span class="token-variable">$azure</span> = <span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Post <span class="token-param">-Uri</span> <span class="token-string">"http://localhost:5124/mcp"</span> `
+  <span class="token-param">-ContentType</span> <span class="token-string">"application/json"</span> `
+  <span class="token-param">-Body</span> <span class="token-string">'{ "jsonrpc": "2.0", "id": 22, "method": "tools/call", "params": { "name": "azure.resource.inventory", "arguments": { "scope": "rg-jaws-demo" } } }'</span>
+
+<span class="token-variable">$datadog</span> = <span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Post <span class="token-param">-Uri</span> <span class="token-string">"http://localhost:5124/mcp"</span> `
+  <span class="token-param">-ContentType</span> <span class="token-string">"application/json"</span> `
+  <span class="token-param">-Body</span> <span class="token-string">'{ "jsonrpc": "2.0", "id": 23, "method": "tools/call", "params": { "name": "datadog.coverage.recommend", "arguments": { "resourceName": "app-jaws-api", "resourceType": "Microsoft.Web/sites" } } }'</span>
+
+<span class="token-variable">$writeGate</span> = <span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Post <span class="token-param">-Uri</span> <span class="token-string">"http://localhost:5124/mcp"</span> `
+  <span class="token-param">-ContentType</span> <span class="token-string">"application/json"</span> `
+  <span class="token-param">-Body</span> <span class="token-string">'{ "jsonrpc": "2.0", "id": 24, "method": "tools/call", "params": { "name": "datadog.synthetic.create", "arguments": { "resourceName": "app-jaws-api", "approvalReference": "APP-20260626-app-jaws-api" } } }'</span>
+
+<span class="token-variable">$extensibility</span> = <span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Post <span class="token-param">-Uri</span> <span class="token-string">"http://localhost:5124/mcp"</span> `
+  <span class="token-param">-ContentType</span> <span class="token-string">"application/json"</span> `
+  <span class="token-param">-Body</span> <span class="token-string">'{ "jsonrpc": "2.0", "id": 25, "method": "tools/call", "params": { "name": "jaws.tool.extensibility", "arguments": { "agentRole": "deploy" } } }'</span>
+
+<span class="token-variable">$toolNames</span> = @(<span class="token-variable">$list</span>.result.tools.name)
+
+[pscustomobject]@{
+  ToolListPass = <span class="token-variable">$toolNames</span> <span class="token-operator">-contains</span> <span class="token-string">"azure.resource.inventory"</span> <span class="token-operator">-and</span> <span class="token-variable">$toolNames</span> <span class="token-operator">-contains</span> <span class="token-string">"datadog.coverage.recommend"</span> <span class="token-operator">-and</span> <span class="token-variable">$toolNames</span> <span class="token-operator">-contains</span> <span class="token-string">"servicenow.incident.createOrUpdate"</span>
+  StatusPass = <span class="token-variable">$status</span>.result.structuredContent.release <span class="token-operator">-eq</span> <span class="token-string">"0.4"</span> <span class="token-operator">-and</span> <span class="token-variable">$status</span>.result.structuredContent.toolScope <span class="token-operator">-eq</span> <span class="token-string">"tutorial-demo"</span>
+  AzureToolPass = <span class="token-variable">$azure</span>.result.structuredContent.provider <span class="token-operator">-eq</span> <span class="token-string">"Azure"</span> <span class="token-operator">-and</span> @(<span class="token-variable">$azure</span>.result.structuredContent.resources).Count <span class="token-operator">-gt</span> 0
+  DatadogToolPass = <span class="token-variable">$datadog</span>.result.structuredContent.provider <span class="token-operator">-eq</span> <span class="token-string">"Datadog"</span> <span class="token-operator">-and</span> <span class="token-variable">$datadog</span>.result.structuredContent.requiresApprovalBeforeCreate <span class="token-operator">-eq</span> <span class="token-variable">$true</span>
+  WriteGatePass = <span class="token-variable">$writeGate</span>.error.code <span class="token-operator">-eq</span> -32050 <span class="token-operator">-and</span> <span class="token-variable">$writeGate</span>.error.message <span class="token-operator">-eq</span> <span class="token-string">"Write-capable MCP tool denied."</span>
+  ExtensibilityPass = <span class="token-variable">$extensibility</span>.result.structuredContent.provider <span class="token-operator">-eq</span> <span class="token-string">"JAWS"</span> <span class="token-operator">-and</span> <span class="token-variable">$extensibility</span>.result.structuredContent.extensibilityModel <span class="token-operator">-match</span> <span class="token-string">"job description"</span>
+}</code></pre>
+        </div>
+        <p>Expected output:</p>
+        <div class="code-block">
+          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code>ToolListPass StatusPass AzureToolPass DatadogToolPass WriteGatePass ExtensibilityPass
+------------ ---------- ------------- ---------------- ------------- -----------------
+        True       True          True             True          True              True</code></pre>
+        </div>
+        <p>Step 4 proves that tools are registered, discoverable, callable for read-only evidence, aligned with agent job descriptions, and still governed by the MCP write boundary. The next step adds multi-turn conversation state so the user can ask follow-up questions without restating the whole operational context.</p>
+<h2 id="step-5">Step 5: Multi-Turn Conversations</h2>
         <p>This release adds session continuity for Teams and API conversations. The C# snippets reference the conversation/session files that keep role-agent context connected across turns.</p>
 
         <h2 id="step-6">Step 6: Memory and Persistence</h2>
@@ -1099,6 +1292,12 @@ Summary: 14/14 passed.</code></pre>
 
         <h2 id="step-8">Step 8: Host Your Agent</h2>
         <p>This release completes hosting, deployment, and production-readiness guidance.</p>
+
+        <h2 id="step-9">Step 9: Teams App Integration</h2>
+        <p>This release adds the Teams app surface so users can message JAWS and its role agents from Microsoft Teams. The section will cover Teams manifest packaging, bot/API routing, user authorization, message normalization, and Teams-friendly responses.</p>
+
+        <h2 id="step-10">Step 10: End-To-End JAWS Operations Scenario</h2>
+        <p>This release brings the tutorial demo together: the user asks JAWS which Azure resources need Datadog coverage, reviews the recommendation, approves the change, creates and tests the Datadog monitor or synthetic and webhook path, and receives ServiceNow incident evidence with links and pass/fail results.</p>
 
         <h2 id="sources">Sources</h2>
         <ul class="source-list">
@@ -1193,6 +1392,10 @@ Summary: 14/14 passed.</code></pre>
   </script>
 </body>
 </html>
+
+
+
+
 
 
 

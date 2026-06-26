@@ -12,7 +12,11 @@ public static class GovernanceAgent
         DisplayName: "JAWS Governance Agent",
         Role: AgentRole.Governance,
         Instructions: "Evaluate policy, compliance, approval, and evidence requirements before any external write action is allowed.",
-        AllowedTools: Array.Empty<string>(),
+        AllowedTools: new[]
+        {
+            "azure.policy.evidence",
+            "jaws.tool.extensibility"
+        },
         RequiresApproval: false,
         ApprovalPolicy: new ApprovalPolicy(null, Array.Empty<string>()),
         EvidencePolicy: new EvidencePolicy(

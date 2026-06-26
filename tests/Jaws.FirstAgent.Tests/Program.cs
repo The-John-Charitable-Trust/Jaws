@@ -11,7 +11,7 @@ var tests = new List<(string Name, Action Test)>
     ("Role agent catalog includes workflow agents", RoleAgentCatalogIncludesWorkflowAgents),
     ("Deploy agent requires approval", DeployAgentRequiresApproval),
     ("Naming policy generates expected resource names", NamingPolicyGeneratesExpectedNames),
-    ("MCP registry exposes Step 2 read-only tools", McpRegistryExposesReadOnlyTools),
+    ("MCP registry exposes foundation tools", McpRegistryExposesReadOnlyTools),
     ("MCP server initializes", McpServerInitializes),
     ("MCP server lists tools", McpServerListsTools),
     ("MCP server calls status tool", McpServerCallsStatusTool),
@@ -19,7 +19,13 @@ var tests = new List<(string Name, Action Test)>
     ("MCP server rejects invalid JSON-RPC version", McpServerRejectsInvalidJsonRpcVersion),
     ("MCP server returns safe unsupported method errors", McpServerReturnsSafeUnsupportedMethodErrors),
     ("MCP server rejects undeclared tool arguments", McpServerRejectsUndeclaredToolArguments),
-    ("MCP tool metadata declares read-only annotations", McpToolMetadataDeclaresReadOnlyAnnotations)
+    ("MCP tool metadata declares read and write annotations", McpToolMetadataDeclaresReadOnlyAnnotations),
+    ("MCP registry exposes core demo tools", McpRegistryExposesCoreDemoTools),
+    ("Role agent allowed tools exist in MCP registry", RoleAgentAllowedToolsExistInRegistry),
+    ("MCP server calls Azure inventory tool", McpServerCallsAzureInventoryTool),
+    ("MCP server calls Datadog recommendation tool", McpServerCallsDatadogRecommendationTool),
+    ("MCP write tools remain approval gated", McpWriteToolsRemainApprovalGated),
+    ("MCP tool extensibility describes job descriptions", McpToolExtensibilityDescribesJobDescriptions)
 };
 
 var failures = new List<string>();
@@ -121,11 +127,11 @@ static void McpRegistryExposesReadOnlyTools()
     var registry = new JawsMcpToolRegistry();
     var toolNames = registry.Tools.Select(tool => tool.Name).ToHashSet(StringComparer.Ordinal);
 
-    AssertEqual(2, registry.Tools.Count, "Step 2 MCP tool count");
+    AssertTrue(registry.Tools.Count >= 2, "MCP registry should include foundation tools");
     AssertTrue(toolNames.Contains("jaws_mcp_status"), "MCP status tool missing");
     AssertTrue(toolNames.Contains("jaws_tool_registry"), "MCP registry tool missing");
     AssertTrue(registry.Tools.All(tool => tool.InputSchema["additionalProperties"]?.GetValue<bool>() == false),
-        "Step 2 tools should reject undeclared input properties");
+        "MCP tools should reject undeclared input properties");
 }
 
 static void McpServerInitializes()
@@ -140,7 +146,7 @@ static void McpServerInitializes()
 
     AssertEqual("2.0", response["jsonrpc"]?.GetValue<string>(), "JSON-RPC version");
     AssertEqual("jaws-custom-mcp", result?["serverInfo"]?["name"]?.GetValue<string>(), "MCP initialize server name");
-    AssertEqual("0.3", result?["serverInfo"]?["version"]?.GetValue<string>(), "MCP initialize server version");
+    AssertEqual("0.4", result?["serverInfo"]?["version"]?.GetValue<string>(), "MCP initialize server version");
 }
 
 static void McpServerListsTools()
@@ -154,7 +160,7 @@ static void McpServerListsTools()
     var tools = response["result"]?["tools"]?.AsArray();
 
     AssertEqual("2.0", response["jsonrpc"]?.GetValue<string>(), "JSON-RPC version");
-    AssertEqual(2, tools?.Count ?? 0, "listed MCP tool count");
+    AssertTrue((tools?.Count ?? 0) >= 2, "listed MCP tool count");
 }
 
 static void McpServerCallsStatusTool()
@@ -169,7 +175,7 @@ static void McpServerCallsStatusTool()
 
     AssertEqual("ok", structuredContent?["status"]?.GetValue<string>(), "MCP status");
     AssertEqual("jaws-custom-mcp", structuredContent?["server"]?.GetValue<string>(), "MCP server name");
-    AssertEqual("0.3", structuredContent?["release"]?.GetValue<string>(), "MCP release");
+    AssertEqual("0.4", structuredContent?["release"]?.GetValue<string>(), "MCP release");
     AssertEqual(false, structuredContent?["writeToolsEnabled"]?.GetValue<bool>(), "write tools flag");
     AssertEqual("hardened-local", structuredContent?["securityMode"]?.GetValue<string>(), "MCP security mode");
 }
@@ -249,13 +255,102 @@ static void McpToolMetadataDeclaresReadOnlyAnnotations()
     var tools = response["result"]?["tools"]?.AsArray();
 
     AssertTrue(tools is not null && tools.Count > 0, "MCP tools should be listed");
-    foreach (var tool in tools!)
+    var listedTools = tools!;
+    AssertTrue(listedTools.Any(tool => tool?["annotations"]?["readOnlyHint"]?.GetValue<bool>() == true),
+        "read-only tools should be annotated");
+    AssertTrue(listedTools.Any(tool => tool?["annotations"]?["destructiveHint"]?.GetValue<bool>() == true),
+        "write-capable tools should be annotated");
+}
+
+static void McpRegistryExposesCoreDemoTools()
+{
+    var registry = new JawsMcpToolRegistry();
+    var toolNames = registry.Tools.Select(tool => tool.Name).ToHashSet(StringComparer.Ordinal);
+
+    AssertTrue(toolNames.Contains("azure.resource.inventory"), "Azure inventory tool missing");
+    AssertTrue(toolNames.Contains("azure.policy.evidence"), "Azure policy evidence tool missing");
+    AssertTrue(toolNames.Contains("azure.monitor.evidence"), "Azure monitor evidence tool missing");
+    AssertTrue(toolNames.Contains("datadog.coverage.recommend"), "Datadog recommendation tool missing");
+    AssertTrue(toolNames.Contains("servicenow.cmdb.lookup"), "ServiceNow CMDB tool missing");
+    AssertTrue(toolNames.Contains("jaws.tool.extensibility"), "JAWS extensibility tool missing");
+    AssertTrue(toolNames.Contains("datadog.synthetic.create"), "Datadog create tool missing");
+    AssertTrue(toolNames.Contains("datadog.webhook.test"), "Datadog webhook test tool missing");
+    AssertTrue(toolNames.Contains("servicenow.incident.createOrUpdate"), "ServiceNow incident write tool missing");
+}
+
+static void RoleAgentAllowedToolsExistInRegistry()
+{
+    var registry = new JawsMcpToolRegistry();
+    var toolNames = registry.Tools.Select(tool => tool.Name).ToHashSet(StringComparer.Ordinal);
+
+    foreach (var jobDescription in RoleAgentCatalog.All)
     {
-        AssertEqual(true, tool?["annotations"]?["readOnlyHint"]?.GetValue<bool>(), "read-only tool annotation");
-        AssertEqual(false, tool?["annotations"]?["destructiveHint"]?.GetValue<bool>(), "destructive tool annotation");
+        foreach (var allowedTool in jobDescription.AllowedTools)
+        {
+            AssertTrue(toolNames.Contains(allowedTool), $"allowed tool '{allowedTool}' should exist in the MCP registry");
+        }
     }
 }
 
+static void McpServerCallsAzureInventoryTool()
+{
+    var server = new JawsMcpServer(new JawsMcpToolRegistry());
+    using var document = JsonDocument.Parse("""
+        {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"azure.resource.inventory","arguments":{"scope":"rg-jaws-demo"}}}
+        """);
+
+    var response = server.Handle(document.RootElement);
+    var structuredContent = response["result"]?["structuredContent"];
+
+    AssertEqual("ok", structuredContent?["status"]?.GetValue<string>(), "Azure inventory status");
+    AssertEqual("Azure", structuredContent?["provider"]?.GetValue<string>(), "Azure inventory provider");
+    AssertTrue((structuredContent?["resources"]?.AsArray().Count ?? 0) > 0, "Azure inventory resources");
+}
+
+static void McpServerCallsDatadogRecommendationTool()
+{
+    var server = new JawsMcpServer(new JawsMcpToolRegistry());
+    using var document = JsonDocument.Parse("""
+        {"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"datadog.coverage.recommend","arguments":{"resourceName":"app-jaws-api","resourceType":"Microsoft.Web/sites"}}}
+        """);
+
+    var response = server.Handle(document.RootElement);
+    var structuredContent = response["result"]?["structuredContent"];
+
+    AssertEqual("ok", structuredContent?["status"]?.GetValue<string>(), "Datadog recommendation status");
+    AssertEqual("Datadog", structuredContent?["provider"]?.GetValue<string>(), "Datadog recommendation provider");
+    AssertEqual(true, structuredContent?["requiresApprovalBeforeCreate"]?.GetValue<bool>(), "Datadog recommendation approval flag");
+}
+
+static void McpWriteToolsRemainApprovalGated()
+{
+    var server = new JawsMcpServer(new JawsMcpToolRegistry());
+    using var document = JsonDocument.Parse("""
+        {"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"datadog.synthetic.create","arguments":{"resourceName":"app-jaws-api","approvalReference":"APP-20260626-app-jaws-api"}}}
+        """);
+
+    var response = server.Handle(document.RootElement);
+    var error = response["error"];
+
+    AssertEqual(-32050, error?["code"]?.GetValue<int>(), "write tool denied error code");
+    AssertEqual("Write-capable MCP tool denied.", error?["message"]?.GetValue<string>(), "write tool denied error message");
+}
+
+static void McpToolExtensibilityDescribesJobDescriptions()
+{
+    var server = new JawsMcpServer(new JawsMcpToolRegistry());
+    using var document = JsonDocument.Parse("""
+        {"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"jaws.tool.extensibility","arguments":{"agentRole":"deploy"}}}
+        """);
+
+    var response = server.Handle(document.RootElement);
+    var structuredContent = response["result"]?["structuredContent"];
+
+    AssertEqual("ok", structuredContent?["status"]?.GetValue<string>(), "extensibility status");
+    AssertEqual("JAWS", structuredContent?["provider"]?.GetValue<string>(), "extensibility provider");
+    AssertTrue(structuredContent?["extensibilityModel"]?.GetValue<string>().Contains("job description", StringComparison.OrdinalIgnoreCase) == true,
+        "extensibility model should mention job descriptions");
+}
 static void AssertTrue(bool condition, string message)
 {
     if (!condition)
@@ -271,5 +366,9 @@ static void AssertEqual<T>(T expected, T actual, string name)
         throw new InvalidOperationException($"{name}: expected '{expected}', actual '{actual}'.");
     }
 }
+
+
+
+
 
 

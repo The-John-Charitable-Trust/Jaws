@@ -1,4 +1,5 @@
 using Jaws.AgentFramework.Agents;
+using Jaws.AgentFramework.Conversations;
 using Jaws.AgentFramework.Configuration;
 using Jaws.AgentFramework.FirstAgent;
 using Jaws.AgentFramework.Mcp;
@@ -25,7 +26,11 @@ var tests = new List<(string Name, Action Test)>
     ("MCP server calls Azure inventory tool", McpServerCallsAzureInventoryTool),
     ("MCP server calls Datadog recommendation tool", McpServerCallsDatadogRecommendationTool),
     ("MCP write tools remain approval gated", McpWriteToolsRemainApprovalGated),
-    ("MCP tool extensibility describes job descriptions", McpToolExtensibilityDescribesJobDescriptions)
+    ("MCP tool extensibility describes job descriptions", McpToolExtensibilityDescribesJobDescriptions),
+    ("Conversation store creates conversation IDs", ConversationStoreCreatesConversationIds),
+    ("Conversation store increments turns for same conversation", ConversationStoreIncrementsTurns),
+    ("Conversation store reset starts a fresh local turn state", ConversationStoreResetStartsFreshState),
+    ("First agent response exposes conversation metadata", FirstAgentResponseExposesConversationMetadata)
 };
 
 var failures = new List<string>();
@@ -351,6 +356,60 @@ static void McpToolExtensibilityDescribesJobDescriptions()
     AssertTrue(structuredContent?["extensibilityModel"]?.GetValue<string>().Contains("job description", StringComparison.OrdinalIgnoreCase) == true,
         "extensibility model should mention job descriptions");
 }
+
+static void ConversationStoreCreatesConversationIds()
+{
+    var store = new InMemoryConversationStore();
+    var turn = store.BeginTurn(null);
+
+    AssertTrue(turn.ConversationId.StartsWith("JCN-", StringComparison.Ordinal), "generated conversation ID prefix");
+    AssertEqual(1, turn.TurnNumber, "initial turn number");
+    AssertEqual(false, turn.WasReset, "initial reset flag");
+    AssertTrue(store.Contains(turn.ConversationId), "store should contain generated conversation");
+}
+
+static void ConversationStoreIncrementsTurns()
+{
+    var store = new InMemoryConversationStore();
+    var first = store.BeginTurn("conversation-1");
+    var second = store.BeginTurn("conversation-1");
+
+    AssertEqual("conversation-1", first.ConversationId, "first conversation ID");
+    AssertEqual("conversation-1", second.ConversationId, "second conversation ID");
+    AssertEqual(1, first.TurnNumber, "first turn number");
+    AssertEqual(2, second.TurnNumber, "second turn number");
+}
+
+static void ConversationStoreResetStartsFreshState()
+{
+    var store = new InMemoryConversationStore();
+    _ = store.BeginTurn("conversation-2");
+    _ = store.BeginTurn("conversation-2");
+
+    var reset = store.Reset("conversation-2");
+    var firstAfterReset = store.BeginTurn("conversation-2");
+
+    AssertEqual("conversation-2", reset.ConversationId, "reset conversation ID");
+    AssertEqual(0, reset.TurnNumber, "reset turn marker");
+    AssertEqual(true, reset.WasReset, "reset flag");
+    AssertEqual(1, firstAfterReset.TurnNumber, "turn number after reset");
+}
+
+static void FirstAgentResponseExposesConversationMetadata()
+{
+    var response = new FirstAgentResponse(
+        Answer: "ok",
+        AgentName: "JawsFirstAgent",
+        Release: "0.1",
+        ConversationId: "conversation-3",
+        TurnNumber: 2,
+        ConversationReset: false,
+        ConversationRelease: InMemoryConversationStore.Release);
+
+    AssertEqual("conversation-3", response.ConversationId, "response conversation ID");
+    AssertEqual(2, response.TurnNumber, "response turn number");
+    AssertEqual("0.5", response.ConversationRelease, "response conversation release");
+}
 static void AssertTrue(bool condition, string message)
 {
     if (!condition)
@@ -366,9 +425,3 @@ static void AssertEqual<T>(T expected, T actual, string name)
         throw new InvalidOperationException($"{name}: expected '{expected}', actual '{actual}'.");
     }
 }
-
-
-
-
-
-

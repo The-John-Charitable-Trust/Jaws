@@ -1296,9 +1296,199 @@ Summary: 20/20 passed.</code></pre>
         True       True          True             True          True              True</code></pre>
         </div>
         <p>Step 4 proves that tools are registered, discoverable, callable for read-only evidence, aligned with agent job descriptions, and still governed by the MCP write boundary. The next step adds multi-turn conversation state so the user can ask follow-up questions without restating the whole operational context.</p>
-<h2 id="step-5">Step 5: Multi-Turn Conversations</h2>
-        <p>This release adds session continuity for Teams and API conversations. The C# snippets reference the conversation/session files that keep role-agent context connected across turns.</p>
 
+        <h2 id="step-5">Step 5: Multi-Turn Conversations</h2>
+        <p>Release <code>0.5</code> adds multi-turn conversation support. Microsoft Agent Framework uses <code>AgentSession</code> to maintain conversation context across multiple calls, so an agent can answer follow-up questions without requiring the user to repeat everything from the previous turn. JAWS applies that pattern to the local API by adding a stable <code>conversationId</code>, turn metadata, and reset behavior.</p>
+        <p>If the reader already cloned release <code>0.4</code>, release <code>0.5</code> does not require a new clone. Fetch the latest tags and check out the next release in the same local repository:</p>
+        <div class="code-block">
+          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-command">git</span> fetch <span class="token-param">--tags</span>
+<span class="token-command">git</span> checkout v0.5
+<span class="token-command">git</span> describe <span class="token-param">--tags</span> <span class="token-param">--exact-match</span></code></pre>
+        </div>
+        <p>The final command should return <code>v0.5</code>. Step 5 has its own expected-result checks for conversation metadata and session continuity.</p>
+
+        <h3>What Step 5 Adds</h3>
+        <p>Step 5 keeps the scope narrow. It does not add durable memory, RAG, Teams integration, workflows, or provider write execution. It adds the conversation/session layer needed before those later capabilities can feel natural to a user.</p>
+        <table>
+          <thead><tr><th>Capability</th><th>Step 5 Behavior</th><th>Later Tutorial Work</th></tr></thead>
+          <tbody>
+            <tr><td>Conversation ID</td><td>Each local API response includes a <code>conversationId</code>.</td><td>Teams will map this to a Teams conversation or thread.</td></tr>
+            <tr><td>Turn continuity</td><td>Repeated calls with the same <code>conversationId</code> increment the turn number and reuse the Agent Framework session.</td><td>Memory and workflows will use this context for richer operational flows.</td></tr>
+            <tr><td>Reset</td><td>The API supports reset behavior through <code>resetConversation</code> and <code>/api/conversations/reset</code>.</td><td>Teams integration will expose the user-facing <code>/reset</code> command.</td></tr>
+            <tr><td>MCP tools</td><td>The Step 4 MCP tool surface remains available.</td><td>Workflow approval later decides when write-capable tools can execute.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Referenced Files</h3>
+        <table>
+          <thead><tr><th>File</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><code>src/Jaws.AgentFramework/FirstAgent.cs</code></td><td>Creates and reuses an Agent Framework <code>AgentSession</code> for each local conversation ID.</td></tr>
+            <tr><td><code>src/Jaws.AgentFramework/FirstAgentContracts.cs</code></td><td>Adds <code>conversationId</code>, <code>resetConversation</code>, turn number, reset flag, and conversation release metadata.</td></tr>
+            <tr><td><code>src/Jaws.AgentFramework/Conversations/InMemoryConversationStore.cs</code></td><td>Tracks local conversation IDs and turn counts for the code tutorial.</td></tr>
+            <tr><td><code>src/Jaws.Api/Program.cs</code></td><td>Registers the conversation store, returns conversation release metadata, and exposes the reset endpoint.</td></tr>
+            <tr><td><code>tests/Jaws.FirstAgent.Tests/Program.cs</code></td><td>Contains Step 5 tests for conversation IDs, turn increments, reset behavior, and response metadata.</td></tr>
+            <tr><td><code>docs/step-5-test-cases.md</code></td><td>Lists the Step 5 test cases and expected results.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Step 5 Tutorial Snippets</h3>
+        <p>The snippets below show how JAWS maps Microsoft Agent Framework multi-turn sessions to the local API. Choose C# to follow the implemented path in this repository. Choose Python to compare the same session concept in Python.</p>
+
+        <div class="language-card">
+          <h3>Choose a programming language</h3>
+          <div class="language-tabs" role="tablist" aria-label="Step 5 programming language">
+            <button class="language-tab active" type="button" role="tab" aria-selected="true" aria-controls="step5-csharp" data-language="csharp">C#</button>
+            <button class="language-tab" type="button" role="tab" aria-selected="false" aria-controls="step5-python" data-language="python">Python</button>
+          </div>
+        </div>
+
+        <section class="language-panel" id="step5-csharp" data-language-panel="csharp">
+          <h3>C# AgentSession Usage</h3>
+          <p>The agent creates or reuses an <code>AgentSession</code> for the incoming <code>conversationId</code>, then passes that session into <code>RunAsync</code>.</p>
+          <div class="code-block">
+            <div class="code-header"><span>C# - src/Jaws.AgentFramework/FirstAgent.cs</span><button class="copy-button" type="button">Copy</button></div>
+            <pre><code><span class="token-variable">var</span> conversation = <span class="token-variable">_conversationStore</span>.BeginTurn(
+    request.ConversationId,
+    request.ResetConversation);
+
+<span class="token-variable">var</span> agent = <span class="token-variable">_agent</span>.Value;
+
+<span class="token-comment">// Create the AgentSession once for the conversation and reuse it later.</span>
+<span class="token-variable">var</span> session = <span class="token-keyword">await</span> <span class="token-variable">_agentSessions</span>
+    .GetOrAdd(conversation.ConversationId,
+        _ =&gt; agent.CreateSessionAsync(cancellationToken).AsTask())
+    .WaitAsync(cancellationToken);
+
+<span class="token-variable">var</span> runResult = <span class="token-keyword">await</span> agent.RunAsync(
+    request.Message,
+    session,
+    cancellationToken: cancellationToken);</code></pre>
+          </div>
+
+          <h3>C# Local Conversation Store</h3>
+          <p>The store gives the API an objective way to prove session continuity without depending on the exact natural-language model answer.</p>
+          <div class="code-block">
+            <div class="code-header"><span>C# - src/Jaws.AgentFramework/Conversations/InMemoryConversationStore.cs</span><button class="copy-button" type="button">Copy</button></div>
+            <pre><code><span class="token-keyword">public</span> ConversationTurn BeginTurn(<span class="token-keyword">string</span>? conversationId, <span class="token-keyword">bool</span> resetConversation = <span class="token-keyword">false</span>)
+{
+    <span class="token-variable">var</span> normalizedConversationId = NormalizeConversationId(conversationId);
+
+    <span class="token-keyword">if</span> (resetConversation)
+    {
+        normalizedConversationId = CreateConversationId();
+        <span class="token-variable">_turns</span>[normalizedConversationId] = 1;
+        <span class="token-keyword">return new</span> ConversationTurn(normalizedConversationId, 1, WasReset: <span class="token-keyword">true</span>);
+    }
+
+    <span class="token-variable">var</span> turnNumber = <span class="token-variable">_turns</span>.AddOrUpdate(
+        normalizedConversationId,
+        addValue: 1,
+        updateValueFactory: (_, current) =&gt; current + 1);
+
+    <span class="token-keyword">return new</span> ConversationTurn(normalizedConversationId, turnNumber, WasReset: <span class="token-keyword">false</span>);
+}</code></pre>
+          </div>
+
+          <h3>C# API Contract</h3>
+          <p>The API response includes the conversation metadata that the local validation checks can assert objectively.</p>
+          <div class="code-block">
+            <div class="code-header"><span>C# - src/Jaws.AgentFramework/FirstAgentContracts.cs</span><button class="copy-button" type="button">Copy</button></div>
+            <pre><code><span class="token-keyword">public sealed record</span> FirstAgentRequest(
+    <span class="token-keyword">string</span> Message,
+    <span class="token-keyword">string</span>? ConversationId = <span class="token-keyword">null</span>,
+    <span class="token-keyword">bool</span> ResetConversation = <span class="token-keyword">false</span>);
+
+<span class="token-keyword">public sealed record</span> FirstAgentResponse(
+    <span class="token-keyword">string</span> Answer,
+    <span class="token-keyword">string</span> AgentName,
+    <span class="token-keyword">string</span> Release,
+    <span class="token-keyword">string</span> ConversationId,
+    <span class="token-keyword">int</span> TurnNumber,
+    <span class="token-keyword">bool</span> ConversationReset,
+    <span class="token-keyword">string</span> ConversationRelease);</code></pre>
+          </div>
+        </section>
+
+        <section class="language-panel" id="step5-python" data-language-panel="python" hidden>
+          <h3>Python Equivalent Concept</h3>
+          <p>The Python pattern is the same: create a session once, then pass that session into later calls. The C# implementation is the maintained source for this tutorial.</p>
+          <div class="code-block">
+            <div class="code-header"><span>Python - conceptual equivalent</span><button class="copy-button" type="button">Copy</button></div>
+            <pre><code>session = agent.create_session()
+
+first = <span class="token-keyword">await</span> agent.run(
+    <span class="token-string">"Remember that app-jaws-api needs Datadog coverage."</span>,
+    session=session)
+
+second = <span class="token-keyword">await</span> agent.run(
+    <span class="token-string">"Which resource were we discussing?"</span>,
+    session=session)</code></pre>
+          </div>
+        </section>
+
+        <h3>Step 5 Local Validation</h3>
+        <p>Build the solution and run the release-aligned tests:</p>
+        <div class="code-block">
+          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-command">dotnet</span> build Jaws.slnx <span class="token-param">-c</span> Release
+
+<span class="token-command">dotnet</span> run <span class="token-param">--project</span> tests\Jaws.FirstAgent.Tests\Jaws.FirstAgent.Tests.csproj</code></pre>
+        </div>
+        <p>The test runner should include these Step 5 conversation passes:</p>
+        <div class="code-block">
+          <div class="code-header"><span>Expected test output excerpt</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code>PASS: Conversation store creates conversation IDs
+PASS: Conversation store increments turns for same conversation
+PASS: Conversation store reset starts a fresh local turn state
+PASS: First agent response exposes conversation metadata
+
+Summary: 24/24 passed.</code></pre>
+        </div>
+
+        <h3>Step 5 Live Conversation Probe</h3>
+        <p>Start the local API and leave it running. This live probe calls the configured model, so local model configuration must be valid.</p>
+        <div class="code-block">
+          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-command">dotnet</span> run <span class="token-param">--project</span> src\Jaws.Api\Jaws.Api.csproj <span class="token-param">--launch-profile</span> http</code></pre>
+        </div>
+        <p>Open a second terminal and run the multi-turn probe:</p>
+        <div class="code-block">
+          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code><span class="token-variable">$first</span> = <span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Post <span class="token-param">-Uri</span> <span class="token-string">"http://localhost:5124/api/agent/run"</span> `
+  <span class="token-param">-ContentType</span> <span class="token-string">"application/json"</span> `
+  <span class="token-param">-Body</span> <span class="token-string">'{ "message": "Remember that app-jaws-api is the resource we are evaluating for Datadog coverage." }'</span>
+
+<span class="token-variable">$conversationId</span> = <span class="token-variable">$first</span>.conversationId
+
+<span class="token-variable">$second</span> = <span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Post <span class="token-param">-Uri</span> <span class="token-string">"http://localhost:5124/api/agent/run"</span> `
+  <span class="token-param">-ContentType</span> <span class="token-string">"application/json"</span> `
+  <span class="token-param">-Body</span> (@{
+    message = <span class="token-string">"Which resource were we discussing?"</span>
+    conversationId = <span class="token-variable">$conversationId</span>
+  } | ConvertTo-Json)
+
+<span class="token-variable">$reset</span> = <span class="token-command">Invoke-RestMethod</span> <span class="token-param">-Method</span> Post <span class="token-param">-Uri</span> <span class="token-string">"http://localhost:5124/api/conversations/reset"</span> `
+  <span class="token-param">-ContentType</span> <span class="token-string">"application/json"</span> `
+  <span class="token-param">-Body</span> (@{ conversationId = <span class="token-variable">$conversationId</span> } | ConvertTo-Json)
+
+[pscustomobject]@{
+  FirstTurnPass = <span class="token-variable">$first</span>.conversationRelease <span class="token-operator">-eq</span> <span class="token-string">"0.5"</span> <span class="token-operator">-and</span> <span class="token-variable">$first</span>.turnNumber <span class="token-operator">-eq</span> 1 <span class="token-operator">-and</span> <span class="token-variable">$first</span>.conversationId
+  SecondTurnPass = <span class="token-variable">$second</span>.conversationId <span class="token-operator">-eq</span> <span class="token-variable">$conversationId</span> <span class="token-operator">-and</span> <span class="token-variable">$second</span>.turnNumber <span class="token-operator">-eq</span> 2
+  AnswerPass = <span class="token-operator">-not</span> [string]::IsNullOrWhiteSpace(<span class="token-variable">$second</span>.answer)
+  ResetPass = <span class="token-variable">$reset</span>.conversationId <span class="token-operator">-eq</span> <span class="token-variable">$conversationId</span> <span class="token-operator">-and</span> <span class="token-variable">$reset</span>.conversationReset <span class="token-operator">-eq</span> <span class="token-variable">$true</span> <span class="token-operator">-and</span> <span class="token-variable">$reset</span>.turnNumber <span class="token-operator">-eq</span> 0
+}</code></pre>
+        </div>
+        <p>Expected output:</p>
+        <div class="code-block">
+          <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
+          <pre><code>FirstTurnPass SecondTurnPass AnswerPass ResetPass
+------------- -------------- ---------- ---------
+         True           True       True      True</code></pre>
+        </div>
+        <p>The exact answer text remains non-deterministic because the model generates it at runtime. Step 5 passes when the conversation metadata proves continuity and the follow-up returns a non-empty answer.</p>
+        <p>The next step adds memory and persistence. That is where JAWS begins separating short-lived conversation context from durable knowledge, RAG, and external context stores.</p>
         <h2 id="step-6">Step 6: Memory and Persistence</h2>
         <p>This release adds curated context, RAG provider options, and persistence guidance. The C# snippets reference the retrieval provider files and the role-agent context-loading files used by support, governance, deploy, and workflow agents.</p>
 
@@ -1407,39 +1597,3 @@ Summary: 20/20 passed.</code></pre>
   </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

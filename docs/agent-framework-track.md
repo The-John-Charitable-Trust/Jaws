@@ -54,9 +54,18 @@ Planned deliverables:
 - Step 4 tutorial and expected results
 - Step 4 test cases
 
-## Step 5: Multi-turn
+## Step 5: Multi-Turn Conversations
 
-Status: Pending release `v0.5`.
+Status: Released as `v0.5`.
+
+Planned deliverables:
+
+- Agent Framework session reuse through `AgentSession`
+- Local conversation IDs and turn metadata for API calls
+- Conversation reset support for the local API
+- Objective validation that does not depend on deterministic model text
+- Step 5 tutorial and expected results
+- Step 5 test cases
 
 ## Step 6: Memory / External Knowledge
 

@@ -1,3 +1,4 @@
+using Jaws.AgentFramework.Conversations;
 using Jaws.AgentFramework.FirstAgent;
 using Jaws.AgentFramework.Mcp;
 using System.Text.Json;
@@ -39,6 +40,7 @@ var firstAgentOptions = new FirstAgentOptions
 };
 
 builder.Services.AddSingleton(firstAgentOptions);
+builder.Services.AddSingleton<InMemoryConversationStore>();
 builder.Services.AddSingleton<IFirstAgent, FirstAgent>();
 builder.Services.AddSingleton<JawsMcpToolRegistry>();
 builder.Services.AddSingleton<JawsMcpServer>();
@@ -57,6 +59,7 @@ app.MapGet("/health", () =>
         // tutorial validation block checks the surface it is exercising.
         release = "0.1",
         mcpRelease = JawsMcpToolRegistry.Release,
+        conversationRelease = InMemoryConversationStore.Release,
         configurationErrors = errors
     });
 });
@@ -66,12 +69,25 @@ app.MapPost("/api/agent/run", async (
     IFirstAgent agent,
     CancellationToken cancellationToken) =>
 {
-    // Expose one narrow execution endpoint. Later releases add tools, Teams
-    // routing, sessions, memory, and workflow endpoints.
+    // Expose one narrow execution endpoint. Release 0.5 adds conversationId and
+    // resetConversation support while leaving Teams, durable memory, and
+    // workflow endpoints for later releases.
     var response = await agent.RunAsync(request, cancellationToken);
     return Results.Ok(response);
 });
 
+app.MapPost("/api/conversations/reset", (ConversationResetRequest request, InMemoryConversationStore conversations) =>
+{
+    // This reset endpoint mirrors the user-facing /reset behavior that will
+    // later be available through Teams. It resets local in-memory conversation
+    // state only; durable history and memory are introduced later.
+    var reset = conversations.Reset(request.ConversationId);
+    return Results.Ok(new ConversationResetResponse(
+        ConversationId: reset.ConversationId,
+        TurnNumber: reset.TurnNumber,
+        ConversationReset: reset.WasReset,
+        ConversationRelease: InMemoryConversationStore.Release));
+});
 app.MapPost("/mcp", (JsonElement request, JawsMcpServer mcpServer) =>
 {
     // Step 2 exposes the local MCP boundary. The initial endpoint supports
@@ -84,3 +100,11 @@ app.Run();
 
 static string FirstConfiguredValue(params string?[] values) =>
     values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+
+public sealed record ConversationResetRequest(string? ConversationId = null);
+
+public sealed record ConversationResetResponse(
+    string ConversationId,
+    int TurnNumber,
+    bool ConversationReset,
+    string ConversationRelease);

@@ -1,21 +1,26 @@
 using Azure;
 using Azure.AI.OpenAI;
+using Jaws.AgentFramework.Conversations;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using System.Collections.Concurrent;
 
 namespace Jaws.AgentFramework.FirstAgent;
 
 /// <summary>
-/// Minimal JAWS agent implementation. This class deliberately does only one
-/// thing: create an Agent Framework AIAgent and call RunAsync. Tools, sessions,
-/// memory, MCP, Teams, and workflows are added in later releases.
+/// Minimal JAWS agent implementation. Release 0.5 adds multi-turn session
+/// support while keeping tools, durable memory, Teams routing, and workflows
+/// outside this step's scope.
 /// </summary>
 public sealed class FirstAgent : IFirstAgent
 {
     private const string Release = "0.1";
     private readonly FirstAgentOptions _options;
+    private readonly InMemoryConversationStore _conversationStore;
+    private readonly ConcurrentDictionary<string, Task<AgentSession>> _agentSessions = new(StringComparer.Ordinal);
+    private readonly Lazy<AIAgent> _agent;
 
-    public FirstAgent(FirstAgentOptions options)
+    public FirstAgent(FirstAgentOptions options, InMemoryConversationStore? conversationStore = null)
     {
         var errors = options.Validate();
         if (errors.Count > 0)
@@ -24,6 +29,8 @@ public sealed class FirstAgent : IFirstAgent
         }
 
         _options = options;
+        _conversationStore = conversationStore ?? new InMemoryConversationStore();
+        _agent = new Lazy<AIAgent>(CreateAgent);
     }
 
     public async Task<FirstAgentResponse> RunAsync(
@@ -35,6 +42,35 @@ public sealed class FirstAgent : IFirstAgent
             throw new ArgumentException("Message is required.", nameof(request));
         }
 
+        var conversation = _conversationStore.BeginTurn(request.ConversationId, request.ResetConversation);
+        var agent = _agent.Value;
+
+        // Release 0.5 follows the Microsoft Agent Framework multi-turn pattern:
+        // create an AgentSession once for a conversation, reuse it on later
+        // calls, and pass that session into RunAsync so prior turns remain in
+        // the agent's conversation context. This is process-local only; durable
+        // storage and RAG memory arrive in later releases.
+        var session = await _agentSessions
+            .GetOrAdd(conversation.ConversationId, _ => agent.CreateSessionAsync(cancellationToken).AsTask())
+            .WaitAsync(cancellationToken);
+
+        var runResult = await agent.RunAsync(
+            request.Message,
+            session,
+            cancellationToken: cancellationToken);
+
+        return new FirstAgentResponse(
+            Answer: runResult.ToString() ?? string.Empty,
+            AgentName: _options.AgentName,
+            Release: Release,
+            ConversationId: conversation.ConversationId,
+            TurnNumber: conversation.TurnNumber,
+            ConversationReset: conversation.WasReset,
+            ConversationRelease: InMemoryConversationStore.Release);
+    }
+
+    private AIAgent CreateAgent()
+    {
         // The standalone tutorial uses an explicit endpoint API key so the
         // reader can validate agent construction without Azure RBAC, managed
         // identity, or a tenant-specific credential chain. Future hosted
@@ -51,21 +87,8 @@ public sealed class FirstAgent : IFirstAgent
             .AsIChatClient();
 
         // AsAIAgent wraps the chat client as a Microsoft Agent Framework agent.
-        // This keeps the first tutorial focused on agent construction and
-        // execution while leaving tools, memory, Teams, and workflows for later.
-        AIAgent agent = chatClient.AsAIAgent(
+        return chatClient.AsAIAgent(
             instructions: _options.Instructions,
             name: _options.AgentName);
-
-        // RunAsync sends the user's message to the configured agent and returns
-        // the model response. This first-agent surface keeps release 0.1 in its
-        // response metadata; later MCP, memory, and workflow surfaces report
-        // their own release values around this same execution boundary.
-        var runResult = await agent.RunAsync(request.Message, cancellationToken: cancellationToken);
-
-        return new FirstAgentResponse(
-            Answer: runResult.ToString() ?? string.Empty,
-            AgentName: _options.AgentName,
-            Release: Release);
     }
 }

@@ -90,9 +90,9 @@ app.MapPost("/api/conversations/reset", (ConversationResetRequest request, InMem
 });
 app.MapPost("/mcp", (JsonElement request, JawsMcpServer mcpServer) =>
 {
-    // Step 2 exposes the local MCP boundary. The initial endpoint supports
-    // initialize, tools/list, and read-only tools/call. Step 3 hardens local
-    // request handling before operational provider tools are exposed.
+    // The release 0.2 MCP endpoint exposes initialize, tools/list, and
+    // read-only tools/call. Release 0.3 hardens local request handling before
+    // operational provider tools are exposed.
     return Results.Json(mcpServer.Handle(request));
 });
 

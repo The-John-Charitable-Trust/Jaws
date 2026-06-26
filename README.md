@@ -2,7 +2,7 @@
 
 JAWS is an agentic operations platform being rebuilt from a clean open-source foundation using the Microsoft Agent Framework tutorial path as scaffolding.
 
-The tutorial source, tests, and documentation grow release by release. The Step 1 code establishes a runnable first agent and local API validation path; later releases add the MCP boundary, MCP hardening, tools, multi-turn conversations, memory, workflows, hosting, Teams integration, and the Datadog-to-ServiceNow operations scenario.
+The tutorial source, tests, and documentation grow release by release. Releases `v0.1` through `v0.5` establish the first agent, MCP boundary, MCP hardening, demo tools, and multi-turn conversation support. Later releases add memory, workflows, hosting, Teams integration, and the Datadog-to-ServiceNow operations scenario.
 
 ## Credential Model
 

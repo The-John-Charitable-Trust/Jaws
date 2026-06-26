@@ -438,7 +438,7 @@
 
         <p>JAWS uses the Microsoft Agent Framework tutorial as scaffolding for a real operational scenario. Rather than treating the Microsoft tutorial as a set of isolated code samples, this tutorial incrementally builds an agentic operations platform that can inspect Azure resources, recommend Datadog monitors or synthetic tests, use a hardened custom MCP server, validate alert delivery through an approved webhook contract, and create a ServiceNow incident with evidence and operational reasoning.</p>
 
-        <p>The goal is to show how each Microsoft Agent Framework concept becomes part of a working enterprise architecture. Step 1 begins with the first agent. Step 2 adds the custom MCP server that becomes the controlled tool boundary. Step 3 secures that MCP boundary. Step 4 adds tools on top of the secured foundation. Later steps introduce multi-turn conversation state, memory, workflows, hosting, Teams integration, and the end-to-end JAWS operations scenario. Each section explains the concept, shows the implementation, and defines test cases with expected results.</p>
+        <p>The goal is to show how each Microsoft Agent Framework concept becomes part of a working enterprise architecture. Step 1 begins with the first agent. Step 2 adds the custom MCP server that becomes the controlled tool boundary. Step 3 secures that MCP boundary. Step 4 adds tools on top of the secured foundation. Step 5 adds multi-turn conversation state. Later steps introduce memory, workflows, hosting, Teams integration, and the end-to-end JAWS operations scenario. Each section explains the concept, shows the implementation, and defines test cases with expected results.</p>
 
         <p>The value to the reader is practical and cumulative. By following the tutorial, you are not only learning how to call an LLM from C#. You are learning how to assemble agents, tools, MCP boundaries, memory, SaaS integrations, Azure deployment assets, and verification tests into a platform that can be deployed into your own Azure environment. The tutorial is designed for architects, developers, and platform engineers who need to understand both the code and the operational decisions behind it.</p>
 
@@ -484,7 +484,9 @@
 <span class="token-comment"># Move through the published tutorial releases in order.</span>
 <span class="token-command">git</span> checkout v0.1
 <span class="token-command">git</span> checkout v0.2
-<span class="token-command">git</span> checkout v0.3</code></pre>
+<span class="token-command">git</span> checkout v0.3
+<span class="token-command">git</span> checkout v0.4
+<span class="token-command">git</span> checkout v0.5</code></pre>
         </div>
         <p>Readers who do not want to use Git tags can download the matching release ZIP from <a href="https://github.com/cezjah/jaws/releases">GitHub releases</a> for each phase. The tutorial commands still assume the extracted repository root is the working directory. Release <code>1.0</code> is the complete codebase for the full JAWS platform scenario; earlier releases are smaller snapshots for learning and validation.</p>
         <table>

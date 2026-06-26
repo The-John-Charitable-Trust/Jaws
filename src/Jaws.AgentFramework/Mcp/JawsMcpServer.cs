@@ -4,9 +4,9 @@ using System.Text.Json.Nodes;
 namespace Jaws.AgentFramework.Mcp;
 
 /// <summary>
-/// Minimal JSON-RPC dispatcher for the local JAWS MCP server. This is the Step
-/// 2 foundation: it proves that JAWS has a standards-shaped MCP boundary before
-/// operational tools are added. Step 3 hardens this local boundary with request
+/// Minimal JSON-RPC dispatcher for the local JAWS MCP server. Release 0.2
+/// proves that JAWS has a standards-shaped MCP boundary before operational
+/// tools are added. Release 0.3 hardens this local boundary with request
 /// validation, safe errors, schema checks, and read/write tool separation.
 /// </summary>
 public sealed class JawsMcpServer

@@ -51,6 +51,7 @@ Planned deliverables:
 - Role-agent allowed tools aligned with the MCP registry
 - JSON job-description extensibility explained and validated
 - Write-capable Datadog and ServiceNow tools registered but blocked until workflow approval
+- Tool contracts documented as agent-computer interface boundaries for purpose, provider, parameters, read/write classification, and evidence shape
 - Step 4 tutorial and expected results
 - Step 4 test cases
 
@@ -86,4 +87,3 @@ Status: Pending release `v0.9`.
 ## Step 10: End-To-End JAWS Operations Scenario
 
 Status: Pending release `v1.0`.
-

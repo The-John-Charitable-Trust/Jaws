@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="980" viewBox="0 0 1600 980" role="img" aria-labelledby="title desc">
+  <title id="title">Figure 1. JAWS Wide Shut end-state concept of operations</title>
+  <desc id="desc">Conceptual architecture for the JAWS Wide Shut tutorial use case showing Teams, agent orchestration, secured MCP tools, Azure, Datadog, ServiceNow, human approval, and future-state platform extensions.</desc>
+  <defs>
+    <style>
+      .bg{fill:#f7f9fc}.panel{fill:#fff;stroke:#c9d6e6;stroke-width:2}.panel-blue{fill:#eef6ff;stroke:#8bb8f0}.panel-green{fill:#effaf3;stroke:#8bc49b}.panel-purple{fill:#f7f0ff;stroke:#b69be8}.panel-orange{fill:#fff5ed;stroke:#f0a76b}.panel-gray{fill:#f4f6f8;stroke:#c9d1d9}.title{font:700 34px Segoe UI,Arial,sans-serif;fill:#0b1f4d}.subtitle{font:600 16px Segoe UI,Arial,sans-serif;fill:#24478f}.h{font:700 18px Segoe UI,Arial,sans-serif;fill:#102a56}.h2{font:700 15px Segoe UI,Arial,sans-serif;fill:#102a56}.txt{font:13px Segoe UI,Arial,sans-serif;fill:#25364d}.small{font:12px Segoe UI,Arial,sans-serif;fill:#475569}.tiny{font:11px Segoe UI,Arial,sans-serif;fill:#52627a}.pill{fill:#eef2ff;stroke:#8b5cf6}.pillText{font:700 13px Segoe UI,Arial,sans-serif;fill:#4c1d95}.agent{fill:#fff;stroke:#b8c7db;stroke-width:1.5}.agentTitle{font:700 14px Segoe UI,Arial,sans-serif;fill:#111827}.num{fill:#1d4ed8}.numText{font:700 14px Segoe UI,Arial,sans-serif;fill:#fff}.future{fill:#fffdf5;stroke:#f2c94c;stroke-dasharray:6 5}.scope{fill:#ecfdf5;stroke:#10b981}.flow{stroke:#1d4ed8;stroke-width:2.5;fill:none;marker-end:url(#arrow)}.flow2{stroke:#047857;stroke-width:2.5;fill:none;marker-end:url(#arrowGreen)}.futureLine{stroke:#b7791f;stroke-width:2;fill:none;stroke-dasharray:6 5;marker-end:url(#arrowAmber)}.dash{stroke:#64748b;stroke-width:2;fill:none;stroke-dasharray:5 5;marker-end:url(#arrowGray)}
+    </style>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#1d4ed8"/></marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#047857"/></marker>
+    <marker id="arrowAmber" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#b7791f"/></marker>
+    <marker id="arrowGray" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#64748b"/></marker>
+  </defs>
+
+  <rect class="bg" width="1600" height="980"/>
+  <text x="800" y="42" text-anchor="middle" class="title">JAWS Wide Shut - End-State Concept of Operations</text>
+  <text x="800" y="70" text-anchor="middle" class="subtitle">Governed - Evidence-Driven - Agentic - Multi-Platform - Human-in-the-Loop</text>
+
+  <rect x="30" y="92" width="1540" height="60" rx="12" class="panel-purple"/>
+  <text x="54" y="128" class="h">Human Interaction Layer</text>
+  <rect x="300" y="106" width="122" height="30" rx="6" class="pill"/><text x="361" y="126" text-anchor="middle" class="pillText">Microsoft Teams</text>
+  <rect x="440" y="106" width="96" height="30" rx="6" class="pill"/><text x="488" y="126" text-anchor="middle" class="pillText">@Jaws</text>
+  <rect x="548" y="106" width="112" height="30" rx="6" class="pill"/><text x="604" y="126" text-anchor="middle" class="pillText">@support</text>
+  <rect x="672" y="106" width="132" height="30" rx="6" class="pill"/><text x="738" y="126" text-anchor="middle" class="pillText">@governance</text>
+  <rect x="816" y="106" width="104" height="30" rx="6" class="pill"/><text x="868" y="126" text-anchor="middle" class="pillText">@deploy</text>
+  <rect x="932" y="106" width="92" height="30" rx="6" class="pill"/><text x="978" y="126" text-anchor="middle" class="pillText">approve</text>
+  <rect x="1036" y="106" width="92" height="30" rx="6" class="pill"/><text x="1082" y="126" text-anchor="middle" class="pillText">report</text>
+  <text x="1160" y="126" class="small">Natural-language commands and approvals</text>
+
+  <rect x="30" y="176" width="340" height="255" rx="12" class="panel-blue"/>
+  <circle cx="58" cy="204" r="14" class="num"/><text x="58" y="209" text-anchor="middle" class="numText">1</text>
+  <text x="82" y="210" class="h">Azure Context And Evidence</text>
+  <text x="54" y="242" class="txt">In scope for tutorial demo</text>
+  <text x="70" y="270" class="small">Azure resource inventory</text>
+  <text x="70" y="294" class="small">Azure health and monitor signals</text>
+  <text x="70" y="318" class="small">App Service target context</text>
+  <text x="70" y="342" class="small">Policy and compliance evidence</text>
+  <text x="70" y="366" class="small">Application Insights / Log Analytics</text>
+  <rect x="54" y="388" width="292" height="28" rx="8" class="scope"/>
+  <text x="200" y="407" text-anchor="middle" class="small">Read-only until workflow approval</text>
+
+  <rect x="406" y="176" width="470" height="255" rx="12" class="panel-purple"/>
+  <circle cx="434" cy="204" r="14" class="num"/><text x="434" y="209" text-anchor="middle" class="numText">2</text>
+  <text x="458" y="210" class="h">AI Orchestration And Agent Layer</text>
+  <rect x="430" y="232" width="190" height="56" rx="10" class="agent"/>
+  <text x="525" y="257" text-anchor="middle" class="agentTitle">Microsoft Agent Framework</text>
+  <text x="525" y="277" text-anchor="middle" class="tiny">agent construction and runtime</text>
+  <rect x="654" y="232" width="190" height="56" rx="10" class="agent"/>
+  <text x="749" y="257" text-anchor="middle" class="agentTitle">Azure OpenAI / Foundry</text>
+  <text x="749" y="277" text-anchor="middle" class="tiny">model endpoint and reasoning</text>
+
+  <rect x="430" y="316" width="92" height="82" rx="10" class="agent"/>
+  <text x="476" y="342" text-anchor="middle" class="agentTitle">Support</text>
+  <text x="476" y="362" text-anchor="middle" class="tiny">investigate</text>
+  <text x="476" y="378" text-anchor="middle" class="tiny">explain</text>
+  <rect x="536" y="316" width="104" height="82" rx="10" class="agent"/>
+  <text x="588" y="342" text-anchor="middle" class="agentTitle">Governance</text>
+  <text x="588" y="362" text-anchor="middle" class="tiny">risk, policy</text>
+  <text x="588" y="378" text-anchor="middle" class="tiny">approval</text>
+  <rect x="654" y="316" width="92" height="82" rx="10" class="agent"/>
+  <text x="700" y="342" text-anchor="middle" class="agentTitle">Deploy</text>
+  <text x="700" y="362" text-anchor="middle" class="tiny">approved</text>
+  <text x="700" y="378" text-anchor="middle" class="tiny">actions</text>
+  <rect x="760" y="316" width="92" height="82" rx="10" class="agent"/>
+  <text x="806" y="342" text-anchor="middle" class="agentTitle">Workflow</text>
+  <text x="806" y="362" text-anchor="middle" class="tiny">orchestrate</text>
+  <text x="806" y="378" text-anchor="middle" class="tiny">evidence</text>
+  <text x="430" y="418" class="tiny">Optional future role: Triage Agent for intake and routing.</text>
+
+  <rect x="912" y="176" width="300" height="255" rx="12" class="panel-green"/>
+  <circle cx="940" cy="204" r="14" class="num"/><text x="940" y="209" text-anchor="middle" class="numText">3</text>
+  <text x="964" y="210" class="h">Secured MCP Tool Boundary</text>
+  <text x="936" y="242" class="txt">In scope as foundation</text>
+  <text x="952" y="270" class="small">Azure read tools</text>
+  <text x="952" y="294" class="small">Datadog coverage and synthetic tools</text>
+  <text x="952" y="318" class="small">ServiceNow CMDB and incident tools</text>
+  <text x="952" y="342" class="small">Webhook validation contract</text>
+  <text x="952" y="366" class="small">Schema validation and safe errors</text>
+  <rect x="936" y="388" width="252" height="28" rx="8" class="scope"/>
+  <text x="1062" y="407" text-anchor="middle" class="small">Write tools approval-gated</text>
+
+  <rect x="1248" y="176" width="322" height="255" rx="12" class="panel"/>
+  <circle cx="1276" cy="204" r="14" class="num"/><text x="1276" y="209" text-anchor="middle" class="numText">4</text>
+  <text x="1300" y="210" class="h">External Systems</text>
+  <rect x="1272" y="236" width="260" height="48" rx="10" class="panel-blue"/>
+  <text x="1402" y="258" text-anchor="middle" class="h2">Datadog</text>
+  <text x="1402" y="276" text-anchor="middle" class="tiny">synthetic, monitor, webhook alert</text>
+  <rect x="1272" y="304" width="260" height="48" rx="10" class="panel-green"/>
+  <text x="1402" y="326" text-anchor="middle" class="h2">ServiceNow</text>
+  <text x="1402" y="344" text-anchor="middle" class="tiny">CMDB, incident, work notes</text>
+  <rect x="1272" y="372" width="260" height="38" rx="10" class="panel-gray"/>
+  <text x="1402" y="396" text-anchor="middle" class="small">Vendor systems remain authoritative</text>
+
+  <rect x="30" y="470" width="1182" height="190" rx="12" class="panel-orange"/>
+  <circle cx="58" cy="498" r="14" class="num"/><text x="58" y="503" text-anchor="middle" class="numText">5</text>
+  <text x="82" y="504" class="h">Human-In-The-Loop Workflow For Tutorial Demo</text>
+  <rect x="64" y="532" width="198" height="84" rx="10" class="agent"/>
+  <text x="163" y="556" text-anchor="middle" class="agentTitle">Investigate</text>
+  <text x="163" y="578" text-anchor="middle" class="tiny">Find unhealthy or uncovered</text>
+  <text x="163" y="594" text-anchor="middle" class="tiny">Azure resource candidates</text>
+  <rect x="286" y="532" width="198" height="84" rx="10" class="agent"/>
+  <text x="385" y="556" text-anchor="middle" class="agentTitle">Recommend</text>
+  <text x="385" y="578" text-anchor="middle" class="tiny">Propose Datadog synthetic</text>
+  <text x="385" y="594" text-anchor="middle" class="tiny">and webhook contract</text>
+  <rect x="508" y="532" width="198" height="84" rx="10" class="agent"/>
+  <text x="607" y="556" text-anchor="middle" class="agentTitle">Approve</text>
+  <text x="607" y="578" text-anchor="middle" class="tiny">Capture approval reference</text>
+  <text x="607" y="594" text-anchor="middle" class="tiny">before write actions</text>
+  <rect x="730" y="532" width="198" height="84" rx="10" class="agent"/>
+  <text x="829" y="556" text-anchor="middle" class="agentTitle">Execute</text>
+  <text x="829" y="578" text-anchor="middle" class="tiny">Create Datadog synthetic</text>
+  <text x="829" y="594" text-anchor="middle" class="tiny">and test webhook</text>
+  <rect x="952" y="532" width="198" height="84" rx="10" class="agent"/>
+  <text x="1051" y="556" text-anchor="middle" class="agentTitle">Validate</text>
+  <text x="1051" y="578" text-anchor="middle" class="tiny">Confirm ServiceNow incident</text>
+  <text x="1051" y="594" text-anchor="middle" class="tiny">and return evidence</text>
+
+  <rect x="1248" y="470" width="322" height="190" rx="12" class="future"/>
+  <circle cx="1276" cy="498" r="14" fill="#b7791f"/><text x="1276" y="503" text-anchor="middle" class="numText">6</text>
+  <text x="1300" y="504" class="h">Future / Ultimate State</text>
+  <text x="1272" y="536" class="small">Azure MCP Server integration</text>
+  <text x="1272" y="560" class="small">Defender, Sentinel, Security Copilot</text>
+  <text x="1272" y="584" class="small">Azure Policy remediation workflows</text>
+  <text x="1272" y="608" class="small">Runbooks, SOPs, RAG knowledge stores</text>
+  <text x="1272" y="632" class="small">Broader remediation after approval</text>
+
+  <rect x="30" y="700" width="1540" height="124" rx="12" class="panel-gray"/>
+  <text x="54" y="732" class="h">Figure Scope</text>
+  <text x="54" y="762" class="txt">In scope for the tutorial demo: a Teams-style user conversation that investigates Azure resource coverage, proposes a Datadog synthetic or monitor, pauses for approval, creates/tests the Datadog webhook path, and records ServiceNow incident evidence.</text>
+  <text x="54" y="790" class="txt">Proposed future or ultimate state: broader security ecosystem integrations, automated remediation, Azure MCP Server tools, richer RAG/context stores, compliance deployment profiles, and additional customer-authored agents.</text>
+
+  <rect x="30" y="850" width="1540" height="92" rx="12" class="panel"/>
+  <text x="54" y="880" class="h">End-To-End Flow</text>
+  <text x="54" y="910" class="small">1. User asks in Teams.  2. Agents reason over Azure evidence and curated guidance.  3. Secured MCP tools provide live context and provider actions.  4. Human approval unlocks write-capable workflow.  5. Datadog synthetic/webhook and ServiceNow incident are validated.  6. Future integrations extend the same governed pattern.</text>
+
+  <path d="M800 152 V176" class="flow"/>
+  <path d="M370 304 H406" class="flow"/>
+  <path d="M876 304 H912" class="flow"/>
+  <path d="M1212 304 H1248" class="flow2"/>
+  <path d="M1062 431 V470" class="flow2"/>
+  <path d="M262 574 H286" class="flow"/>
+  <path d="M484 574 H508" class="flow"/>
+  <path d="M706 574 H730" class="flow"/>
+  <path d="M928 574 H952" class="flow"/>
+  <path d="M1150 574 H1248" class="futureLine"/>
+  <path d="M1402 431 V470" class="dash"/>
+</svg>

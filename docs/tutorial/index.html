@@ -203,6 +203,29 @@
       font-size: 1.12rem;
     }
 
+    .doc-figure {
+      margin: 2rem 0;
+      padding: 1rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .doc-figure img {
+      display: block;
+      width: 100%;
+      height: auto;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #f8fafc;
+    }
+
+    .doc-figure figcaption {
+      margin-top: 0.8rem;
+      color: var(--muted);
+      font-size: 0.92rem;
+      line-height: 1.55;
+    }
     .callout {
       margin: 1.5rem 0;
       padding: 1rem 1.1rem;
@@ -484,6 +507,10 @@
 
         <h2 id="concept-of-operations">Concept of Operations</h2>
         <p>JAWS is an agentic operations platform that lets a user chat in Microsoft Teams, investigate an operational need, deliberate with specialized agents, approve a governed action, and deploy an evidence-backed change across Azure, Datadog, and ServiceNow.</p>
+        <figure class="doc-figure" id="figure-1">
+          <a href="../assets/jaws-wide-shut-conops-figure-1.svg"><img src="../assets/jaws-wide-shut-conops-figure-1.svg" alt="Figure 1. JAWS Wide Shut end-state concept of operations showing Teams, agents, MCP tools, Azure, Datadog, ServiceNow, human approval, and future-state extensions."></a>
+          <figcaption><strong>Figure 1.</strong> JAWS Wide Shut end-state concept of operations. The tutorial demo scope is the Teams-driven workflow that investigates Azure evidence, recommends Datadog coverage, pauses for human approval, creates and tests the Datadog synthetic or monitor path, and records ServiceNow incident evidence. The future-state areas show how the same governed pattern can later expand to additional Microsoft security, Azure MCP Server, RAG, compliance, and remediation capabilities.</figcaption>
+        </figure>
 
         <h3>Main Use Case</h3>
         <p>The main tutorial use case starts in the Teams app. A user asks JAWS which Azure resources need Datadog monitors or synthetic tests. JAWS investigates the authorized Azure environment, retrieves curated observability guidance, evaluates the resource candidates, and explains its recommendation. The user then selects a resource, asks JAWS to proceed, supplies or confirms an approval reference, and JAWS deploys the Datadog monitor or synthetic test, configures the approved webhook path, validates the notification flow, and creates or updates the ServiceNow incident.</p>
@@ -1166,6 +1193,7 @@ Summary: 14/14 passed.</code></pre>
   </script>
 </body>
 </html>
+
 
 
 

@@ -122,17 +122,19 @@ function Save-JawsResourceManifest {
     }
     $Manifest.GeneratedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
     $tmp = Join-Path $dir ("." + [System.IO.Path]::GetFileName($Path) + "." + [guid]::NewGuid().ToString("N") + ".tmp")
+    $backup = Join-Path $dir ("." + [System.IO.Path]::GetFileName($Path) + "." + [guid]::NewGuid().ToString("N") + ".bak")
     try {
         $json = $Manifest | ConvertTo-Json -Depth 30
         [System.IO.File]::WriteAllText($tmp,$json,[System.Text.UTF8Encoding]::new($false))
         # On Windows replace an existing manifest atomically; first creation is a move.
         if (Test-Path -LiteralPath $Path) {
-            [System.IO.File]::Replace($tmp,$Path,$null)
+            [System.IO.File]::Replace($tmp,$Path,$backup)
         } else {
             [System.IO.File]::Move($tmp,$Path)
         }
     } finally {
         if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force }
+        if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Force }
     }
     return $Path
 }

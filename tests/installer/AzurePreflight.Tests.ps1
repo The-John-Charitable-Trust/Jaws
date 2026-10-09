@@ -1,6 +1,6 @@
-BeforeAll {
-    Import-Module (Join-Path $PSScriptRoot '../../installer/modules/AzurePreflight.psm1') -Force
-}
+$azurePreflightModule=Join-Path $PSScriptRoot '../../installer/modules/AzurePreflight.psm1'
+Import-Module $azurePreflightModule -Force
+
 Describe 'JAWS Stage A tenant inventory and permissions' {
     InModuleScope AzurePreflight {
         BeforeEach {

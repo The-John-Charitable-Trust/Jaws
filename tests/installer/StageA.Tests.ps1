@@ -23,6 +23,24 @@ Describe 'JAWS Stage A discovery and manifest' {
         }) -Name 'kv-test' -Type 'Microsoft.KeyVault/vaults' `
           -ExpectedSubscriptionId '00000000-0000-0000-0000-000000000999' } | Should -Throw
     }
+    It 'discovers a model deployment that omits location' {
+        Mock -ModuleName ResourceDiscovery Invoke-JawsAzureRead {
+            @([pscustomobject]@{
+                name='gpt-5-mini'
+                type='Microsoft.CognitiveServices/accounts/deployments'
+                id="/subscriptions/$sub/resourceGroups/$rg/providers/Microsoft.CognitiveServices/accounts/jaws-foundry-dev/deployments/gpt-5-mini"
+                properties=[pscustomobject]@{
+                    model=[pscustomobject]@{name='gpt-5-mini';version='2025-08-07'}
+                    provisioningState='Succeeded'
+                }
+            })
+        }
+        $r=Get-JawsModelDeployment -SubscriptionId $sub -ResourceGroupName $rg `
+            -FoundryResourceName 'jaws-foundry-dev' -DeploymentName 'gpt-5-mini'
+        $r.Status | Should -Be 'Discovered'
+        $r.Location | Should -BeNullOrEmpty
+        $r.ObservedConfiguration.ModelVersion | Should -Be '2025-08-07'
+    }
     It 'preserves ownership only for the same Azure resource ID' {
         $m=New-JawsResourceManifest -SubscriptionId $sub -ResourceGroupName $rg -EnvironmentName 't'
         $d=[pscustomobject]@{Name='kv-test';Type='Microsoft.KeyVault/vaults'

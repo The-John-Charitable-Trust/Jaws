@@ -24,3 +24,11 @@ does not modify source code or cloud resources.
 
 Record commit, tester account/tenant (sanitized), tested subscriptions,
 expected/actual results, PASS/FAIL, command output and reproduction steps.
+
+| A-011 | Subscriptions contain resources without tags or optional name metadata | No StrictMode property exceptions; one Scanned result per readable subscription |
+| A-012 | Subscription scan fails mid-processing | One Failed result, no Scanned duplicate, incomplete report, resource manifest not updated |
+
+
+## v0.4.5 JAWS-only installation state
+
+The tenant scan reports JAWS and legacy Tight-Fang matches separately. Legacy resources are informational and never copied into current JAWS installation state. After successful discovery, inspect `installer/.local/jaws-installation-state.<environment>.generated.json` for the resources explicitly selected for this JAWS installation. Rerun Discover to confirm it reuses existing state and does not create resources. Stage A does not yet implement an Install or overwrite option.

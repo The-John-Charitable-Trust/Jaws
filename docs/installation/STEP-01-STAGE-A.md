@@ -1,17 +1,23 @@
-# JAWS Installation — GitHub-first setup (Stage A preview)
+# Step 1 — JAWS State-First Discovery (Stage A 0.4.6)
 
-Open [`index.html`](index.html) for the illustrated, expandable installation guide.
+JAWS installation state is the operator-managed **gold copy**. Discovery compares tenant and targeted resource inventory to the state file; it never rewrites that file. Legacy Tight Fang is ignored in JAWS reports.
 
-Published installation sources are obtained from the GitHub repository:
+## Existing development environment
+
+`installer/config/jaws-installation-state.dev.json` already contains the expected four JAWS resource names, types, location and model version. The Azure resource IDs remain null until verified by the installer; no IDs were fabricated.
+
+## Start discovery
+
+From the cloned JAWS repository root:
 
 ```powershell
-Set-Location "$HOME\Documents"
-git clone https://github.com/cezjah/Jaws.git
-Set-Location .\Jaws
+.\installer\Install-Jaws.ps1 -Mode Discover
 ```
 
-The published repository must contain the installer, documents and tests. No second ZIP download, overlay, or manual folder merge is part of the end-user installation workflow.
+The installer loads state first and uses its subscription and resource group, checks Azure access, scans readable subscriptions, and compares observations against the expected state. It writes tenant and comparison **reports** under `installer/.local/`, not changes to the state file.
 
-**Stage A only:** ` .\installer\Install-Jaws.ps1 -Mode Discover ` performs read-only inventory and creates local reports. It cannot install JAWS into an empty environment. `-Mode Install` will be implemented and documented in Stage B.
+## A new user's first run
 
-The repository may currently require GitHub access.
+There is no prepopulated state for an independent customer. The intended first-time action is `Install`, which will generate and populate the new installation state after successful deployment. **Stage A does not implement Install mode**; this document describes the developer/tester verification scenario only.
+
+Never copy the seeded development state to a different subscription. The installed source may contain a sample state file for tests, not a universal default installation.

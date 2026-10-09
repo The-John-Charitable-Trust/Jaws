@@ -1,110 +1,79 @@
-# JAWS Stage A v0.4.0 - installer entry point, read-only Azure discovery
+# JAWS Installer 0.4.6 — State-first read-only discovery and reconciliation
 [CmdletBinding()]
 param(
     [ValidateSet('Discover')][string]$Mode='Discover',
     [string]$SubscriptionId,
     [string]$ResourceGroupName,
-    [string]$FoundryResourceName,
-    [string]$FoundryProjectName,
-    [string]$ModelDeploymentName,
-    [string]$KeyVaultName,
-    [string]$ExpectedModelName='gpt-5-mini',
-    [string]$ExpectedModelVersion='2025-08-07',
-    [ValidatePattern('^[a-zA-Z0-9_-]+$')][string]$EnvironmentName='dev',
+    [string]$EnvironmentName='dev',
+    [string]$StateFile,
     [switch]$NonInteractive
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
-Import-Module (Join-Path $PSScriptRoot 'modules/AzurePreflight.psm1') -Force -ErrorAction Stop
-Import-Module (Join-Path $PSScriptRoot 'modules/ResourceDiscovery.psm1') -Force -ErrorAction Stop
-Import-Module (Join-Path $PSScriptRoot 'modules/ResourceManifest.psm1') -Force -ErrorAction Stop
+Import-Module (Join-Path $PSScriptRoot 'modules/AzurePreflight.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'modules/ResourceDiscovery.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'modules/ResourceManifest.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'modules/InstallationState.psm1') -Force
 
-function Resolve-JawsName {
-    param([string]$Value,[string]$Prompt,[switch]$NonInteractive)
-    if ($Value) { return $Value }
-    if ($NonInteractive) { throw "JAWS-CONFIG-006: Missing required name for $Prompt." }
-    $answer=Read-Host $Prompt
-    if (-not $answer -or -not $answer.Trim()) { throw "JAWS-CONFIG-007: Empty value for $Prompt." }
-    return $answer.Trim()
-}
-
-Write-Host 'JAWS Installer v0.4.2 | Stage A Pre-install Inventory (read-only)' -ForegroundColor Cyan
+# The operator-maintained state is the GOLD COPY. Never overwrite it in Discover.
+if (-not $StateFile) { $StateFile=Join-Path $PSScriptRoot "config/jaws-installation-state.$EnvironmentName.json" }
+$state=Read-JawsInstallationState -Path $StateFile
+if (-not $state) { throw "JAWS-STATE-003: No installation state at '$StateFile'. A new installation requires Stage B Install mode; Discover cannot invent an installation state." }
+if ($state.EnvironmentName -ine $EnvironmentName) { throw 'JAWS-STATE-002: Environment name does not match the JAWS state.' }
+if ($SubscriptionId -and $SubscriptionId -ine $state.SubscriptionId) { throw 'JAWS-STATE-002: Subscription differs from the authoritative state.' }
+if ($ResourceGroupName -and $ResourceGroupName -ine $state.ResourceGroupName) { throw 'JAWS-STATE-002: Resource group differs from the authoritative state.' }
+$SubscriptionId=[string]$state.SubscriptionId
+$ResourceGroupName=[string]$state.ResourceGroupName
+Write-Host "JAWS Installer v0.4.6 | $Mode | State-first verification" -ForegroundColor Cyan
+Write-Host "Authoritative state: $StateFile"
+Write-Host "Target: $SubscriptionId | $ResourceGroupName"
 $context=Get-JawsAuthorizedSubscriptions -NonInteractive:$NonInteractive
 $selected=Select-JawsSubscription -Subscriptions $context.Subscriptions -SubscriptionId $SubscriptionId -NonInteractive:$NonInteractive
-$SubscriptionId=[string]$selected.id
 $tenantId=[string]$selected.tenantId
-Write-Host "Signed in: $($context.Account.user.name) | Tenant: $tenantId"
-$ResourceGroupName=Select-JawsResourceGroup -SubscriptionId $SubscriptionId -ResourceGroupName $ResourceGroupName -NonInteractive:$NonInteractive
-
-# Check every enabled subscription visible to the signed-in account in selected tenant.
-Write-Host 'Scanning all accessible enabled subscriptions in selected tenant...' -ForegroundColor Cyan
+$null=Select-JawsResourceGroup -SubscriptionId $SubscriptionId -ResourceGroupName $ResourceGroupName -NonInteractive:$NonInteractive
 $scan=Get-JawsTenantInstallationScan -Subscriptions $context.Subscriptions -TenantId $tenantId
 $local=Join-Path $PSScriptRoot '.local'
-if (-not (Test-Path -LiteralPath $local)) { New-Item -ItemType Directory -Path $local -Force | Out-Null }
+if (-not (Test-Path $local)) { New-Item -ItemType Directory -Path $local -Force | Out-Null }
 $scanPath=Join-Path $local "jaws-tenant-scan.$EnvironmentName.generated.json"
-# Save diagnostics even when a subscription scan is incomplete; do not silently claim success.
 $scan | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $scanPath -Encoding utf8
-Write-Host ''
-Write-Host 'TENANT INVENTORY REPORT' -ForegroundColor Cyan
-Write-Host '-----------------------'
-Write-Host "Tenant: $($scan.TenantId)"
-Write-Host "Subscriptions inspected: $(@($scan.Subscriptions | Where-Object Status -eq 'Scanned').Count) of $($scan.SubscriptionCount)"
-foreach ($subResult in @($scan.Subscriptions)) {
-    $countDisplay = if ($null -eq $subResult.ResourceCount) { 'N/A' } else { $subResult.ResourceCount }
-    Write-Host ("  {0,-38} {1,-10} Resources: {2}" -f $subResult.SubscriptionId, $subResult.Status, $countDisplay)
-    if ($subResult.Status -ne 'Scanned') {
-        Write-Warning "  Subscription scan failed: $($subResult.Error)"
-    }
-}
-Write-Host "Potential JAWS/Tight-Fang matches: $(@($scan.Candidates).Count)"
-foreach ($candidate in @($scan.Candidates)) {
-    Write-Host ("  POSSIBLE MATCH | {0} | {1} | {2} | {3}" -f $candidate.SubscriptionId, $candidate.ResourceGroup, $candidate.Name, $candidate.Reason)
-}
-Write-Host 'These are heuristic matches, not confirmed JAWS installations.' 
-Write-Host "Tenant scan report: $scanPath"
-if (-not $scan.Completed) {
-    throw 'JAWS-SCAN-002: One or more visible subscriptions could not be scanned. Inspect the local tenant scan report. Resource manifest not updated.'
-}
-if (@($scan.Candidates).Count) {
-    Write-Warning 'Possible existing JAWS/Tight-Fang resources were detected. Review the tenant scan report before any future install. Stage A makes no changes.'
-}
-
-$FoundryResourceName=Resolve-JawsName -Value $FoundryResourceName -Prompt 'Foundry resource name' -NonInteractive:$NonInteractive
-$FoundryProjectName=Resolve-JawsName -Value $FoundryProjectName -Prompt 'Foundry project name' -NonInteractive:$NonInteractive
-$ModelDeploymentName=Resolve-JawsName -Value $ModelDeploymentName -Prompt 'Model deployment name' -NonInteractive:$NonInteractive
-$KeyVaultName=Resolve-JawsName -Value $KeyVaultName -Prompt 'Key Vault name' -NonInteractive:$NonInteractive
-
+Write-Host "TENANT SCAN: $(@($scan.Subscriptions | Where-Object Status -eq 'Scanned').Count)/$($scan.SubscriptionCount) subscriptions" -ForegroundColor Cyan
+foreach($sub in @($scan.Subscriptions)) { Write-Host ("  {0,-38} {1,-8} Resources: {2}" -f $sub.SubscriptionId,$sub.Status,$sub.ResourceCount) }
+if (-not $scan.Completed) { throw "JAWS-SCAN-002: Tenant scan incomplete. Report: $scanPath. Authoritative JAWS state unchanged." }
+$scanMatches=Compare-JawsTenantScanToState -State $state -Scan $scan
+Write-Host 'TENANT SCAN VS. JAWS STATE' -ForegroundColor Cyan
+foreach($m in $scanMatches) { Write-Host ("  {0,-26} {1}" -f $m.Name,$m.Status) }
+# Ignore legacy infrastructure entirely in the customer-facing JAWS reports.
+# Targeted discovery is authoritative on actual presence; tenant naming heuristic is only informative.
+$foundry=@($state.Resources | Where-Object Type -eq 'Microsoft.CognitiveServices/accounts')
+$project=@($state.Resources | Where-Object Type -eq 'Microsoft.CognitiveServices/accounts/projects')
+$model=@($state.Resources | Where-Object Type -eq 'Microsoft.CognitiveServices/accounts/deployments')
+$vault=@($state.Resources | Where-Object Type -eq 'Microsoft.KeyVault/vaults')
+if ($foundry.Count -ne 1 -or $project.Count -ne 1 -or $model.Count -ne 1 -or $vault.Count -ne 1) { throw 'JAWS-STATE-007: Stage A requires exactly one Foundry resource, project, deployment, and vault in the state JSON.' }
+$items=@()
+$items+=Get-JawsAzureResource -SubscriptionId $SubscriptionId -ResourceGroupName $ResourceGroupName -ResourceName $foundry[0].Name -ResourceType $foundry[0].Type
+$items+=Get-JawsFoundryProject -SubscriptionId $SubscriptionId -ResourceGroupName $ResourceGroupName -FoundryResourceName $foundry[0].Name -ProjectName $project[0].Name
+$items+=Get-JawsModelDeployment -SubscriptionId $SubscriptionId -ResourceGroupName $ResourceGroupName -FoundryResourceName $foundry[0].Name -DeploymentName $model[0].Name
+$items+=Get-JawsAzureResource -SubscriptionId $SubscriptionId -ResourceGroupName $ResourceGroupName -ResourceName $vault[0].Name -ResourceType $vault[0].Type
+$comparison=Compare-JawsTargetDiscoveryToState -State $state -Results $items
 $manifestPath=Join-Path $local "jaws-resources.$EnvironmentName.generated.json"
 $manifest=New-JawsResourceManifest -SubscriptionId $SubscriptionId -ResourceGroupName $ResourceGroupName -EnvironmentName $EnvironmentName -ExistingPath $manifestPath
-$items=@()
-$items+=Get-JawsAzureResource -SubscriptionId $SubscriptionId -ResourceGroupName $ResourceGroupName -ResourceName $FoundryResourceName -ResourceType 'Microsoft.CognitiveServices/accounts'
-$items+=Get-JawsFoundryProject -SubscriptionId $SubscriptionId -ResourceGroupName $ResourceGroupName -FoundryResourceName $FoundryResourceName -ProjectName $FoundryProjectName
-$items+=Get-JawsModelDeployment -SubscriptionId $SubscriptionId -ResourceGroupName $ResourceGroupName -FoundryResourceName $FoundryResourceName -DeploymentName $ModelDeploymentName
-$items+=Get-JawsAzureResource -SubscriptionId $SubscriptionId -ResourceGroupName $ResourceGroupName -ResourceName $KeyVaultName -ResourceType 'Microsoft.KeyVault/vaults'
 foreach($item in $items) {
+    $ex=@($state.Resources | Where-Object { $_.Name -ieq $item.Name -and $_.Type -ieq $item.Type })[0]
     $expected=$null
     if ($item.Type -eq 'Microsoft.CognitiveServices/accounts/deployments') {
-        $expected=[pscustomobject]@{ModelName=$ExpectedModelName;ModelVersion=$ExpectedModelVersion;ProvisioningState='Succeeded'}
+        $expected=[pscustomobject]@{ModelName=$ex.ExpectedConfiguration.ModelName;ModelVersion=$ex.ExpectedConfiguration.ModelVersion;ProvisioningState=$ex.ExpectedConfiguration.ProvisioningState}
     }
     $manifest=Add-JawsManifestResource -Manifest $manifest -DiscoveryResult $item -ExpectedConfiguration $expected
 }
+# Refuse to persist a current-state manifest over an identity mismatch.
+if (@($comparison | Where-Object Status -eq 'IdentityDrift').Count -gt 0) { throw 'JAWS-STATE-008: Resource identity mismatch. State unchanged and manifest not rewritten.' }
 Save-JawsResourceManifest -Manifest $manifest -Path $manifestPath | Out-Null
-Write-Host ''
-Write-Host 'TARGET RESOURCE MANIFEST REPORT' -ForegroundColor Cyan
-Write-Host '-------------------------------'
-Write-Host ("{0,-24} {1,-13} {2,-10} {3,-28} {4}" -f 'RESOURCE', 'STATUS', 'OWNERSHIP', 'RECOMMENDED ACTION', 'VALIDATION')
-foreach($resource in @($manifest.Resources)) {
-    Write-Host ("{0,-24} {1,-13} {2,-10} {3,-28} {4}" -f $resource.Name,$resource.Status,$resource.Ownership,$resource.RecommendedAction,$resource.ValidationResult)
-    Write-Host "  Type: $($resource.Type)"
-    if ($resource.ResourceId) { Write-Host "  Azure Resource ID: $($resource.ResourceId)" }
-    if ($resource.Type -eq 'Microsoft.CognitiveServices/accounts/deployments') {
-        Write-Host "  Model expected: $ExpectedModelName ($ExpectedModelVersion)"
-        $observed=$resource.ObservedConfiguration
-        if ($observed -and $observed.ModelName) {
-            Write-Host "  Model observed: $($observed.ModelName) ($($observed.ModelVersion)) | Provisioning: $($observed.ProvisioningState)"
-        }
-    }
-}
-Write-Host "Total resources: $(@($manifest.Resources).Count)"
-Write-Host "Resource manifest: $manifestPath"
-Write-Host 'Azure resource write operations: 0'
+$report=[pscustomobject]@{SchemaVersion='1.0';EnvironmentName=$EnvironmentName;StateFile=$StateFile;TenantScan=$scanMatches;TargetDiscovery=$comparison;CompletedAtUtc=(Get-Date).ToUniversalTime().ToString('o')}
+$reportPath=Join-Path $local "jaws-state-comparison.$EnvironmentName.generated.json"
+$report | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $reportPath -Encoding utf8
+Write-Host 'JAWS TARGET RESOURCE COMPARISON' -ForegroundColor Cyan
+foreach($m in $comparison) { Write-Host ("  {0,-26} {1,-20} {2}" -f $m.Name,$m.Status,$m.ObservedResourceId) }
+Write-Host "Manifest: $manifestPath"
+Write-Host "Comparison report: $reportPath"
+Write-Host 'JAWS golden state JSON: unchanged (Discover mode).' -ForegroundColor Green
+Write-Host 'Azure writes: 0'

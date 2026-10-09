@@ -52,9 +52,9 @@ function Select-JawsSubscription {
         return $found[0]
     }
     if ($NonInteractive) { throw 'JAWS-CONFIG-001: -SubscriptionId required for noninteractive discovery.' }
-    Write-Host 'Select an accessible subscription:' -ForegroundColor Cyan
+    Write-Host 'Select the Azure subscription for the JAWS installation:' -ForegroundColor Cyan
     for($i=0;$i -lt $Subscriptions.Count;$i++) { Write-Host "[$($i+1)] $($Subscriptions[$i].name) ($($Subscriptions[$i].id))" }
-    $choice=Read-Host 'Subscription number'
+    $choice=Read-Host 'Enter the subscription number for this JAWS installation'
     $number=0
     if (-not [int]::TryParse($choice,[ref]$number) -or $number -lt 1 -or $number -gt $Subscriptions.Count) {
         throw 'JAWS-CONFIG-002: Invalid subscription selection.'
@@ -69,8 +69,9 @@ function Select-JawsResourceGroup {
         if ($NonInteractive) { throw 'JAWS-CONFIG-003: -ResourceGroupName required for noninteractive discovery.' }
         $groups=@(Invoke-JawsPreflightRead -Arguments @('group','list','--subscription',$SubscriptionId,'--output','json','--only-show-errors') -Operation 'resource group selection')
         if ($groups.Count -eq 0) { throw 'JAWS-CONFIG-004: No visible resource groups. Stage A does not create resource groups.' }
+        Write-Host 'Select the Azure resource group for the JAWS installation:' -ForegroundColor Cyan
         for($i=0;$i -lt $groups.Count;$i++) { Write-Host "[$($i+1)] $($groups[$i].name)" }
-        $choice=Read-Host 'Resource group number'
+        $choice=Read-Host 'Enter the resource group number for this JAWS installation'
         $number=0
         if (-not [int]::TryParse($choice,[ref]$number) -or $number -lt 1 -or $number -gt $groups.Count) { throw 'JAWS-CONFIG-005: Invalid resource group selection.' }
         $ResourceGroupName=[string]$groups[$number-1].name
@@ -81,45 +82,91 @@ function Select-JawsResourceGroup {
     return [string]$rg.name
 }
 
+function Get-JawsOptionalProperty {
+    [CmdletBinding()]
+    param([AllowNull()]$InputObject,[Parameter(Mandatory)][string]$PropertyName)
+    if ($null -eq $InputObject) { return $null }
+    if ($InputObject -is [System.Collections.IDictionary]) {
+        foreach ($key in $InputObject.Keys) {
+            if ([string]$key -ieq $PropertyName) { return $InputObject[$key] }
+        }
+        return $null
+    }
+    $property=$InputObject.PSObject.Properties[$PropertyName]
+    if ($null -eq $property) { return $null }
+    return $property.Value
+}
+
 function Get-JawsTenantInstallationScan {
     [CmdletBinding()]
     param([Parameter(Mandatory)][object[]]$Subscriptions,[Parameter(Mandatory)][string]$TenantId)
+
     $targets=@($Subscriptions | Where-Object { $_.tenantId -ieq $TenantId -and $_.state -eq 'Enabled' })
-    if (-not $targets.Count) { throw 'JAWS-SCAN-001: No enabled subscriptions found for selected tenant.' }
+    if ($targets.Count -eq 0) { throw 'JAWS-SCAN-001: No enabled subscriptions found for selected tenant.' }
     $results=@()
     $candidates=@()
     foreach($sub in $targets) {
+        # Keep scanning and candidate extraction in one transactional unit.
+        # A subscription is recorded only ONCE: Scanned OR Failed, never both.
+        $subscriptionCandidates=@()
         try {
             $resources=@(Invoke-JawsPreflightRead -Arguments @('resource','list','--subscription',[string]$sub.id,'--output','json','--only-show-errors') -Operation "tenant resource scan: $($sub.id)")
-            $results+= [pscustomobject]@{SubscriptionId=$sub.id;Status='Scanned';ResourceCount=$resources.Count;Error=$null}
             foreach($resource in $resources) {
-                if (-not $resource) { continue }
-                $name=[string]$resource.name
-                $rg=[string]$resource.resourceGroup
-                $tags=$resource.tags
+                if ($null -eq $resource) { continue }
+                # StrictMode-safe: Azure resources may omit tags or other optional metadata.
+                $name=[string](Get-JawsOptionalProperty -InputObject $resource -PropertyName 'name')
+                $rg=[string](Get-JawsOptionalProperty -InputObject $resource -PropertyName 'resourceGroup')
+                $tags=Get-JawsOptionalProperty -InputObject $resource -PropertyName 'tags'
                 $tagMatches=$false
-                if ($tags) {
-                    foreach($key in @($tags.PSObject.Properties.Name)) {
-                        if ($key -match '(?i)^(application|solution|product|project|managedby|jaws)$' -and
-                            [string]$tags.$key -match '(?i)jaws|tight.?fang|tfang') { $tagMatches=$true; break }
+                if ($null -ne $tags) {
+                    # StrictMode rejects collection-style `.Name` access on PSMemberInfoCollection.
+                    foreach($key in @($tags.PSObject.Properties | ForEach-Object { $_.Name })) {
+                        if ($key -match '(?i)^(application|solution|product|project|managedby|jaws)$') {
+                            $value=Get-JawsOptionalProperty -InputObject $tags -PropertyName $key
+                            if ([string]$value -match '(?i)jaws|tight.?fang|tfang') {
+                                $tagMatches=$true
+                                break
+                            }
+                        }
                     }
                 }
                 if ($name -match '(?i)jaws|tight.?fang|tfang' -or $rg -match '(?i)jaws|tight.?fang|tfang' -or $tagMatches) {
-                    $candidates+=[pscustomobject]@{
-                        SubscriptionId=$sub.id;ResourceGroup=$rg;Name=$name
-                        Type=$resource.type;ResourceId=$resource.id
+                    $isLegacy = ($name -match '(?i)tight.?fang|tfang' -or $rg -match '(?i)tight.?fang|tfang')
+                    $isJaws = ($name -match '(?i)jaws' -or $rg -match '(?i)jaws')
+                    $platform = if ($isLegacy) { 'LegacyTightFang' } elseif ($isJaws) { 'JAWS' } else { 'Unclassified' }
+                    # Tags can be the only distinguishing evidence.
+                    if (-not $isLegacy -and -not $isJaws -and $null -ne $tags) {
+                        foreach ($key in @($tags.PSObject.Properties | ForEach-Object { $_.Name })) {
+                            $tagValue = [string](Get-JawsOptionalProperty -InputObject $tags -PropertyName $key)
+                            if ($tagValue -match '(?i)tight.?fang|tfang') { $platform = 'LegacyTightFang'; break }
+                            if ($tagValue -match '(?i)jaws') { $platform = 'JAWS' }
+                        }
+                    }
+                    $subscriptionCandidates += [pscustomobject]@{
+                        Platform=$platform
+                        SubscriptionId=$sub.id
+                        ResourceGroup=$rg
+                        Name=$name
+                        Type=Get-JawsOptionalProperty -InputObject $resource -PropertyName 'type'
+                        ResourceId=Get-JawsOptionalProperty -InputObject $resource -PropertyName 'id'
                         Reason=if ($tagMatches) {'MatchingTags'} elseif ($name -match '(?i)jaws|tight.?fang|tfang') {'MatchingName'} else {'MatchingResourceGroup'}
                     }
                 }
             }
+            $candidates+=@($subscriptionCandidates)
+            $results+= [pscustomobject]@{SubscriptionId=$sub.id;Status='Scanned';ResourceCount=$resources.Count;Error=$null}
         } catch {
             $results+= [pscustomobject]@{SubscriptionId=$sub.id;Status='Failed';ResourceCount=$null;Error=$_.Exception.Message}
         }
     }
     [pscustomobject]@{
-        SchemaVersion='1.0';TenantId=$TenantId;GeneratedAtUtc=(Get-Date).ToUniversalTime().ToString('o')
-        SubscriptionCount=$targets.Count;Completed=(@($results | Where-Object Status -eq 'Failed').Count -eq 0)
-        Subscriptions=@($results);Candidates=@($candidates)
+        SchemaVersion='1.0'
+        TenantId=$TenantId
+        GeneratedAtUtc=(Get-Date).ToUniversalTime().ToString('o')
+        SubscriptionCount=$targets.Count
+        Completed=(@($results | Where-Object Status -eq 'Failed').Count -eq 0)
+        Subscriptions=@($results)
+        Candidates=@($candidates)
         Disclaimer='Heuristic inventory of readable subscriptions. Candidates do not prove an installation. No candidates does not prove absence of JAWS.'
     }
 }

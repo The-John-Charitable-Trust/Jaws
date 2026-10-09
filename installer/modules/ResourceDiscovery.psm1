@@ -1,6 +1,21 @@
 # JAWS Stage A - Azure read-only discovery
 Set-StrictMode -Version Latest
 
+function Get-JawsDiscoveryProperty {
+    [CmdletBinding()]
+    param([AllowNull()]$InputObject,[Parameter(Mandatory)][string]$PropertyName)
+    if ($null -eq $InputObject) { return $null }
+    if ($InputObject -is [System.Collections.IDictionary]) {
+        foreach ($key in $InputObject.Keys) {
+            if ([string]$key -ieq $PropertyName) { return $InputObject[$key] }
+        }
+        return $null
+    }
+    $property=$InputObject.PSObject.Properties[$PropertyName]
+    if ($null -eq $property) { return $null }
+    return $property.Value
+}
+
 function Invoke-JawsAzureRead {
     [CmdletBinding()]
     param(
@@ -42,9 +57,10 @@ function Resolve-JawsDiscoveryMatch {
     )
     $matchingResources = @($Items | Where-Object {
         if ($null -eq $_) { return $false }
-        $actualName = [string]$_.name
+        $actualName = [string](Get-JawsDiscoveryProperty -InputObject $_ -PropertyName 'name')
+        $actualType = [string](Get-JawsDiscoveryProperty -InputObject $_ -PropertyName 'type')
         ($actualName -ieq $Name -or $actualName -like "*/$Name") -and
-        ([string]$_.type -ieq $Type -or -not $_.type)
+        ($actualType -ieq $Type -or -not $actualType)
     })
     if ($matchingResources.Count -gt 1) { throw "Ambiguous resource discovery: $Type/$Name." }
     if ($matchingResources.Count -eq 0) {
@@ -54,7 +70,7 @@ function Resolve-JawsDiscoveryMatch {
         }
     }
     $r = $matchingResources[0]
-    $id = [string]$r.id
+    $id = [string](Get-JawsDiscoveryProperty -InputObject $r -PropertyName 'id')
     if (-not $id -or $id -notmatch '^/subscriptions/[^/]+/resourceGroups/[^/]+/providers/') {
         throw "Invalid or missing Azure resource ID for $Type/$Name."
     }
@@ -64,9 +80,12 @@ function Resolve-JawsDiscoveryMatch {
     if ($ParentResourceId -and -not $id.StartsWith("$ParentResourceId/", [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "Unexpected parent resource in ID for $Type/$Name."
     }
+    $properties=Get-JawsDiscoveryProperty -InputObject $r -PropertyName 'properties'
+    if ($null -eq $properties) { $properties=[pscustomobject]@{} }
     [pscustomobject]@{
         Name=$Name; Type=$Type; Status='Discovered'; ResourceId=$id
-        Location=$r.location; Properties=$r.properties
+        Location=Get-JawsDiscoveryProperty -InputObject $r -PropertyName 'location'
+        Properties=$properties
     }
 }
 
@@ -129,10 +148,11 @@ function Get-JawsModelDeployment {
         -ParentResourceId $parent -ExpectedSubscriptionId $SubscriptionId
     if ($match.Status -eq 'Discovered') {
         $p = $match.Properties
+        $model=Get-JawsDiscoveryProperty -InputObject $p -PropertyName 'model'
         $match | Add-Member -NotePropertyName 'ObservedConfiguration' -NotePropertyValue ([pscustomobject]@{
-            ModelName=$p.model.name
-            ModelVersion=$p.model.version
-            ProvisioningState=$p.provisioningState
+            ModelName=Get-JawsDiscoveryProperty -InputObject $model -PropertyName 'name'
+            ModelVersion=Get-JawsDiscoveryProperty -InputObject $model -PropertyName 'version'
+            ProvisioningState=Get-JawsDiscoveryProperty -InputObject $p -PropertyName 'provisioningState'
         })
     }
     return $match

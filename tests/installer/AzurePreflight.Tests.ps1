@@ -34,3 +34,45 @@ Describe 'JAWS Stage A tenant inventory and permissions' {
         }
     }
 }
+
+# Tenant scan regression tests for missing optional resource metadata.
+Describe 'JAWS tenant scan regressions' {
+    BeforeAll {
+        Import-Module (Join-Path $PSScriptRoot '../../installer/modules/AzurePreflight.psm1') -Force
+    }
+    It 'handles missing tags without duplicate scan records' {
+        Mock -ModuleName AzurePreflight Invoke-JawsPreflightRead {
+            @([pscustomobject]@{name='example-jaws';resourceGroup='rg-x';type='Microsoft.KeyVault/vaults';id='/id'})
+        }
+        $subs=@([pscustomobject]@{id='sub-1';tenantId='tenant-1';state='Enabled'})
+        $result=Get-JawsTenantInstallationScan -Subscriptions $subs -TenantId 'tenant-1'
+        $result.Completed | Should -BeTrue
+        @($result.Subscriptions).Count | Should -Be 1
+        @($result.Candidates).Count | Should -Be 1
+    }
+    It 'handles non-empty Azure tag objects under StrictMode' {
+        Mock -ModuleName AzurePreflight Invoke-JawsPreflightRead {
+            @([pscustomobject]@{
+                name='unrelated-resource'
+                resourceGroup='rg-x'
+                type='Microsoft.KeyVault/vaults'
+                id='/id'
+                tags=[pscustomobject]@{application='JAWS';environment='dev'}
+            })
+        }
+        $subs=@([pscustomobject]@{id='sub-1';tenantId='tenant-1';state='Enabled'})
+        $result=Get-JawsTenantInstallationScan -Subscriptions $subs -TenantId 'tenant-1'
+        $result.Completed | Should -BeTrue
+        @($result.Subscriptions).Count | Should -Be 1
+        @($result.Candidates).Count | Should -Be 1
+        $result.Candidates[0].Reason | Should -Be 'MatchingTags'
+    }
+    It 'records one failure if resource listing throws' {
+        Mock -ModuleName AzurePreflight Invoke-JawsPreflightRead { throw 'access denied' }
+        $subs=@([pscustomobject]@{id='sub-1';tenantId='tenant-1';state='Enabled'})
+        $result=Get-JawsTenantInstallationScan -Subscriptions $subs -TenantId 'tenant-1'
+        $result.Completed | Should -BeFalse
+        @($result.Subscriptions).Count | Should -Be 1
+        $result.Subscriptions[0].Status | Should -Be 'Failed'
+    }
+}

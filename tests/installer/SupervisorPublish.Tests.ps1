@@ -55,6 +55,10 @@ Describe 'JAWS Supervisor registry image publication preparation' {
         $body | Should -Not -Match 'az acr create'
         $body | Should -Not -Match 'az role assignment create'
     }
+    It 'does not mix docker push progress with the structured publish result' {
+        $body=Get-Content (Join-Path $PSScriptRoot '../../installer/modules/SupervisorPublish.psm1') -Raw
+        $body | Should -Match '\& docker push \$Plan\.Plan\.TargetTag \| Out-Host'
+    }
     It 'parses publishing module and entrypoint in PowerShell' {
         foreach($p in @('installer/Publish-JawsSupervisor.ps1','installer/modules/SupervisorPublish.psm1')) {
             $full=Join-Path (Join-Path $PSScriptRoot '../..') $p

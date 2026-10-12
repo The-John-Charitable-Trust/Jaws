@@ -121,3 +121,31 @@ Microsoft sources:
 
 ### Acceptance status and remaining deployment work
 Prior offline test baseline: 65 passed. Nine new publication tests increase the target to **74**. New tests have not yet run independently. The .NET project was compiled and packaged earlier, but the Linux image is not yet known to be built. **Do not execute Publish until independent tests pass and the exact plan is reviewed.** The next milestone is Foundry hosted-agent deployment through installer under a separate approved plan and ACR pull/hosting permissions.
+
+## Stage B milestone 2: deploy existing published Supervisor image to Foundry (awaiting QA)
+
+Microsoft Foundry's hosted-agent REST API v1 supports agent creation using a published container image, `kind: hosted`, `cpu: 1`, `memory: 2Gi` and Responses protocol version `2.0.0`. It automatically creates an agent version and platform-hosted agent identity. Microsoft documents that Foundry Project Manager at project scope is normally required for deployments, and the project managed identity needs `AcrPull` or `Container Registry Repository Reader` on the ACR. References:
+- https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/deploy-hosted-agent
+- https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/deploy-hosted-agent-private-azure-container-registry
+- https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/hosted-agents
+
+The installer now has `installer/Deploy-JawsSupervisor.ps1` with modes `Plan` and `Deploy`. `Plan` uses the verified image publishing receipt and current authoritative state **without Azure calls or writes**. It binds the exact digest to the Foundry project `jaws-dev`, Foundry account `jaws-foundry-dev`, model deployment `gpt-5-mini` and Supervisor `jaws-supervisor-dev`. Reports go in the ignored `installer/.local` directory.
+
+```powershell
+.\installer\Deploy-JawsSupervisor.ps1 -Mode Plan
+```
+
+Before billable deployment, independently validate the image URI and plan fingerprint, Foundry quota/hosting support, compute/inference cost exposure, project manager rights and project managed identity image pull. The installer Deployment operation performs read-only project/ACR/RBAC checks and stops on absent permissions. **This first version does NOT automatically grant missing pull permissions or bypass user authorization.** Required RBAC configuration must be implemented through the installer, not manual portal/CLI provisioning.
+
+Only after explicitly approving this exact agent deployment and charges, execute:
+```powershell
+.\installer\Deploy-JawsSupervisor.ps1 -Mode Deploy -ApprovedPlanSha256 "<plan-sha256>" -AcknowledgeHostingAndInferenceCharges
+```
+
+The command uses Microsoft Foundry REST v1 via Azure CLI internally; it refuses an existing agent, then creates one new hosted agent version and writes a local receipt. An Azure error can occur after resource creation; never retry without checking for partial provisioning. This initial operation verifies only that creation began, **not** that hosting became active or responded. Read-only status inspection after creation:
+```powershell
+.\installer\Test-JawsSupervisorDeployment.ps1
+```
+This checks the version status from the exact recorded project and agent, without running inference. An authenticated test response will be a separate cost-approved acceptance gate.
+
+New Pester tests (10 deployment tests plus the prior 75 baseline; target at least 85 tests) await independent execution. No Azure hosted agent has been created by these commits.

@@ -27,7 +27,7 @@ function New-JawsOfflineDeploymentPlan {
     if (-not [guid]::TryParse([string]$scope.SubscriptionId, [ref]$subId) -or $subId -eq [guid]::Empty) {
         throw 'JAWS-PLAN-004: Replace the example subscription ID with an authorized subscription ID.'
     }
-    if (-not $blueprint.Constraints.AzureWritesAllowed -eq $false -or
+    if ($blueprint.Constraints.AzureWritesAllowed -ne $false -or
         $blueprint.Constraints.LiveInferenceAllowed -ne $false -or
         $blueprint.Constraints.HumanApprovalForWrites -ne $true -or
         $blueprint.Constraints.UserPermissionCeiling -ne $true -or

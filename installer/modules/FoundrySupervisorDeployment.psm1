@@ -60,7 +60,7 @@ function New-JawsFoundrySupervisorPlan {
         container_configuration=[ordered]@{image=[string]$PublishReceipt.Image}
         cpu='1';memory='2Gi'
         protocol_versions=@([ordered]@{protocol='responses';version='2.0.0'})
-        environment_variables=[ordered]@{MODEL_DEPLOYMENT_NAME=[string]$model[0].Name}
+        environment_variables=[ordered]@{FOUNDRY_PROJECT_ENDPOINT=$endpoint;AZURE_AI_MODEL_DEPLOYMENT_NAME=[string]$model[0].Name}
     }
     $request=[ordered]@{name=$AgentName;definition=$definition}
     $payload=[ordered]@{

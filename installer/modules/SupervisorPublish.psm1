@@ -116,7 +116,7 @@ function Invoke-JawsSupervisorPublish {
     }
     [pscustomobject]@{
         Status='PUBLISHED_AND_DIGEST_VERIFIED';Repository='jaws/supervisor'
-        Image="$registry/jaws/supervisor@$digest";RegistryManifestDigest=$digest
+        Image="$registry.azurecr.io/jaws/supervisor@$digest";RegistryManifestDigest=$digest
         PlanSha256=$Plan.PlanSha256;FoundryDeploymentPerformed=$false
         RegistryPushPerformed=$true
     }

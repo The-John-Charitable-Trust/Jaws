@@ -63,3 +63,29 @@ Source: https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/deploy-hos
 1. Select the existing ACR for reuse, or approve creation through the JAWS installer with clear SKU/network/retention and budget.
 2. Implement opt-in installer publishing, verify registry write authorization and content digest, use no passwords or local privileged token persistence.
 3. Implement hosted-agent version creation via supported Foundry API/SDK; validate live health/invocation, agent pull permissions, and state ownership. Require a separately authorized exact installation plan and cost exposure before Azure writes.
+
+## Dedicated ACR decision and creation procedure (B2, new)
+
+Decision: A dedicated JAWS registry managed by the JAWS installer in the existing `rg-aiops-lab` resource group, `eastus`. The initial SKU is **Basic** with administrator credentials disabled. Public network access is initially enabled to allow the image publishing/hosting path to be validated; this is a provisional network choice and **must be reviewed before an internet-facing production deployment**. The installer does not publish an image, configure RBAC or create a hosted agent in this step.
+
+Registry names must be globally unique, 5-50 lowercase letters/numbers. Choose an available name without assuming the sample name is unique.
+
+**Plan (zero cloud reads or writes):**
+
+```powershell
+.\installer\Install-JawsRegistry.ps1 -Mode Plan -RegistryName <unique-lowercase-registry-name>
+```
+
+Read `installer/.local/jaws-registry-plan.dev.generated.json`. The report contains `PlanSha256`, exact subscription/resource group/location, SKU, admin setting and billable-cost disclaimer. An actual Basic registry has **ongoing costs**; the report does not verify the precise East US dollar amount. Check the [official pricing calculator](https://azure.microsoft.com/en-us/pricing/calculator/) and obtain spending approval before any creation. Azure budgets issue notifications but do not block spending.
+
+**Explicitly approved Create (billable Azure write):**
+
+```powershell
+.\installer\Install-JawsRegistry.ps1 -Mode Create -RegistryName <the-same-name> -ApprovedPlanSha256 <64-hex-character-digest-from-report> -AcknowledgeBillableBasicSku
+```
+
+The installer validates the state-selected subscription and resource group, checks global name availability, refuses to adopt an existing registry, issues a single scoped `az acr create`, verifies identity/SKU/login server/admin setting and generates `installer/.local/jaws-registry-receipt.dev.generated.json`. Creation failures may leave a billable partially created registry: **do not immediately retry**; inspect state first. No direct provisioning commands outside installer are permitted.
+
+**Restrictions:** This implementation must pass independent Pester tests before running Create; RegistryName is explicitly operator-chosen and not auto-invented; the plan digest is not an authentication token; Azure RBAC still determines actual provisioning authority; no real prices, available SKU/permissions, private networking, registry-push rights or Foundry pull permissions have been verified. The initial registry is tagged `application=JAWS`, `managedBy=JAWS-Installer`, `environment=dev`. Installer receipts and generated plan files are ignored local evidence, not operator-managed gold state.
+
+Next: installer-controlled ACR image upload and Foundry hosted-agent deployment under separate approved proposals.

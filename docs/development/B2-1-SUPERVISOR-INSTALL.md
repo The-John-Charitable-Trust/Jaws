@@ -30,3 +30,13 @@ Microsoft's current hosted-agent documentation describes a Linux/amd64 container
 - Do not use a fabricated digest as if it were a built image. Do not run the sample proposal against Azure until a real image is approved.
 
 **End-of-Stage-B acceptance:** a deployed operational Supervisor, Azure security/compliance worker, Datadog worker, isolated compute, project conversation persistence, authorization and Teams end-to-end capability. B2.1 is only the first installation-enablement step.
+
+## Runtime source and packaging checkpoint (new; pending execution)
+- Source: `src/Jaws.Supervisor.Host/Program.cs`, project `Jaws.Supervisor.Host.csproj` and its Linux/amd64 `Dockerfile`.
+- Uses Microsoft Agent Framework Foundry Responses hosting, `DefaultAzureCredential`, `FOUNDRY_PROJECT_ENDPOINT` and `AZURE_AI_MODEL_DEPLOYMENT_NAME`. Supervisor has no worker tools or authorization broker yet and must never imply otherwise.
+- The JAWS installer now supports `-Mode Package`: local `.NET 10 dotnet publish` and optional `-BuildContainer` (local Docker build only). Results reside in `installer/.local/supervisor/publish`; no ACR image push or Azure deployment occurs.
+- Run `dotnet build Jaws.slnx -c Release`, `.\installer\Install-Jaws.ps1 -Mode Package`, then `Invoke-Pester .\tests\installer\ -Output Detailed` in an approved PowerShell 7 terminal. Optional `.\installer\Install-Jaws.ps1 -Mode Package -BuildContainer` requires Docker.
+- Baseline is 45 accepted Pester tests; five new tests target a total of 50. Build and tests are **unverified** until run on an actual Windows .NET 10 workstation.
+- Target Azure deployment remains blocked until image registry creation/push, Foundry supported deployment API integration, proper delegated/installer authorization, cost approval, controlled Install, and live validation are implemented.
+
+Microsoft source: https://learn.microsoft.com/en-us/azure/foundry/how-to/develop/framework-hosted-agents

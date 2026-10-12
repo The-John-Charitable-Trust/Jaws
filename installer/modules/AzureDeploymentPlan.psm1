@@ -32,6 +32,9 @@ function Compare-JawsAzurePlanEvidence {
         $observed=$null
         $ownership='NotEstablished'
         $status='NotChecked'
+        $expectedConfig=$null
+        $observedConfig=$null
+        $configurationEvidence='NotChecked'
         if ($matches.Count -gt 0) {
             if ($matches.Count -ne 1) { throw 'JAWS-PLAN-011: Ambiguous resource in authoritative state.' }
             $e=$matches[0]
@@ -39,6 +42,18 @@ function Compare-JawsAzurePlanEvidence {
             if ($d.Count -ne 1) { throw 'JAWS-PLAN-012: Target resource was not checked exactly once.' }
             $observed=[string]$d[0].ResourceId
             $ownership=[string]$e.Ownership
+            # Preserve non-secret expected configuration and only explicitly observed fields.
+            $expectedConfig=$e.ExpectedConfiguration
+            $observedConfig=[ordered]@{}
+            if ($d[0].PSObject.Properties['Location'] -and $d[0].Location) {
+                $observedConfig.Location=[string]$d[0].Location
+            }
+            if ($component.Id -eq 'model' -and $d[0].PSObject.Properties['ObservedConfiguration'] -and $d[0].ObservedConfiguration) {
+                $observedConfig.ModelName=[string]$d[0].ObservedConfiguration.ModelName
+                $observedConfig.ModelVersion=[string]$d[0].ObservedConfiguration.ModelVersion
+                $observedConfig.ProvisioningState=[string]$d[0].ObservedConfiguration.ProvisioningState
+            }
+            $configurationEvidence='PartialReadOnlyObservation'
             if ($ownership -notin @('External','InstallerCreated')) {
                 $action='BlockedUnknownOwnership'; $status='Blocked'; $blocked=$true
             } elseif ($d[0].Status -eq 'Missing') {
@@ -51,6 +66,11 @@ function Compare-JawsAzurePlanEvidence {
                 (($e.ExpectedConfiguration.ModelName -and [string]$d[0].ObservedConfiguration.ModelName -cne [string]$e.ExpectedConfiguration.ModelName) -or
                  ($e.ExpectedConfiguration.ModelVersion -and [string]$d[0].ObservedConfiguration.ModelVersion -cne [string]$e.ExpectedConfiguration.ModelVersion))) {
                 $action='BlockedConfigurationDrift'; $status='ConfigurationDrift'; $blocked=$true
+            } elseif ($d[0].PSObject.Properties['Location'] -and $d[0].Location -and
+                $e.ExpectedConfiguration.PSObject.Properties['Location'] -and
+                $e.ExpectedConfiguration.Location -and
+                [string]$d[0].Location -ine [string]$e.ExpectedConfiguration.Location) {
+                $action='BlockedConfigurationDrift'; $status='ConfigurationDrift'; $blocked=$true
             } else {
                 $action='CandidateForReuseRequiresConfigValidation'; $status='Discovered'
             }
@@ -60,6 +80,9 @@ function Compare-JawsAzurePlanEvidence {
             DependsOn=@($component.DependsOn); ProposedAction=$action
             AzureState=$status; ObservedResourceId=$observed; Ownership=$ownership
             PermissionState='ReadAccessObservedForDiscoveryOnly'
+            ExpectedConfiguration=$expectedConfig
+            ObservedConfiguration=$observedConfig
+            ConfigurationEvidence=$configurationEvidence
             EstimatedCost=$component.EstimatedCost; ApprovalRequired=$true
         }
     }

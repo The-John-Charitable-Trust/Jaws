@@ -76,8 +76,16 @@ function Invoke-JawsSupervisorPublish {
         throw 'JAWS-PUSH-010: Local Docker image changed since approval.'
     }
     # Avoid overwriting an already published tag. Query failure is treated as inconclusive.
-    $tags=& az acr repository show-tags --name $registry --repository 'jaws/supervisor' --output json --only-show-errors 2>$null
-    if ($LASTEXITCODE -eq 0) {
+    $repoListJson=& az acr repository list --name $registry --output json --only-show-errors 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        throw 'JAWS-PUSH-020: Repository listing failed; cannot prove image tag is unused.'
+    }
+    $repoList=@($repoListJson | Out-String | ConvertFrom-Json)
+    if ($repoList -contains 'jaws/supervisor') {
+        $tags=& az acr repository show-tags --name $registry --repository 'jaws/supervisor' --output json --only-show-errors 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            throw 'JAWS-PUSH-021: Existing repository tags not readable.'
+        }
         $allTags=@($tags | Out-String | ConvertFrom-Json)
         if ($allTags -contains ($Plan.Plan.TargetTag -split ':')[-1]) {
             throw 'JAWS-PUSH-011: Target image tag already exists; refuse overwrite.'

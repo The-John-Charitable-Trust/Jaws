@@ -19,6 +19,24 @@ BeforeAll {
     }
 }
 Describe 'Foundry Supervisor installation safety and specification' {
+    It 'accepts one structured receipt surrounded by legacy Docker progress strings' {
+        $legacy=@(
+            '2111b06fa2f9: Pushed'
+            'build-tag: digest: sha256:...'
+            $script:receipt
+        )
+        $resolved=Resolve-JawsSupervisorPublishReceipt -ReceiptContent $legacy
+        $resolved.Image | Should -Be $script:receipt.Image
+        $p=New-JawsFoundrySupervisorPlan -State $script:state -PublishReceipt $legacy
+        $p.Plan.Image | Should -Be $script:receipt.Image
+        $p.AzureWrites | Should -Be 0
+    }
+    It 'rejects missing structured receipt cleanly instead of a missing Status property' {
+        { New-JawsFoundrySupervisorPlan -State $script:state -PublishReceipt @('layer1 pushed','layer2 pushed') } | Should -Throw '*JAWS-FOUNDRY-021*'
+    }
+    It 'rejects ambiguous multiple structured receipts' {
+        { Resolve-JawsSupervisorPublishReceipt -ReceiptContent @($script:receipt,$script:receipt) } | Should -Throw '*JAWS-FOUNDRY-021*'
+    }
     It 'creates plan bound to exact verified image with zero writes' {
         $p=New-JawsFoundrySupervisorPlan -State $script:state -PublishReceipt $script:receipt
         $p.PlanSha256 | Should -Match '^[0-9a-f]{64}$'

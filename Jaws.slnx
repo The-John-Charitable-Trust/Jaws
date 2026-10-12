@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Jaws.AgentFramework/Jaws.AgentFramework.csproj" />
     <Project Path="src/Jaws.Api/Jaws.Api.csproj" />
+    <Project Path="src/Jaws.Supervisor.Host/Jaws.Supervisor.Host.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Jaws.FirstAgent.Tests/Jaws.FirstAgent.Tests.csproj" />

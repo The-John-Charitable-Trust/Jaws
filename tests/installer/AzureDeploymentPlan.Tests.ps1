@@ -67,6 +67,25 @@ Describe 'B2 Azure-aware plan evidence — fully mocked/offline' {
         $p=Compare-JawsAzurePlanEvidence -OfflinePlan $script:offline -State $stateCopy -DiscoveryResults $script:results -TenantId 'tenant-1'
         @($p.Components | Where-Object ProposedAction -eq 'BlockedUnknownOwnership').Count | Should -Be 1
     }
+    It 'includes auditable expected and observed model version in plan evidence' {
+        $p=Compare-JawsAzurePlanEvidence -OfflinePlan $script:offline -State $script:state -DiscoveryResults $script:results -TenantId 'tenant-1'
+        $model=@($p.Components | Where-Object Id -eq 'model')[0]
+        $model.ExpectedConfiguration.ModelVersion | Should -Be '2025-08-07'
+        $model.ObservedConfiguration.ModelVersion | Should -Be '2025-08-07'
+        $model.ConfigurationEvidence | Should -Be 'PartialReadOnlyObservation'
+        $p.CanExecute | Should -BeFalse
+    }
+    It 'blocks a mismatch in an explicitly observed resource location' {
+        $expected=@($script:state.Resources | ForEach-Object { $_.PSObject.Copy() })
+        $expected[0].ExpectedConfiguration=[pscustomobject]@{Location='eastus'}
+        $stateCopy=$script:state.PSObject.Copy()
+        $stateCopy.Resources=$expected
+        $discovery=@($script:results | ForEach-Object { $_.PSObject.Copy() })
+        $discovery[0] | Add-Member -NotePropertyName Location -NotePropertyValue 'westus' -Force
+        $p=Compare-JawsAzurePlanEvidence -OfflinePlan $script:offline -State $stateCopy -DiscoveryResults $discovery -TenantId 'tenant-1'
+        $p.Status | Should -Be 'BLOCKED_RESOURCE_DRIFT_OR_OWNERSHIP'
+        @($p.Components | Where-Object ProposedAction -eq 'BlockedConfigurationDrift').Count | Should -Be 1
+    }
     It 'does not expose Install or run Azure writes in the plan modules' {
         $entry=Get-Content (Join-Path $PSScriptRoot '../../installer/Install-Jaws.ps1') -Raw
         $entry | Should -Match '\[switch\]\$AzureAware'

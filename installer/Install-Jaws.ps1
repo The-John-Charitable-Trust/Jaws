@@ -1,9 +1,10 @@
 # JAWS Installer 0.4.6 — State-first read-only discovery and reconciliation
 [CmdletBinding()]
 param(
-    [ValidateSet('Discover','Plan')][string]$Mode='Discover',
+    [ValidateSet('Discover','Plan','Package')][string]$Mode='Discover',
     [string]$PlanFile,
     [switch]$AzureAware,
+    [switch]$BuildContainer,
     [string]$SupervisorImage,
     [string]$SupervisorName='jaws-supervisor-dev',
     [string]$SubscriptionId,
@@ -14,6 +15,19 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
+# Package is an explicitly local build. It has no Azure login, push or deployment path.
+if ($Mode -eq 'Package') {
+    if ($AzureAware -or $SupervisorImage -or $PlanFile -or $StateFile) {
+        throw 'JAWS-PACKAGE-007: Package mode is local-only; Azure-aware planning flags are not accepted.'
+    }
+    Import-Module (Join-Path $PSScriptRoot 'modules/SupervisorPackage.psm1') -Force
+    $package=Get-JawsSupervisorPackagePlan -InstallerRoot $PSScriptRoot
+    $result=Invoke-JawsSupervisorLocalBuild -PackagePlan $package -BuildContainer:$BuildContainer
+    Write-Host 'JAWS SUPERVISOR LOCAL PACKAGE: NO AZURE WRITES OR DEPLOYMENT' -ForegroundColor Cyan
+    $result | Format-List | Out-Host
+    return
+}
+if ($BuildContainer) { throw 'JAWS-PACKAGE-008: -BuildContainer applies only to -Mode Package.' }
 # B2 Plan is an OFFLINE blueprint. It runs before Stage A Azure imports and cannot call Azure.
 if ($Mode -eq 'Plan') {
     Import-Module (Join-Path $PSScriptRoot 'modules/DeploymentPlan.psm1') -Force

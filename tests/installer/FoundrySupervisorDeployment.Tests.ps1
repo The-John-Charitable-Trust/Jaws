@@ -62,7 +62,8 @@ Describe 'Foundry Supervisor installation safety and specification' {
         $p.AzureWrites | Should -Be 0
         $p.CanDeploy | Should -BeFalse
         $p.Plan.Request.definition.protocol_versions[0].version | Should -Be '2.0.0'
-        $p.Plan.Request.definition.environment_variables.MODEL_DEPLOYMENT_NAME | Should -Be 'gpt-5-mini'
+        $p.Plan.Request.definition.environment_variables.AZURE_AI_MODEL_DEPLOYMENT_NAME | Should -Be 'gpt-5-mini'
+        $p.Plan.Request.definition.environment_variables.FOUNDRY_PROJECT_ENDPOINT | Should -Be 'https://jaws-foundry-dev.services.ai.azure.com/api/projects/jaws-dev'
         $p.Plan.Image | Should -Be $script:receipt.Image
     }
     It 'generates stable plan fingerprints' {

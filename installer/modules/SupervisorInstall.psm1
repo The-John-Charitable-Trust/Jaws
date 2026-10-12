@@ -22,7 +22,7 @@ function New-JawsSupervisorInstallProposal {
         throw 'JAWS-INSTALL-003: Invalid Supervisor, Foundry or project name.'
     }
     # Container image must be digest pinned to preclude tag substitution after approval.
-    if ($Image -notmatch '^[a-zA-Z0-9.-]+(/[a-zA-Z0-9._-]+)+@sha256:[a-fA-F0-9]{64}$' -or
+    if ($Image -notmatch '^[a-zA-Z0-9-]+\\.azurecr\\.io(/[a-zA-Z0-9._-]+)+@sha256:[a-fA-F0-9]{64}$' -or
         $Image -match '(?i)(localhost|127\.0\.0\.1)') {
         throw 'JAWS-INSTALL-004: Hosted agent image must be a registry image pinned by sha256 digest.'
     }

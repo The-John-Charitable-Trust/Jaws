@@ -46,7 +46,7 @@ Describe 'B2.1 hosted Supervisor deployment approval preparation — no cloud wr
     }
     It 'does not add active Install mode before permissions and image are validated' {
         $entry=Get-Content (Join-Path $PSScriptRoot '../../installer/Install-Jaws.ps1') -Raw
-        $entry | Should -Match "ValidateSet\('Discover','Plan'\)"
+        $entry | Should -Match "ValidateSet\('Discover','Plan','Package'\)"
         $entry | Should -Not -Match "ValidateSet\('Discover','Plan','Install'\)"
     }
 }

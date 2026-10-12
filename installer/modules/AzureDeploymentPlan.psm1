@@ -43,7 +43,13 @@ function Compare-JawsAzurePlanEvidence {
             $observed=[string]$d[0].ResourceId
             $ownership=[string]$e.Ownership
             # Preserve non-secret expected configuration and only explicitly observed fields.
-            $expectedConfig=$e.ExpectedConfiguration
+            # Allow-list expected fields so future state secrets never enter generated reports.
+            $expectedConfig=[ordered]@{}
+            foreach ($field in @('Kind','Location','ParentResource','ModelName','ModelVersion','ProvisioningState','EnableRbacAuthorization','EnablePurgeProtection')) {
+                if ($e.ExpectedConfiguration.PSObject.Properties[$field]) {
+                    $expectedConfig[$field]=$e.ExpectedConfiguration.$field
+                }
+            }
             $observedConfig=[ordered]@{}
             if ($d[0].PSObject.Properties['Location'] -and $d[0].Location) {
                 $observedConfig.Location=[string]$d[0].Location

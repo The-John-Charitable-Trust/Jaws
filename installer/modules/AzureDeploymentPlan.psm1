@@ -57,7 +57,10 @@ function Compare-JawsAzurePlanEvidence {
             if ($component.Id -eq 'model' -and $d[0].PSObject.Properties['ObservedConfiguration'] -and $d[0].ObservedConfiguration) {
                 $observedConfig.ModelName=[string]$d[0].ObservedConfiguration.ModelName
                 $observedConfig.ModelVersion=[string]$d[0].ObservedConfiguration.ModelVersion
-                $observedConfig.ProvisioningState=[string]$d[0].ObservedConfiguration.ProvisioningState
+                $observedProvisioning=$d[0].ObservedConfiguration.PSObject.Properties['ProvisioningState']
+                if ($null -ne $observedProvisioning) {
+                    $observedConfig.ProvisioningState=[string]$observedProvisioning.Value
+                }
             }
             $configurationEvidence='PartialReadOnlyObservation'
             if ($ownership -notin @('External','InstallerCreated')) {

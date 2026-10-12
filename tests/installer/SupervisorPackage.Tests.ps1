@@ -18,7 +18,7 @@ Describe 'B2.1 Supervisor local packaging safety' {
         $entry=Get-Content (Join-Path $PSScriptRoot '../../installer/Install-Jaws.ps1') -Raw
         $entry | Should -Match "ValidateSet\('Discover','Plan','Package'\)"
         $entry | Should -Not -Match "ValidateSet\('Discover','Plan','Package','Install'\)"
-        $entry | Should -Match "if \(\$Mode -eq 'Package'\)"
+        $entry | Should -Match 'if \(\$Mode -eq ''Package''\)'
     }
     It 'uses only a local Docker build and no registry push or login commands' {
         $module=Get-Content (Join-Path $PSScriptRoot '../../installer/modules/SupervisorPackage.psm1') -Raw

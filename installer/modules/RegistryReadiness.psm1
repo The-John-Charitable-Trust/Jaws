@@ -10,16 +10,21 @@ function Test-JawsRegistryObservation {
     )
     if ($RegistryName -cnotmatch '^[a-zA-Z0-9]{5,50}$') { throw 'JAWS-ACR-001: Invalid registry name.' }
     $expectedId="/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.ContainerRegistry/registries/$RegistryName"
-    if ([string]$Observed.id -ine $expectedId -or [string]$Observed.name -ine $RegistryName) {
+    $observedId=if ($Observed.PSObject.Properties['id']) {[string]$Observed.id} else {''}
+    $observedName=if ($Observed.PSObject.Properties['name']) {[string]$Observed.name} else {''}
+    if ($observedId -ine $expectedId -or $observedName -ine $RegistryName) {
         throw 'JAWS-ACR-002: Registry identity or scope mismatch. No adoption permitted.'
     }
     $loginServer="$RegistryName.azurecr.io"
-    if ([string]$Observed.loginServer -ine $loginServer) {
+    $observedServer=if ($Observed.PSObject.Properties['loginServer']) {[string]$Observed.loginServer} else {''}
+    if ($observedServer -ine $loginServer) {
         throw 'JAWS-ACR-003: Unexpected registry login server.'
     }
     $admin=$Observed.PSObject.Properties['adminUserEnabled']
     $adminEnabled=if ($null -eq $admin) {$null} else {$admin.Value}
-    $sku=if ($null -ne $Observed.PSObject.Properties['sku']) {[string]$Observed.sku.name} else {$null}
+    $sku=$null
+    if ($Observed.PSObject.Properties['sku'] -and $null -ne $Observed.sku -and
+        $Observed.sku.PSObject.Properties['name']) { $sku=[string]$Observed.sku.name }
     $network=$null
     if ($null -ne $Observed.PSObject.Properties['publicNetworkAccess']) { $network=[string]$Observed.publicNetworkAccess }
     $issues=@()

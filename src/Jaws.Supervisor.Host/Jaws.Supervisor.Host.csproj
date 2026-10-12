@@ -6,8 +6,8 @@
     <AssemblyName>Jaws.Supervisor.Host</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Azure.AI.Projects" Version="2.1.0-beta.4" />
-    <PackageReference Include="Azure.Identity" Version="1.17.0" />
+    <PackageReference Include="Azure.AI.Projects" Version="3.0.0-beta.2" />
+    <PackageReference Include="Azure.Identity" Version="1.21.0" />
     <PackageReference Include="Microsoft.Agents.AI.Foundry.Hosting" Version="1.22.0-preview.260918.1" />
   </ItemGroup>
 </Project>

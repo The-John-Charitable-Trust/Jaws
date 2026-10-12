@@ -6,6 +6,7 @@ param(
     [switch]$AzureAware,
     [switch]$BuildContainer,
     [string]$SupervisorImage,
+    [string]$RegistryName,
     [string]$SupervisorName='jaws-supervisor-dev',
     [string]$SubscriptionId,
     [string]$ResourceGroupName,
@@ -17,7 +18,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 # Package is an explicitly local build. It has no Azure login, push or deployment path.
 if ($Mode -eq 'Package') {
-    if ($AzureAware -or $SupervisorImage -or $PlanFile -or $StateFile) {
+    if ($AzureAware -or $SupervisorImage -or $RegistryName -or $PlanFile -or $StateFile) {
         throw 'JAWS-PACKAGE-007: Package mode is local-only; Azure-aware planning flags are not accepted.'
     }
     Import-Module (Join-Path $PSScriptRoot 'modules/SupervisorPackage.psm1') -Force
@@ -49,6 +50,12 @@ if ($Mode -eq 'Plan') {
         }
         $planResult=New-JawsAzureReadOnlyDeploymentPlan -OfflinePlan $offlinePlan -State $planState -NonInteractive:$NonInteractive
     }
+    if ($RegistryName) {
+        if (-not $AzureAware) { throw 'JAWS-ACR-007: Registry assessment requires Azure-aware Plan.' }
+        Import-Module (Join-Path $PSScriptRoot 'modules/RegistryReadiness.psm1') -Force
+        $registryAssessment=Get-JawsRegistryReadOnlyAssessment -RegistryName $RegistryName -SubscriptionId $planResult.SubscriptionId -ResourceGroupName $planResult.ResourceGroupName
+        Write-Host "Registry: $($registryAssessment.RegistryName) | $($registryAssessment.Status)" -ForegroundColor Yellow
+    }
     if ($SupervisorImage) {
         if (-not $AzureAware) { throw 'JAWS-INSTALL-006: Supervisor install proposal requires -AzureAware discovery.' }
         Import-Module (Join-Path $PSScriptRoot 'modules/SupervisorInstall.psm1') -Force
@@ -63,6 +70,11 @@ if ($Mode -eq 'Plan') {
     $flavor=if ($AzureAware) { "azure-readonly" } else { "offline" }
     $outputPath = Join-Path $outputDir "jaws-stage-b-plan.$($planResult.EnvironmentName).$flavor.generated.json"
     $planResult | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $outputPath -Encoding utf8
+    if ($RegistryName) {
+        $registryReportPath=Join-Path $outputDir "jaws-acr-readiness.$($planResult.EnvironmentName).generated.json"
+        $registryAssessment | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $registryReportPath -Encoding utf8
+        Write-Host "Registry readiness: $registryReportPath"
+    }
     if ($SupervisorImage) {
         $proposalPath=Join-Path $outputDir "jaws-supervisor-proposal.$($planResult.EnvironmentName).generated.json"
         $supervisorProposal | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $proposalPath -Encoding utf8

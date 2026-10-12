@@ -1,7 +1,8 @@
 # JAWS Installer 0.4.6 — State-first read-only discovery and reconciliation
 [CmdletBinding()]
 param(
-    [ValidateSet('Discover')][string]$Mode='Discover',
+    [ValidateSet('Discover','Plan')][string]$Mode='Discover',
+    [string]$PlanFile,
     [string]$SubscriptionId,
     [string]$ResourceGroupName,
     [string]$EnvironmentName='dev',
@@ -10,6 +11,25 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
+# B2 Plan is an OFFLINE blueprint. It runs before Stage A Azure imports and cannot call Azure.
+if ($Mode -eq 'Plan') {
+    Import-Module (Join-Path $PSScriptRoot 'modules/DeploymentPlan.psm1') -Force
+    if (-not $PlanFile) { $PlanFile = Join-Path $PSScriptRoot 'config/jaws-stage-b-plan.example.json' }
+    $offlinePlan = New-JawsOfflineDeploymentPlan -BlueprintPath $PlanFile
+    $outputDir = Join-Path $PSScriptRoot '.local'
+    if (-not (Test-Path -LiteralPath $outputDir)) { New-Item -ItemType Directory -Path $outputDir -Force | Out-Null }
+    $outputPath = Join-Path $outputDir "jaws-stage-b-plan.$($offlinePlan.EnvironmentName).generated.json"
+    $offlinePlan | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $outputPath -Encoding utf8
+    Write-Host 'JAWS Stage B2 OFFLINE BLUEPRINT — NO AZURE CALLS OR WRITES' -ForegroundColor Cyan
+    Write-Host "Target: $($offlinePlan.SubscriptionId) | $($offlinePlan.ResourceGroupName) | $($offlinePlan.Location)"
+    foreach ($component in $offlinePlan.Components) {
+        Write-Host ("  {0,-20} {1,-29} {2}" -f $component.Id, $component.ProposedAction, $component.EstimatedCost)
+    }
+    Write-Host "Status: $($offlinePlan.Status)" -ForegroundColor Yellow
+    Write-Host "Output: $outputPath"
+    Write-Host 'Azure writes: 0 | Azure discovery: not performed | Costs and authorization: not verified'
+    return
+}
 Import-Module (Join-Path $PSScriptRoot 'modules/AzurePreflight.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'modules/ResourceDiscovery.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'modules/ResourceManifest.psm1') -Force

@@ -27,6 +27,15 @@ Describe 'B2.1 Supervisor local packaging safety' {
         $module | Should -Not -Match '& az '
         $module | Should -Not -Match '& azd '
     }
+    It 'parses installer entrypoint without encoding-dependent syntax errors' {
+        $entryPath=Join-Path $PSScriptRoot '../../installer/Install-Jaws.ps1'
+        $tokens=$null
+        $errors=$null
+        $null=[System.Management.Automation.Language.Parser]::ParseFile($entryPath,[ref]$tokens,[ref]$errors)
+        @($errors).Count | Should -Be 0
+        $body=Get-Content -LiteralPath $entryPath -Raw
+        @($body.ToCharArray() | Where-Object { [int][char]$_ -gt 127 }).Count | Should -Be 0
+    }
     It 'has a minimal hosted-agent response path and explicit limits' {
         $repo=Join-Path $PSScriptRoot '../..'
         $source=Get-Content (Join-Path $repo 'src/Jaws.Supervisor.Host/Program.cs') -Raw

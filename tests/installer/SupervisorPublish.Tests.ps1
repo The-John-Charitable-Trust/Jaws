@@ -59,6 +59,10 @@ Describe 'JAWS Supervisor registry image publication preparation' {
         $body=Get-Content (Join-Path $PSScriptRoot '../../installer/modules/SupervisorPublish.psm1') -Raw
         $body | Should -Match '\& docker push \$Plan\.Plan\.TargetTag \| Out-Host'
     }
+    It 'records the fully-qualified ACR hostname in published immutable image receipts' {
+        $body=Get-Content (Join-Path $PSScriptRoot '../../installer/modules/SupervisorPublish.psm1') -Raw
+        $body | Should -Match 'Image="\$registry\.azurecr\.io/jaws/supervisor@\$digest"'
+    }
     It 'parses publishing module and entrypoint in PowerShell' {
         foreach($p in @('installer/Publish-JawsSupervisor.ps1','installer/modules/SupervisorPublish.psm1')) {
             $full=Join-Path (Join-Path $PSScriptRoot '../..') $p

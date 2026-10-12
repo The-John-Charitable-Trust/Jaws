@@ -3,6 +3,7 @@
 param(
     [ValidateSet('Discover','Plan')][string]$Mode='Discover',
     [string]$PlanFile,
+    [switch]$AzureAware,
     [string]$SubscriptionId,
     [string]$ResourceGroupName,
     [string]$EnvironmentName='dev',
@@ -16,18 +17,35 @@ if ($Mode -eq 'Plan') {
     Import-Module (Join-Path $PSScriptRoot 'modules/DeploymentPlan.psm1') -Force
     if (-not $PlanFile) { $PlanFile = Join-Path $PSScriptRoot 'config/jaws-stage-b-plan.example.json' }
     $offlinePlan = New-JawsOfflineDeploymentPlan -BlueprintPath $PlanFile
+    $planResult = $offlinePlan
+    if ($AzureAware) {
+        Import-Module (Join-Path $PSScriptRoot 'modules/AzurePreflight.psm1') -Force
+        Import-Module (Join-Path $PSScriptRoot 'modules/ResourceDiscovery.psm1') -Force
+        Import-Module (Join-Path $PSScriptRoot 'modules/InstallationState.psm1') -Force
+        Import-Module (Join-Path $PSScriptRoot 'modules/AzureDeploymentPlan.psm1') -Force
+        if (-not $StateFile) { $StateFile=Join-Path $PSScriptRoot "config/jaws-installation-state.$($offlinePlan.EnvironmentName).json" }
+        $planState=Read-JawsInstallationState -Path $StateFile
+        if (-not $planState) { throw "JAWS-PLAN-009: Azure-aware Plan requires authoritative installation state at '$StateFile'." }
+        if ($offlinePlan.SubscriptionId -ine $planState.SubscriptionId -or
+            $offlinePlan.ResourceGroupName -ine $planState.ResourceGroupName -or
+            $offlinePlan.EnvironmentName -ine $planState.EnvironmentName) {
+            throw 'JAWS-PLAN-010: Blueprint target differs from authoritative state.'
+        }
+        $planResult=New-JawsAzureReadOnlyDeploymentPlan -OfflinePlan $offlinePlan -State $planState -NonInteractive:$NonInteractive
+    }
     $outputDir = Join-Path $PSScriptRoot '.local'
     if (-not (Test-Path -LiteralPath $outputDir)) { New-Item -ItemType Directory -Path $outputDir -Force | Out-Null }
-    $outputPath = Join-Path $outputDir "jaws-stage-b-plan.$($offlinePlan.EnvironmentName).generated.json"
-    $offlinePlan | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $outputPath -Encoding utf8
-    Write-Host 'JAWS Stage B2 OFFLINE BLUEPRINT — NO AZURE CALLS OR WRITES' -ForegroundColor Cyan
-    Write-Host "Target: $($offlinePlan.SubscriptionId) | $($offlinePlan.ResourceGroupName) | $($offlinePlan.Location)"
-    foreach ($component in $offlinePlan.Components) {
+    $flavor=if ($AzureAware) { "azure-readonly" } else { "offline" }
+    $outputPath = Join-Path $outputDir "jaws-stage-b-plan.$($planResult.EnvironmentName).$flavor.generated.json"
+    $planResult | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $outputPath -Encoding utf8
+    Write-Host "JAWS Stage B2 $($planResult.PlanKind) — NO AZURE WRITES" -ForegroundColor Cyan
+    Write-Host "Target: $($planResult.SubscriptionId) | $($planResult.ResourceGroupName) | $($planResult.Location)"
+    foreach ($component in $planResult.Components) {
         Write-Host ("  {0,-20} {1,-29} {2}" -f $component.Id, $component.ProposedAction, $component.EstimatedCost)
     }
-    Write-Host "Status: $($offlinePlan.Status)" -ForegroundColor Yellow
+    Write-Host "Status: $($planResult.Status)" -ForegroundColor Yellow
     Write-Host "Output: $outputPath"
-    Write-Host 'Azure writes: 0 | Azure discovery: not performed | Costs and authorization: not verified'
+    Write-Host 'Azure writes: 0 | Costs, deployment permissions, user authorization and approvals: not verified'
     return
 }
 Import-Module (Join-Path $PSScriptRoot 'modules/AzurePreflight.psm1') -Force

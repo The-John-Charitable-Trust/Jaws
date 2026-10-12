@@ -40,3 +40,26 @@ Microsoft's current hosted-agent documentation describes a Linux/amd64 container
 - Target Azure deployment remains blocked until image registry creation/push, Foundry supported deployment API integration, proper delegated/installer authorization, cost approval, controlled Install, and live validation are implemented.
 
 Microsoft source: https://learn.microsoft.com/en-us/azure/foundry/how-to/develop/framework-hosted-agents
+
+## Milestone 1: ACR readiness checkpoint (implemented, untested)
+The installer supports **opt-in read-only assessment** of an existing Azure Container Registry when the Azure-aware Plan runs. It does not create, configure or publish an image; the installer still does not expose a cloud `Install` mode. This is the first registry-integration substep, not the complete milestone.
+
+The operator supplies the *real* authorized registry name only if an existing registry is available:
+```powershell
+.\installer\Install-Jaws.ps1 -Mode Plan -AzureAware `
+    -PlanFile ".\installer\.local\jaws-plan.dev.json" `
+    -StateFile ".\installer\config\jaws-installation-state.dev.json" `
+    -RegistryName "<existing-registry-name>" -NonInteractive
+```
+The generated ignored report is `installer/.local/jaws-acr-readiness.dev.generated.json`. If the registry is absent, the installer blocks with `JAWS-ACR-005` rather than automatically provisioning or creating costs. It verifies registry ID and login server match the exact subscription/resource group, observes SKU and admin/network fields, and records **CanPublish=false**, **AzureWrites=0**, and unverified push/pull authorization, costs and ownership. The assessment should not be run with a guessed registry name.
+
+Microsoft currently recommends reusing a centrally administered ACR where possible. Local Docker push requires `AcrPush` or scoped Repository Writer for ABAC registries; managed Foundry agent image pull requires separate permissions. ACR Basic/Standard/Premium registries can incur charges even without active image pushes. Choose reuse or new-registry provisioning only after pricing, networking, role scopes and ownership review.
+Source: https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/deploy-hosted-agent-private-azure-container-registry
+
+### Tests
+`tests/installer/RegistryReadiness.Tests.ps1` adds six mocked cases; accepted previous baseline: 51 tests. Expected new discovery count: **57** (not executed yet). No permission or billing claims are made based on mocked tests.
+
+### Next required implementation
+1. Select the existing ACR for reuse, or approve creation through the JAWS installer with clear SKU/network/retention and budget.
+2. Implement opt-in installer publishing, verify registry write authorization and content digest, use no passwords or local privileged token persistence.
+3. Implement hosted-agent version creation via supported Foundry API/SDK; validate live health/invocation, agent pull permissions, and state ownership. Require a separately authorized exact installation plan and cost exposure before Azure writes.

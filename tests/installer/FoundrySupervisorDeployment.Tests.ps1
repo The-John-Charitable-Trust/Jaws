@@ -37,6 +37,25 @@ Describe 'Foundry Supervisor installation safety and specification' {
     It 'rejects ambiguous multiple structured receipts' {
         { Resolve-JawsSupervisorPublishReceipt -ReceiptContent @($script:receipt,$script:receipt) } | Should -Throw '*JAWS-FOUNDRY-021*'
     }
+    It 'repairs exactly the legacy registry hostname omission without changing digest' {
+        $legacy=$script:receipt.PSObject.Copy()
+        $legacy.Image="jawsregistrydev001/jaws/supervisor@$script:digest"
+        $resolved=Resolve-JawsSupervisorPublishReceipt -ReceiptContent $legacy
+        $resolved.Image | Should -Be $script:receipt.Image
+        $legacy.Image | Should -Be "jawsregistrydev001/jaws/supervisor@$script:digest"
+        $p=New-JawsFoundrySupervisorPlan -State $script:state -PublishReceipt $legacy
+        $p.Plan.Image | Should -Be $script:receipt.Image
+    }
+    It 'does not accept a different registry hostname in a legacy receipt' {
+        $bad=$script:receipt.PSObject.Copy()
+        $bad.Image="otherregistry/jaws/supervisor@$script:digest"
+        { Resolve-JawsSupervisorPublishReceipt -ReceiptContent $bad } | Should -Throw '*JAWS-FOUNDRY-003*'
+    }
+    It 'rejects a legacy receipt where image digest differs from verified manifest digest' {
+        $bad=$script:receipt.PSObject.Copy()
+        $bad.Image=('jawsregistrydev001/jaws/supervisor@sha256:' + ('b'*64))
+        { Resolve-JawsSupervisorPublishReceipt -ReceiptContent $bad } | Should -Throw '*JAWS-FOUNDRY-003*'
+    }
     It 'creates plan bound to exact verified image with zero writes' {
         $p=New-JawsFoundrySupervisorPlan -State $script:state -PublishReceipt $script:receipt
         $p.PlanSha256 | Should -Match '^[0-9a-f]{64}$'

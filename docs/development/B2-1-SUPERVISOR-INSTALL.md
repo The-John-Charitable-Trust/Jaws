@@ -89,3 +89,35 @@ The installer validates the state-selected subscription and resource group, chec
 **Restrictions:** This implementation must pass independent Pester tests before running Create; RegistryName is explicitly operator-chosen and not auto-invented; the plan digest is not an authentication token; Azure RBAC still determines actual provisioning authority; no real prices, available SKU/permissions, private networking, registry-push rights or Foundry pull permissions have been verified. The initial registry is tagged `application=JAWS`, `managedBy=JAWS-Installer`, `environment=dev`. Installer receipts and generated plan files are ignored local evidence, not operator-managed gold state.
 
 Next: installer-controlled ACR image upload and Foundry hosted-agent deployment under separate approved proposals.
+
+## Milestone 1 continuation: publish Supervisor container to dedicated registry
+
+The installer adds `installer/Publish-JawsSupervisor.ps1` with `Plan` and `Publish`. Registry has already been created through `Install-JawsRegistry.ps1`; its locally retained receipt proves only the installation result, and publishing rechecks actual registry identity and tags in Azure.
+
+**First build the local Linux/amd64 Supervisor image through the JAWS installer** (Docker Desktop running):
+```powershell
+.\installer\Install-Jaws.ps1 -Mode Package -BuildContainer
+```
+Do not use direct `docker build`, direct `docker push` or manual Azure provisioning commands.
+
+**Create image publication plan (no Azure calls or writes):**
+```powershell
+.\installer\Publish-JawsSupervisor.ps1 -Mode Plan
+```
+This requires the saved `installer/.local/jaws-registry-receipt.dev.generated.json`, an authentic local Docker `jaws-supervisor:local` image ID and the JAWS installation state. Review `installer/.local/jaws-supervisor-publish-plan.dev.generated.json`. Record `PlanSha256`, image ID, target fully-qualified immutable-build tag, subscription and resource group. Local image content can change, so approval binds the exact SHA-256 image ID.
+
+**Publish only after separate authorization for this image write and possible storage/network charges:**
+```powershell
+.\installer\Publish-JawsSupervisor.ps1 -Mode Publish -ApprovedPlanSha256 "<hash-from-the-publish-plan>" -AcknowledgeImageStorageAndTransferCharges
+```
+The installer verifies subscription and registry identity/ownership, confirms the local image ID has not changed, checks for tag collisions, signs in using Entra-backed Azure CLI + Docker credentials, tags and pushes the image, then verifies the registry manifest digest. An unavailable ACR repository metadata query blocks publication. This command is the only registry image write path. The installer **does not assign RBAC**, so the signed-in publisher must already have `AcrPush` for an RBAC registry (or the corresponding repository writer in ABAC mode). ACR admin credentials remain disabled.
+
+The installation receipt `installer/.local/jaws-supervisor-publish-receipt.dev.generated.json` records the fully qualified digest-pinned image (not the mutable build tag). Failed push/verification may leave a partial registry artifact; **do not retry blindly**.
+
+Microsoft sources:
+- https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/deploy-hosted-agent-private-azure-container-registry
+- https://learn.microsoft.com/en-us/azure/container-registry/container-registry-authentication-managed-identity
+- https://learn.microsoft.com/en-us/cli/azure/acr/manifest
+
+### Acceptance status and remaining deployment work
+Prior offline test baseline: 65 passed. Nine new publication tests increase the target to **74**. New tests have not yet run independently. The .NET project was compiled and packaged earlier, but the Linux image is not yet known to be built. **Do not execute Publish until independent tests pass and the exact plan is reviewed.** The next milestone is Foundry hosted-agent deployment through installer under a separate approved plan and ACR pull/hosting permissions.

@@ -159,3 +159,7 @@ An earlier image publish succeeded and Azure independently confirmed its manifes
 ```
 
 This compatibility fix does not independently recheck the ACR digest; the earlier external ACR manifest query is the evidence for publication. No Foundry deployment is authorized or performed.
+
+### Foundry plan compatibility correction: legacy ACR hostname
+
+The first JAWS registry publisher wrote its structured receipt `Image` as `jawsregistrydev001/jaws/supervisor@sha256:<digest>` instead of the required ACR login-server form `jawsregistrydev001.azurecr.io/jaws/supervisor@sha256:<digest>`. Azure ACR independently returned the same manifest digest before this fix. The updated publishing module writes the full hostname for future receipts. The Foundry planning receipt resolver accepts only that precise legacy hostname with an identical `RegistryManifestDigest`, normalizes the image reference in memory, and rejects other registries or mismatched digests. Existing receipts are left untouched and **no image is pushed again**. Four new regression tests bring the expected Pester count from 88 to **92**, pending independent test execution. A successful Foundry Plan remains read-only and **does not constitute authorization to Deploy**.

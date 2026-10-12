@@ -4,6 +4,8 @@ param(
     [ValidateSet('Discover','Plan')][string]$Mode='Discover',
     [string]$PlanFile,
     [switch]$AzureAware,
+    [string]$SupervisorImage,
+    [string]$SupervisorName='jaws-supervisor-dev',
     [string]$SubscriptionId,
     [string]$ResourceGroupName,
     [string]$EnvironmentName='dev',
@@ -33,11 +35,25 @@ if ($Mode -eq 'Plan') {
         }
         $planResult=New-JawsAzureReadOnlyDeploymentPlan -OfflinePlan $offlinePlan -State $planState -NonInteractive:$NonInteractive
     }
+    if ($SupervisorImage) {
+        if (-not $AzureAware) { throw 'JAWS-INSTALL-006: Supervisor install proposal requires -AzureAware discovery.' }
+        Import-Module (Join-Path $PSScriptRoot 'modules/SupervisorInstall.psm1') -Force
+        $foundryNames=@($planState.Resources | Where-Object Type -eq 'Microsoft.CognitiveServices/accounts')
+        $projectNames=@($planState.Resources | Where-Object Type -eq 'Microsoft.CognitiveServices/accounts/projects')
+        $supervisorProposal=New-JawsSupervisorInstallProposal -AzurePlan $planResult -FoundryName $foundryNames[0].Name -ProjectName $projectNames[0].Name -Image $SupervisorImage -AgentName $SupervisorName
+        Write-Host 'SUPERVISOR PROPOSAL ONLY: no installation, no approval, no Azure writes.' -ForegroundColor Yellow
+        Write-Host "Approval fingerprint: $($supervisorProposal.ProposalSha256)"
+    }
     $outputDir = Join-Path $PSScriptRoot '.local'
     if (-not (Test-Path -LiteralPath $outputDir)) { New-Item -ItemType Directory -Path $outputDir -Force | Out-Null }
     $flavor=if ($AzureAware) { "azure-readonly" } else { "offline" }
     $outputPath = Join-Path $outputDir "jaws-stage-b-plan.$($planResult.EnvironmentName).$flavor.generated.json"
     $planResult | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $outputPath -Encoding utf8
+    if ($SupervisorImage) {
+        $proposalPath=Join-Path $outputDir "jaws-supervisor-proposal.$($planResult.EnvironmentName).generated.json"
+        $supervisorProposal | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $proposalPath -Encoding utf8
+        Write-Host "Supervisor proposal: $proposalPath"
+    }
     Write-Host "JAWS Stage B2 $($planResult.PlanKind) — NO AZURE WRITES" -ForegroundColor Cyan
     Write-Host "Target: $($planResult.SubscriptionId) | $($planResult.ResourceGroupName) | $($planResult.Location)"
     foreach ($component in $planResult.Components) {

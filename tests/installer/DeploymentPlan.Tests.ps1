@@ -64,7 +64,7 @@ Describe 'Stage B2 offline blueprint planning' {
     It 'does not change Stage A Discover path or add Install mode' {
         $scriptPath = Join-Path $PSScriptRoot '../../installer/Install-Jaws.ps1'
         $body = Get-Content -LiteralPath $scriptPath -Raw
-        $body | Should -Match "ValidateSet\('Discover','Plan'\)"
+        $body | Should -Match "ValidateSet\('Discover','Plan','Package'\)"
         $body | Should -Match 'if \(\$Mode -eq ''Plan''\)'
         $body | Should -Not -Match "ValidateSet\('Discover','Plan','Install'\)"
     }

@@ -54,6 +54,14 @@ function Invoke-JawsSupervisorPublish {
         $Plan.Plan.SourceImageId -notmatch '^sha256:[a-f0-9]{64}$') {
         throw 'JAWS-PUSH-005: Invalid publish plan.'
     }
+    $serialized=ConvertTo-Json -InputObject $Plan.Plan -Depth 10 -Compress
+    $hasher=[System.Security.Cryptography.SHA256]::Create()
+    try { $actualBytes=$hasher.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($serialized)) }
+    finally { $hasher.Dispose() }
+    $actualHash=([BitConverter]::ToString($actualBytes)).Replace('-','').ToLowerInvariant()
+    if ($actualHash -cne $Plan.PlanSha256) {
+        throw 'JAWS-PUSH-022: Deployment payload changed after fingerprint generation.'
+    }
     $sub=[string]$Plan.Plan.SubscriptionId; $rg=[string]$Plan.Plan.ResourceGroupName
     $registry=[string]$Plan.Plan.RegistryName
     $account=& az account list --all --output json --only-show-errors 2>$null

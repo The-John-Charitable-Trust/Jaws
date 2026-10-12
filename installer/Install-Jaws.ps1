@@ -1,4 +1,4 @@
-# JAWS Installer 0.4.6 — State-first read-only discovery and reconciliation
+# JAWS Installer 0.4.6 - State-first read-only discovery and reconciliation
 [CmdletBinding()]
 param(
     [ValidateSet('Discover','Plan','Package')][string]$Mode='Discover',
@@ -68,7 +68,7 @@ if ($Mode -eq 'Plan') {
         $supervisorProposal | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $proposalPath -Encoding utf8
         Write-Host "Supervisor proposal: $proposalPath"
     }
-    Write-Host "JAWS Stage B2 $($planResult.PlanKind) — NO AZURE WRITES" -ForegroundColor Cyan
+    Write-Host "JAWS Stage B2 $($planResult.PlanKind) - NO AZURE WRITES" -ForegroundColor Cyan
     Write-Host "Target: $($planResult.SubscriptionId) | $($planResult.ResourceGroupName) | $($planResult.Location)"
     foreach ($component in $planResult.Components) {
         Write-Host ("  {0,-20} {1,-29} {2}" -f $component.Id, $component.ProposedAction, $component.EstimatedCost)

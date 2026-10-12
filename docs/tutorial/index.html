@@ -423,6 +423,18 @@
         <a href="#step-8">Step 8: Host Your Agent</a>
         <a href="#step-9">Step 9: Teams App Integration</a>
         <a href="#step-10">Step 10: End-To-End JAWS Operations Scenario</a>
+        <a href="#stage-a">Stage A: Installer Discovery — Accepted</a>
+        <a href="#stage-b-overview">Stage B: Multi-Agent Roadmap</a>
+        <a href="#step-11">Step 11: Supervisor Agent (Planned)</a>
+        <a href="#step-12">Step 12: Azure VM Security &amp; Compliance Worker (Planned)</a>
+        <a href="#step-13">Step 13: Datadog Observability Worker (Planned)</a>
+        <a href="#step-14">Step 14: Isolated Worker Compute (Planned)</a>
+        <a href="#step-15">Step 15: Delegated Security &amp; Agent Communication (Planned)</a>
+        <a href="#step-16">Step 16: Project Context &amp; Durable Memory (Planned)</a>
+        <a href="#step-17">Step 17: Teams Supervisor Interface (Planned)</a>
+        <a href="#step-18">Step 18: Human Approvals &amp; Execution (Planned)</a>
+        <a href="#step-19">Step 19: Installer-Only Deployment (Planned)</a>
+        <a href="#step-20">Step 20: End-to-End Acceptance (Planned)</a>
         <a href="#sources">Sources</a>
       </nav>
     </aside>
@@ -1561,6 +1573,55 @@ Summary: 26/26 passed.</code></pre>
 
         <h2 id="step-10">Step 10: End-To-End JAWS Operations Scenario</h2>
         <p>This release brings the tutorial demo together: the user asks JAWS which Azure resources need Datadog coverage, reviews the recommendation, approves the change, creates and tests the Datadog monitor or synthetic and webhook path, and receives ServiceNow incident evidence with links and pass/fail results.</p>
+
+        <h2 id="stage-a">Stage A: Installer Discovery — Accepted</h2>
+        <p><strong>Separate from the agent-learning steps above:</strong> Stage A implemented state-first, read-only Azure subscription discovery, target reconciliation and persistent ownership-aware manifests. The operator-managed state JSON is authoritative; discovery does not change Azure resources or overwrite that state. The accepted developer Pester baseline was 21 passed, 0 failed. These results do not establish live operational MCP integrations or new resource provisioning.</p>
+        <p>Use the <a href="../installation/developer/index.html">Developer / Tester Installation Guide</a>, <a href="../installation/standard/index.html">Standard Installation Guide</a> and <a href="../verification/index.html">Manual Verification Guide</a>. Source details: <code>installer/Install-Jaws.ps1</code> and <code>installer/config/jaws-installation-state.dev.json</code>. A new test subscription must use its own state, not the seeded development environment state.</p>
+
+        <h2 id="stage-b-overview">Stage B: Revised Multi-Agent Architecture and Tutorial Roadmap</h2>
+        <p><strong>Status: specification and navigation placeholders only.</strong> Steps 1–5 above remain the existing local C#/.NET tutorial foundation (releases v0.1–v0.5). The previously drafted Steps 6–10 above remain legacy planned sections and are <em>not</em> evidence of completed hosting, Teams integration, durable memory, or production workflows. The new multi-agent implementation is organized below as Steps 11–20; numbering preserves the original HTML anchors and code examples until a separately reviewed renumbering.</p>
+        <p>The target design has a Microsoft Foundry Supervisor connected to Teams, an Azure VM Security &amp; Compliance worker using the official Azure MCP Server where supported, and a Datadog Observability worker using a custom MCP Server. Each worker needs a separately isolated execution environment. All worker actions must obey the initiating user's effective authorization as well as JAWS policy and approval requirements.</p>
+        <p><strong>Installer-only Azure changes:</strong> the JAWS installer exclusively owns creation, updates, permissions, network configuration, hosting, Teams integration resources, deployment and repair. Tutorial commands may build or test code locally or invoke installer Plan/Install/Validate modes after those modes have been implemented and accepted. They must not instruct direct Azure provisioning/configuration. The existing Stage A installer supports <code>Discover</code> only; other modes remain Stage B work until verified in the repository.</p>
+
+        <h2 id="step-11">Step 11: Build the Supervisor Agent</h2>
+        <p><strong>Planned — implementation and tutorial to be developed.</strong> Introduce the Teams-facing orchestration agent, task delegation, structured agent responses, aggregation, and error handling.</p>
+        <p><strong>Required future tutorial content:</strong> architecture decisions, exact C# and where applicable Python source paths and examples, installer changes, configuration, development commands, tests with expected results, security and cost checks, troubleshooting, and independent QA evidence. <strong>Acceptance deliverables:</strong> C# supervisor implementation, interface contracts, .NET unit tests, routing and correlation-id verification.</p>
+
+        <h2 id="step-12">Step 12: Build the Azure VM Security &amp; Compliance Worker</h2>
+        <p><strong>Planned — implementation and tutorial to be developed.</strong> Specialize on Azure VM inventory, Azure Policy, Defender for Cloud and control-framework evidence via the official Azure MCP Server where supported.</p>
+        <p><strong>Required future tutorial content:</strong> architecture decisions, exact C# and where applicable Python source paths and examples, installer changes, configuration, development commands, tests with expected results, security and cost checks, troubleshooting, and independent QA evidence. <strong>Acceptance deliverables:</strong> Worker code, tool contracts, least-privilege read-only tests, evidence citations and compliance evaluation cases.</p>
+
+        <h2 id="step-13">Step 13: Build the Datadog Observability Worker</h2>
+        <p><strong>Planned — implementation and tutorial to be developed.</strong> Use a separately deployed worker and custom Datadog MCP server for logs, metrics, traces, monitors, correlation and incident hypotheses.</p>
+        <p><strong>Required future tutorial content:</strong> architecture decisions, exact C# and where applicable Python source paths and examples, installer changes, configuration, development commands, tests with expected results, security and cost checks, troubleshooting, and independent QA evidence. <strong>Acceptance deliverables:</strong> Custom MCP implementation, credential-scoping design, mocked Datadog tests, observability reports.</p>
+
+        <h2 id="step-14">Step 14: Deploy Isolated Worker Execution Environments</h2>
+        <p><strong>Planned — implementation and tutorial to be developed.</strong> Provide each specialist an isolated code-execution boundary; evaluate Azure Container Apps sessions versus hosted-agent sandbox capabilities and choose based on persistence and security needs.</p>
+        <p><strong>Required future tutorial content:</strong> architecture decisions, exact C# and where applicable Python source paths and examples, installer changes, configuration, development commands, tests with expected results, security and cost checks, troubleshooting, and independent QA evidence. <strong>Acceptance deliverables:</strong> Execution sandbox specification, timeouts, egress restrictions, compute quotas, sandbox isolation tests and cost controls.</p>
+
+        <h2 id="step-15">Step 15: Implement User-Delegated Security &amp; Agent Communication</h2>
+        <p><strong>Planned — implementation and tutorial to be developed.</strong> Validate typed supervisor-worker messages, Entra identity context and downstream permissions. A managed identity must never silently increase a user's effective authority; Datadog requires separate user-scoped authorization.</p>
+        <p><strong>Required future tutorial content:</strong> architecture decisions, exact C# and where applicable Python source paths and examples, installer changes, configuration, development commands, tests with expected results, security and cost checks, troubleshooting, and independent QA evidence. <strong>Acceptance deliverables:</strong> Authorization broker design, A2A/tool protocol contract, negative authorization cases, audit trail and replay protection.</p>
+
+        <h2 id="step-16">Step 16: Implement Project Conversations &amp; Durable Memory</h2>
+        <p><strong>Planned — implementation and tutorial to be developed.</strong> Separate project identity from Teams chat/thread identity. Persist authorized session history and checkpoints; control retrieval scope, retention and project isolation.</p>
+        <p><strong>Required future tutorial content:</strong> architecture decisions, exact C# and where applicable Python source paths and examples, installer changes, configuration, development commands, tests with expected results, security and cost checks, troubleshooting, and independent QA evidence. <strong>Acceptance deliverables:</strong> C# persistence layer, project/conversation mapping, recovery tests and cross-project isolation checks.</p>
+
+        <h2 id="step-17">Step 17: Integrate the Supervisor with Microsoft Teams</h2>
+        <p><strong>Planned — implementation and tutorial to be developed.</strong> Expose the Supervisor through a Teams app/bot connection, handle personal and channel/thread conversations, route replies and notifications, and support validated worker delegation.</p>
+        <p><strong>Required future tutorial content:</strong> architecture decisions, exact C# and where applicable Python source paths and examples, installer changes, configuration, development commands, tests with expected results, security and cost checks, troubleshooting, and independent QA evidence. <strong>Acceptance deliverables:</strong> Teams manifest, endpoint/Entra configuration through installer, message contracts, simulated Teams tests and tenant-admin approval checklist.</p>
+
+        <h2 id="step-18">Step 18: Implement Human-in-the-Loop Approvals &amp; Execution</h2>
+        <p><strong>Planned — implementation and tutorial to be developed.</strong> Allow users to inspect proposed scripts, linting/what-if results, required permissions and impacts before approving execution. Block unauthorized or unapproved writes.</p>
+        <p><strong>Required future tutorial content:</strong> architecture decisions, exact C# and where applicable Python source paths and examples, installer changes, configuration, development commands, tests with expected results, security and cost checks, troubleshooting, and independent QA evidence. <strong>Acceptance deliverables:</strong> Approval records, immutable request bindings, expiration, one-time execution checks, deny-path tests and evidence links.</p>
+
+        <h2 id="step-19">Step 19: Automate Deployment Through the JAWS Installer</h2>
+        <p><strong>Planned — implementation and tutorial to be developed.</strong> Extend the accepted Stage A discovery baseline to plan, approve, provision, configure, validate and record all Azure resources and integrations. Never instruct operators to create or repair Azure infrastructure manually.</p>
+        <p><strong>Required future tutorial content:</strong> architecture decisions, exact C# and where applicable Python source paths and examples, installer changes, configuration, development commands, tests with expected results, security and cost checks, troubleshooting, and independent QA evidence. <strong>Acceptance deliverables:</strong> Installer modules and Pester tests; plan and drift reports; idempotent installation; ownership tracking; distinct Standard and Developer/Tester guides.</p>
+
+        <h2 id="step-20">Step 20: Validate End-to-End JAWS Operations</h2>
+        <p><strong>Planned — implementation and tutorial to be developed.</strong> Run a project-scoped Teams request through Supervisor and both specialist workers, collect correlated Azure and Datadog evidence, request approvals where necessary, and return a linked report.</p>
+        <p><strong>Required future tutorial content:</strong> architecture decisions, exact C# and where applicable Python source paths and examples, installer changes, configuration, development commands, tests with expected results, security and cost checks, troubleshooting, and independent QA evidence. <strong>Acceptance deliverables:</strong> Mocked test suite, independent tester evidence, controlled authorized Azure test, cost accounting and acceptance report.</p>
 
         <h2 id="sources">Sources</h2>
         <ul class="source-list">

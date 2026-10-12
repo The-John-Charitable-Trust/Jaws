@@ -47,3 +47,6 @@ Development tutorial: precise source paths, architecture diagrams, C#/Python cod
 
 ## 8. Exit checks before B2 acceptance
 No Azure provisioning commands outside installer call chain; mock tests demonstrate zero writes for Discover/Plan/Validate; ownership/drift blocks; idempotent second install; approval requirement; default-deny on user permission mismatch; costs disclosed; full evidence files generated and excluded from Git where sensitive.
+
+## 9. B2 implementation checkpoint (offline blueprint)
+B2 begins with `-Mode Plan` using `installer/config/jaws-stage-b-plan.example.json`, `installer/modules/DeploymentPlan.psm1`, and `tests/installer/DeploymentPlan.Tests.ps1`. The operator must copy the blueprint to a local ignored location and replace the example subscription ID. The prototype validates dependency order, component approval flags and explicit no-write policy, produces a generated report under `installer/.local`, and performs **no** Azure discovery or network call. It deliberately blocks execution. Live `Install` and cloud-aware `Validate` remain future functionality. The prototype output cannot be authorized or executed as a cloud resource change plan.

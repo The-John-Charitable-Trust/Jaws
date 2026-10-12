@@ -149,3 +149,13 @@ The command uses Microsoft Foundry REST v1 via Azure CLI internally; it refuses 
 This checks the version status from the exact recorded project and agent, without running inference. An authenticated test response will be a separate cost-approved acceptance gate.
 
 New Pester tests (10 deployment tests plus the prior 75 baseline; target at least 85 tests) await independent execution. No Azure hosted agent has been created by these commits.
+
+### Legacy publishing-receipt compatibility fix
+
+An earlier image publish succeeded and Azure independently confirmed its manifest digest, but Docker progress messages were also captured in the local JSON receipt. This produced a top-level array of progress strings followed by the structured success object. Foundry `Plan` previously attempted `receipt.Status` on that array and failed under PowerShell StrictMode. The updated `Resolve-JawsSupervisorPublishReceipt` selects exactly one complete structured record, requires its `PUBLISHED_AND_DIGEST_VERIFIED` status, confirms its push/deployment flags and immutable image/digest consistency, and refuses zero/multiple records. No ACR repush or receipt hand-editing is necessary. Three new offline regression tests were added. The previous 85-test baseline becomes a target of **88 tests**, pending execution. Generate a fresh read-only plan with:
+
+```powershell
+.\installer\Deploy-JawsSupervisor.ps1 -Mode Plan
+```
+
+This compatibility fix does not independently recheck the ACR digest; the earlier external ACR manifest query is the evidence for publication. No Foundry deployment is authorized or performed.

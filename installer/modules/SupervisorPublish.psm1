@@ -104,7 +104,8 @@ function Invoke-JawsSupervisorPublish {
     if ($LASTEXITCODE -ne 0) {throw 'JAWS-PUSH-012: ACR data-plane authentication failed; check AcrPush/Repository Writer.'}
     & docker tag $Plan.Plan.SourceImage $Plan.Plan.TargetTag
     if ($LASTEXITCODE -ne 0) {throw 'JAWS-PUSH-013: Docker tag failed.'}
-    & docker push $Plan.Plan.TargetTag
+    # Docker emits progress on stdout. Display it without adding strings to the function's return objects.
+    & docker push $Plan.Plan.TargetTag | Out-Host
     if ($LASTEXITCODE -ne 0) {throw 'JAWS-PUSH-014: Docker push failed; inspect partial registry state before retry.'}
     $metadata=& az acr manifest show-metadata --registry $registry --name "jaws/supervisor:$((($Plan.Plan.TargetTag) -split ':')[-1])" --output json --only-show-errors 2>$null
     if ($LASTEXITCODE -ne 0) {throw 'JAWS-PUSH-015: Registry digest verification unavailable; do not deploy.'}

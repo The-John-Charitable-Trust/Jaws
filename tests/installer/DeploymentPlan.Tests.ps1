@@ -65,7 +65,7 @@ Describe 'Stage B2 offline blueprint planning' {
         $scriptPath = Join-Path $PSScriptRoot '../../installer/Install-Jaws.ps1'
         $body = Get-Content -LiteralPath $scriptPath -Raw
         $body | Should -Match "ValidateSet\('Discover','Plan'\)"
-        $body | Should -Match "if \(\$Mode -eq 'Plan'\)"
+        $body | Should -Match 'if \(\$Mode -eq ''Plan''\)'
         $body | Should -Not -Match "ValidateSet\('Discover','Plan','Install'\)"
     }
 }

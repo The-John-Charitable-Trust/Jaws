@@ -50,8 +50,14 @@ function New-JawsSupervisorInstallProposal {
         ProtocolVersion='2.0.0'
     }
     $proposalText=ConvertTo-Json -InputObject $payload -Depth 12 -Compress
-    $sha=[System.Security.Cryptography.SHA256]::HashData([System.Text.Encoding]::UTF8.GetBytes($proposalText))
-    $fingerprint=[Convert]::ToHexString($sha).ToLowerInvariant()
+    # Compatible with both Windows PowerShell 5.1 and PowerShell 7 runtimes.
+    $hasher=[System.Security.Cryptography.SHA256]::Create()
+    try {
+        $sha=$hasher.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($proposalText))
+    } finally {
+        $hasher.Dispose()
+    }
+    $fingerprint=([System.BitConverter]::ToString($sha)).Replace('-','').ToLowerInvariant()
     [pscustomobject]@{
         SchemaVersion='0.1'
         ProposalType='SupervisorHostedAgentDeployment'

@@ -1,0 +1,19 @@
+# JAWS repository-root Docker build context hygiene.
+# Prevent Windows .NET build outputs from replacing Linux restore artifacts.
+**/bin/
+**/obj/
+**/.vs/
+**/.vscode/
+.git/
+.gitignore
+**/.local/
+**/.env
+**/.env.*
+**/*secret*
+**/*credential*
+**/*.pfx
+**/*.pem
+**/*.key
+**/*.user
+**/*.suo
+*.log

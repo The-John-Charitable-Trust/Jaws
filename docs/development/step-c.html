@@ -1,0 +1,283 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>JAWS Step C | Investigation Agent and Supervisor Delegation</title><style>:root{font-family:"Segoe UI",system-ui,Arial,sans-serif;color:#1f2328;--line:#d8dee4}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;line-height:1.6}header{position:sticky;top:0;padding:16px 25px;background:#fff;border-bottom:1px solid var(--line);z-index:3}header a{margin-left:22px;color:#0f6cbd}aside{position:fixed;top:57px;left:0;bottom:0;width:280px;overflow:auto;background:#f6f8fa;border-right:1px solid var(--line);padding:24px 14px}aside a{display:block;padding:9px;text-decoration:none;color:#195c99}main{margin-left:280px;max-width:1100px;padding:40px 52px 90px}h1{font-size:2.3rem;line-height:1.2}h2{font-size:1.58rem;border-top:1px solid #eaeef2;padding-top:25px;margin-top:42px}p{margin:12px 0 17px}p code{background:#f0f3f6;padding:2px 5px}table{width:100%;border-collapse:collapse}th,td{border:1px solid var(--line);padding:10px;text-align:left}.code-block{border:1px solid var(--line);border-radius:7px;overflow:hidden;margin:22px 0;background:#f9fafb}.head{display:flex;gap:15px;padding:10px 14px;background:#f0f3f6;border-bottom:1px solid var(--line);align-items:center}.head small{flex:1;color:#536578}.copy{background:#fff;border:1px solid #cbd5e1;padding:7px 14px;border-radius:5px;cursor:pointer}pre{margin:0;padding:20px;overflow:auto;font-size:14px}pre code{font-family:Consolas,monospace;white-space:pre}pre.diagram{border:1px solid #d4e5f7;background:#f3f9ff;white-space:pre-wrap}@media(max-width:850px){header{position:static}aside{position:static;width:auto}main{margin:0;padding:23px}}</style></head><body><header><strong>JAWS Development Tutorial</strong><a href="index.html">TOC</a><a href="stage-a.html">Step A</a><a href="stage-b.html">Step B</a></header><aside><strong>Step C chapters</strong><a href="#scope">Goals & scope</a><a href="#architecture">Delegation boundary</a><a href="#contracts">Typed C# contracts</a><a href="#planner">Investigation planning</a><a href="#supervisor">Supervisor delegation</a><a href="#tests">C# tests</a><a href="#commands">Build and test</a><a href="#security">Security boundaries</a><a href="#acceptance">Acceptance and next checkpoint</a></aside><main><h1>Step C: Investigation Agent and Supervisor Delegation</h1><p>Code-first implementation tutorial. Phase 1: offline typed contracts, deterministic planning and delegation validation. No Azure writes or runtime redeployment.</p><section id="scope"><h2>1. Scope and learning outcomes</h2><p>Step C's first implementation increment defines the task and result contracts for a dedicated Investigation Agent, builds a deterministic <strong>offline planning agent</strong> and a Supervisor-side delegation boundary, and tests fail-closed behaviors. It does not create a second Foundry hosted agent, modify the accepted Supervisor v1 or connect Azure/Datadog MCP.</p><table><tr><th>Artifact</th><th>Purpose</th></tr><tr><td><code>src/Jaws.Investigation/InvestigationContracts.cs</code></td><td>Typed tasks, correlation, scope, evidence and results</td></tr><tr><td><code>InvestigationPlanner.cs</code></td><td>Evidence requirements, no fabricated observations</td></tr><tr><td><code>SupervisorInvestigationDelegator.cs</code></td><td>Task validation and result integrity guard</td></tr><tr><td><code>tests/step-c/Program.cs</code></td><td>Offline tests and negative security cases</td></tr></table></section><section id="architecture"><h2>2. Supervisor-to-Investigation control flow</h2><pre class="diagram">User request → trusted ingress and authorization broker (future)
+    ↓ verified typed InvestigationTask
+SupervisorInvestigationDelegator (implemented offline)
+    ↓ Validate task & broker marker
+IInvestigationAgent.InvestigateAsync (in-process planner)
+    ↓ InvestigationResult(Status=Planned, Evidence=[])
+Supervisor validates task & correlation IDs, schema and success evidence
+    ↓
+Return plan with explicit "NO PROVIDER EVIDENCE" diagnostic</pre><p>The source currently demonstrates the delegation <em>contract</em> using in-process calls. It does not establish trusted ingress, actual broker verification, remote service authentication or genuine Microsoft Foundry agent-to-agent transport. These remain mandatory gates before a live worker can access tools.</p></section><section id="contracts"><h2>3. Define immutable, typed investigation contracts</h2><p>The contracts carry task ID, correlation ID, identity binding, resource scope, permitted tool names, deadline, evidence references and diagnostics. The <code>IsVerifiedByBroker</code> flag is an offline test marker, <strong>not a production authentication mechanism</strong>.</p><div class="code-block"><div class="head"><strong>C#</strong><small>Actual file: src/Jaws.Investigation/InvestigationContracts.cs</small><button type="button" class="copy">Copy</button></div><pre><code>using System.Text.Json.Serialization;
+
+namespace Jaws.Investigation;
+
+/// &lt;summary&gt;Validated, broker-supplied scope. Never populate from untrusted model/user text.&lt;/summary&gt;
+public sealed record VerifiedInvestigationScope(
+    string TenantId,
+    string UserObjectId,
+    string ProjectId,
+    string ConversationId,
+    string AuthorizationContextRef,
+    string TargetResourceScope,
+    IReadOnlyList&lt;string&gt; AllowedToolNames,
+    DateTimeOffset DeadlineUtc,
+    bool IsVerifiedByBroker);
+
+public sealed record InvestigationTask(
+    string SchemaVersion,
+    string TaskId,
+    string CorrelationId,
+    string OriginatingTeamsMessageId,
+    string RequestedOperation,
+    VerifiedInvestigationScope Scope);
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum InvestigationStatus { Planned, Partial, Denied, Failed, Succeeded }
+
+public sealed record EvidenceReference(
+    string Provider,
+    Uri SourceUri,
+    string ResourceScope,
+    string ClaimId,
+    DateTimeOffset ObservedAtUtc);
+
+public sealed record InvestigationResult(
+    string SchemaVersion,
+    string TaskId,
+    string CorrelationId,
+    string AgentName,
+    string AgentVersion,
+    InvestigationStatus Status,
+    IReadOnlyList&lt;string&gt; EvidenceRequirements,
+    IReadOnlyList&lt;EvidenceReference&gt; Evidence,
+    IReadOnlyList&lt;string&gt; VerifiedClaims,
+    IReadOnlyList&lt;string&gt; ProposedActions,
+    IReadOnlyList&lt;string&gt; Diagnostics);
+
+public interface IInvestigationAgent
+{
+    Task&lt;InvestigationResult&gt; InvestigateAsync(
+        InvestigationTask task,
+        CancellationToken cancellationToken = default);
+}</code></pre></div></section><section id="planner"><h2>4. Write the Investigation planning agent</h2><p>The first implementation returns an evidence-collection plan for an Azure VM compliance investigation. It refuses unknown operations, expired deadlines, unverified scope and non-allowlisted tools. Because no Azure MCP call occurs, verified claims and evidence remain empty.</p><div class="code-block"><div class="head"><strong>C#</strong><small>Actual file: src/Jaws.Investigation/InvestigationPlanner.cs</small><button type="button" class="copy">Copy</button></div><pre><code>namespace Jaws.Investigation;
+
+/// &lt;summary&gt;
+/// Offline deterministic investigation-planning stub.
+/// No model calls, MCP access, Azure queries, or remediation execution.
+/// Replace with a separately authenticated specialist only after authorization
+/// and hosted-agent A2A transport have been implemented and accepted.
+/// &lt;/summary&gt;
+public sealed class InvestigationPlanner : IInvestigationAgent
+{
+    private static readonly string[] Requirements =
+    [
+        "Resolve the exact target resource identity and authorized subscription scope.",
+        "Obtain Azure Policy compliance state and matching policy assignment from an authorized provider.",
+        "Obtain relevant Defender for Cloud recommendations from an authorized provider.",
+        "Correlate observations with their timestamps, resource IDs and provider source URLs."
+    ];
+
+    public Task&lt;InvestigationResult&gt; InvestigateAsync(
+        InvestigationTask task, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(task);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        string? rejection = Validate(task);
+        var status = rejection is null ? InvestigationStatus.Planned : InvestigationStatus.Denied;
+
+        // No provider call has occurred, so Evidence and VerifiedClaims stay EMPTY.
+        return Task.FromResult(new InvestigationResult(
+            SchemaVersion: "1.0",
+            TaskId: task.TaskId,
+            CorrelationId: task.CorrelationId,
+            AgentName: "jaws-investigation",
+            AgentVersion: "offline-step-c-0",
+            Status: status,
+            EvidenceRequirements: rejection is null ? Requirements : Array.Empty&lt;string&gt;(),
+            Evidence: Array.Empty&lt;EvidenceReference&gt;(),
+            VerifiedClaims: Array.Empty&lt;string&gt;(),
+            ProposedActions: Array.Empty&lt;string&gt;(),
+            Diagnostics: rejection is null
+                ? ["PLAN_ONLY: No Azure Policy/Defender/Datadog evidence has been retrieved."]
+                : [rejection]));
+    }
+
+    public static string? Validate(InvestigationTask? task)
+    {
+        if (task is null || task.Scope is null)
+            return "DENIED: Missing task or broker-issued scope.";
+        if (task.SchemaVersion != "1.0")
+            return "DENIED: Unsupported task schema.";
+        if (string.IsNullOrWhiteSpace(task.TaskId) ||
+            string.IsNullOrWhiteSpace(task.CorrelationId) ||
+            !Guid.TryParse(task.CorrelationId, out _) ||
+            !Guid.TryParse(task.TaskId, out _))
+            return "DENIED: Task and correlation IDs must be valid UUIDs.";
+        var s = task.Scope;
+        if (!s.IsVerifiedByBroker)
+            return "DENIED: Scope was not verified by the authorization broker.";
+        if (!Guid.TryParse(s.TenantId, out _) || !Guid.TryParse(s.UserObjectId, out _) ||
+            string.IsNullOrWhiteSpace(s.ProjectId) ||
+            string.IsNullOrWhiteSpace(s.ConversationId) ||
+            string.IsNullOrWhiteSpace(s.AuthorizationContextRef))
+            return "DENIED: Incomplete bound tenant, principal, project or conversation identity.";
+        if (s.DeadlineUtc &lt;= DateTimeOffset.UtcNow)
+            return "DENIED: Investigation deadline has expired.";
+        if (s.DeadlineUtc &gt; DateTimeOffset.UtcNow.AddMinutes(30))
+            return "DENIED: Investigation deadline exceeds the 30-minute budget.";
+        if (string.IsNullOrWhiteSpace(s.TargetResourceScope) ||
+            !s.TargetResourceScope.StartsWith("/subscriptions/", StringComparison.OrdinalIgnoreCase) ||
+            s.TargetResourceScope.Contains("..", StringComparison.Ordinal) ||
+            s.TargetResourceScope.Contains('*') ||
+            s.TargetResourceScope.Contains('?'))
+            return "DENIED: Target scope must be an exact Azure subscription or child-resource ID.";
+        if (task.RequestedOperation != "PlanReadOnlyAzureVmComplianceInvestigation")
+            return "DENIED: Only read-only investigation planning is allowed.";
+        if (s.AllowedToolNames is null ||
+            s.AllowedToolNames.Any(name =&gt; name is not ("AzurePolicy.Read" or "Defender.Read")) ||
+            s.AllowedToolNames.Count != s.AllowedToolNames.Distinct(StringComparer.Ordinal).Count())
+            return "DENIED: Tool allowlist is invalid or includes unauthorized tools.";
+        return null;
+    }
+}</code></pre></div><p><strong>Contract:</strong> Status <code>Planned</code> is neither <code>Succeeded</code> nor evidence of an Azure Policy/Defender result.</p></section><section id="supervisor"><h2>5. Implement the Supervisor delegation guard</h2><p>This in-process coordinator validates the broker-issued task before calling an Investigation Agent and checks the returned correlation/task IDs, schema and claim evidence. Invalid outputs become explicit failures rather than untrusted findings.</p><div class="code-block"><div class="head"><strong>C#</strong><small>Actual file: src/Jaws.Investigation/SupervisorInvestigationDelegator.cs</small><button type="button" class="copy">Copy</button></div><pre><code>namespace Jaws.Investigation;
+
+/// &lt;summary&gt;
+/// Supervisor-side delegation coordinator. An in-process offline boundary only;
+/// this does NOT provide remote Foundry A2A transport or grant MCP access.
+/// &lt;/summary&gt;
+public sealed class SupervisorInvestigationDelegator(IInvestigationAgent investigation)
+{
+    public async Task&lt;InvestigationResult&gt; DelegateAsync(
+        InvestigationTask task,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(task);
+        // Validate the broker-issued task before calling a worker, fail closed.
+        var rejection = InvestigationPlanner.Validate(task);
+        if (rejection is not null)
+        {
+            return new InvestigationResult("1.0", task.TaskId, task.CorrelationId,
+                "jaws-supervisor", "offline-step-c-0", InvestigationStatus.Denied,
+                [], [], [], [], [rejection]);
+        }
+
+        var response = await investigation.InvestigateAsync(task, cancellationToken);
+        if (response is null ||
+            response.TaskId != task.TaskId ||
+            response.CorrelationId != task.CorrelationId ||
+            response.SchemaVersion != "1.0" ||
+            string.IsNullOrWhiteSpace(response.AgentName) ||
+            response.Status == InvestigationStatus.Succeeded &amp;&amp;
+                response.Evidence.Count == 0)
+        {
+            return new InvestigationResult("1.0", task.TaskId, task.CorrelationId,
+                "jaws-supervisor", "offline-step-c-0", InvestigationStatus.Failed,
+                [], [], [], [], ["WORKER_RESULT_REJECTED: Task/correlation/schema identity or evidence integrity failed."]);
+        }
+        return response;
+    }
+}</code></pre></div></section><section id="tests"><h2>6. Automated C# tests and expected behavior</h2><p>The test harness is self-contained and requires no external test-framework packages or Azure account. Tests cover planned results, missing identity, forbidden operations, unauthorized tools, expired deadlines, correlation spoofing, cancellation and result integrity.</p><div class="code-block"><div class="head"><strong>C#</strong><small>Actual file: tests/step-c/Program.cs</small><button type="button" class="copy">Copy</button></div><pre><code>using Jaws.Investigation;
+
+var failures = new List&lt;string&gt;();
+int passed = 0;
+async Task Check(string name, Func&lt;Task&lt;bool&gt;&gt; test)
+{
+    try
+    {
+        if (await test()) { passed++; Console.WriteLine($"PASS {name}"); }
+        else { failures.Add(name); Console.Error.WriteLine($"FAIL {name}"); }
+    }
+    catch (Exception ex) { failures.Add(name); Console.Error.WriteLine($"FAIL {name}: {ex.Message}"); }
+}
+var guid = Guid.NewGuid().ToString();
+var scope = new VerifiedInvestigationScope(
+    TenantId: Guid.NewGuid().ToString(),
+    UserObjectId: Guid.NewGuid().ToString(),
+    ProjectId: "dev-project",
+    ConversationId: "conversation-1",
+    AuthorizationContextRef: "validated-broker-context",
+    TargetResourceScope: "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-test/providers/Microsoft.Compute/virtualMachines/vm-test-01",
+    AllowedToolNames: ["AzurePolicy.Read", "Defender.Read"],
+    DeadlineUtc: DateTimeOffset.UtcNow.AddMinutes(5),
+    IsVerifiedByBroker: true);
+var request = new InvestigationTask("1.0", guid, Guid.NewGuid().ToString(), "teams-message-1",
+    "PlanReadOnlyAzureVmComplianceInvestigation", scope);
+var planner = new InvestigationPlanner();
+await Check("plan returns bound identity and no fabricated evidence", async () =&gt;
+{
+    var result = await planner.InvestigateAsync(request);
+    return result.Status == InvestigationStatus.Planned &amp;&amp;
+        result.TaskId == request.TaskId &amp;&amp; result.CorrelationId == request.CorrelationId &amp;&amp;
+        result.Evidence.Count == 0 &amp;&amp; result.VerifiedClaims.Count == 0 &amp;&amp;
+        result.ProposedActions.Count == 0 &amp;&amp; result.EvidenceRequirements.Count &gt; 0;
+});
+await Check("reject unverified caller scope", async () =&gt;
+    (await planner.InvestigateAsync(request with { Scope = scope with { IsVerifiedByBroker = false } })).Status == InvestigationStatus.Denied);
+await Check("reject forbidden operations", async () =&gt;
+    (await planner.InvestigateAsync(request with { RequestedOperation = "RemediateVm" })).Status == InvestigationStatus.Denied);
+await Check("reject unauthorized tool", async () =&gt;
+    (await planner.InvestigateAsync(request with { Scope = scope with { AllowedToolNames = ["AzurePolicy.Write"] } })).Status == InvestigationStatus.Denied);
+await Check("reject expired task", async () =&gt;
+    (await planner.InvestigateAsync(request with { Scope = scope with { DeadlineUtc = DateTimeOffset.UtcNow.AddSeconds(-1) } })).Status == InvestigationStatus.Denied);
+await Check("reject unknown schema", async () =&gt;
+    (await planner.InvestigateAsync(request with { SchemaVersion = "2.0" })).Status == InvestigationStatus.Denied);
+await Check("reject wildcard resource scope", async () =&gt;
+    (await planner.InvestigateAsync(request with { Scope = scope with { TargetResourceScope = "/subscriptions/*" } })).Status == InvestigationStatus.Denied);
+await Check("reject incomplete tenant identity", async () =&gt;
+    (await planner.InvestigateAsync(request with { Scope = scope with { TenantId = "" } })).Status == InvestigationStatus.Denied);
+await Check("reject invalid task correlation", async () =&gt;
+    (await planner.InvestigateAsync(request with { CorrelationId = "free-form" })).Status == InvestigationStatus.Denied);
+await Check("reject overlong task budget", async () =&gt;
+    (await planner.InvestigateAsync(request with { Scope = scope with { DeadlineUtc = DateTimeOffset.UtcNow.AddHours(1) } })).Status == InvestigationStatus.Denied);
+await Check("honor cancellation", async () =&gt;
+{
+    using var cts = new CancellationTokenSource();
+    cts.Cancel();
+    try { await planner.InvestigateAsync(request, cts.Token); return false; }
+    catch (OperationCanceledException) { return true; }
+});
+var delegation = new SupervisorInvestigationDelegator(planner);
+await Check("Supervisor delegates a bound task and preserves correlation", async () =&gt;
+{
+    var result = await delegation.DelegateAsync(request);
+    return result.Status == InvestigationStatus.Planned &amp;&amp;
+        result.TaskId == request.TaskId &amp;&amp; result.CorrelationId == request.CorrelationId &amp;&amp;
+        result.VerifiedClaims.Count == 0;
+});
+await Check("Supervisor blocks unverified tasks before specialist call", async () =&gt;
+{
+    var result = await delegation.DelegateAsync(request with { Scope = scope with { IsVerifiedByBroker = false } });
+    return result.Status == InvestigationStatus.Denied &amp;&amp; result.AgentName == "jaws-supervisor";
+});
+await Check("Supervisor rejects a specialist that alters correlation", async () =&gt;
+{
+    var fake = new StubInvestigationAgent(task =&gt;
+        new InvestigationResult("1.0",task.TaskId,Guid.NewGuid().ToString(),
+            "jaws-investigation","offline",InvestigationStatus.Planned,[],[],[],[],[]));
+    var result = await new SupervisorInvestigationDelegator(fake).DelegateAsync(request);
+    return result.Status == InvestigationStatus.Failed &amp;&amp; result.Diagnostics[0].StartsWith("WORKER_RESULT_REJECTED");
+});
+await Check("Supervisor rejects unsupported success without evidence", async () =&gt;
+{
+    var fake = new StubInvestigationAgent(task =&gt;
+        new InvestigationResult("1.0",task.TaskId,task.CorrelationId,
+            "jaws-investigation","offline",InvestigationStatus.Succeeded,[],[],["Claim without evidence"],[],[]));
+    var result = await new SupervisorInvestigationDelegator(fake).DelegateAsync(request);
+    return result.Status == InvestigationStatus.Failed;
+});
+Console.WriteLine($"Step C offline tests: {passed} passed; {failures.Count} failed.");
+return failures.Count == 0 ? 0 : 1;
+
+sealed class StubInvestigationAgent(Func&lt;InvestigationTask, InvestigationResult&gt; callback) : IInvestigationAgent
+{
+    public Task&lt;InvestigationResult&gt; InvestigateAsync(InvestigationTask task, CancellationToken cancellationToken = default)
+        =&gt; Task.FromResult(callback(task));
+}</code></pre></div><p>These tests demonstrate deterministic offline behaviors only, not live authorization or model quality.</p></section><section id="commands"><h2>7. Run the Step C build and tests</h2><div class="code-block"><div class="head"><strong>PowerShell</strong><small>Developer workstation, no Azure writes</small><button type="button" class="copy">Copy</button></div><pre><code>cd "C:\Users\CecilJohn\Documents\jaws\JawsOSS"
+git status -sb
+git pull --ff-only origin codex/0.2-add-mcp-server
+
+dotnet build ".\src\Jaws.Investigation\Jaws.Investigation.csproj"
+dotnet run --project ".\tests\step-c\Jaws.Investigation.Tests.csproj"
+
+Import-Module Pester -RequiredVersion 5.9.1 -Force
+Invoke-Pester ".\tests\installer\" -Output Detailed</code></pre></div><p>Expected: the C# library compiles, all Step C offline assertions pass, the existing Pester suite remains green, and no Azure resources or accepted Supervisor version change.</p></section><section id="security"><h2>8. Security boundaries and exclusions</h2><p><strong>Not yet production security:</strong> a boolean broker-verification marker can be supplied by a caller and must not be treated as proof of real authorization. Production ingress must validate signed identity and project context; a server-owned authorization broker must bind user, tenant, resource and allowed tools before remote delegation. Worker endpoints need service authentication, signed or otherwise independently validated context, and strict provider scope enforcement.</p><p>The offline planner performs zero MCP calls, zero Azure reads/writes and no model inference. It rejects prohibited operations and intentionally makes no verified compliance claim. The human approval gate, live worker, MCP and Teams are future steps.</p></section><section id="acceptance"><h2>9. Step C first checkpoint and next increment</h2><table><tr><th>Acceptance criterion</th><th>State</th></tr><tr><td>Typed InvestigationTask/Result and evidence model</td><td>Source committed</td></tr><tr><td>Deterministic planning-only worker</td><td>Source committed</td></tr><tr><td>Supervisor delegate validates correlation and result integrity</td><td>Source committed</td></tr><tr><td>C# build and offline acceptance tests</td><td><strong>Awaiting workstation execution</strong></td></tr><tr><td>Real Foundry Investigation Agent deployment and A2A delegation</td><td>Not yet implemented</td></tr><tr><td>Azure Policy, Defender and Datadog evidence collection</td><td>Steps D and E</td></tr></table><p>After local test acceptance, design the hosted Investigation Agent and mutual-authenticated Supervisor-to-worker dispatch through the installer. The installed Supervisor v1 is preserved; any hosting/image change requires a new digest and explicitly approved deployment plan.</p><p><a href="index.html">Back to full JAWS development table of contents</a>.</p></section></main><script>document.querySelectorAll('.copy').forEach(b=>b.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(b.closest('.code-block').querySelector('pre code').innerText);b.textContent='Copied';setTimeout(()=>b.textContent='Copy',1500)}catch(e){b.textContent='Select manually'}}));</script></body></html>

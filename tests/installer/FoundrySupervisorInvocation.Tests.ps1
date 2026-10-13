@@ -20,7 +20,7 @@ Describe 'JAWS hosted Supervisor runtime acceptance guardrails' {
     }
     It 'uses JSON file transport and no infrastructure resource mutation' {
         $script:src | Should -Match 'WriteAllText'
-        $script:src | Should -Match '"@\\$bodyFile"'
+        $script:src.Contains('"@$bodyFile"') | Should -BeTrue
         $script:src | Should -Not -Match 'az role assignment create'
         $script:src | Should -Not -Match 'az resource create'
         $script:src | Should -Not -Match 'az acr build'
@@ -28,12 +28,12 @@ Describe 'JAWS hosted Supervisor runtime acceptance guardrails' {
     It 'does not mark acceptance on HTTP success with empty output' {
         $script:src | Should -Match 'JAWS-INVOKE-008'
         $script:src | Should -Match "status -cne 'completed'"
-        $script:src | Should -Match "IsNullOrWhiteSpace\\(\\$message\\)"
+        $script:src.Contains('IsNullOrWhiteSpace($message)') | Should -BeTrue
     }
     It 'keeps the deployment receipt unmodified and stores metadata only' {
         $script:src | Should -Match 'jaws-supervisor-invocation-acceptance.dev.generated.json'
-        $script:src | Should -Match 'InvocationVerified=\\$true'
-        $script:src | Should -Match 'Remove-Item -LiteralPath \\$bodyFile'
-        $script:src | Should -Not -Match 'Set-Content -LiteralPath \\$ReceiptFile'
+        $script:src.Contains('InvocationVerified=$true') | Should -BeTrue
+        $script:src.Contains('Remove-Item -LiteralPath $bodyFile') | Should -BeTrue
+        $script:src.Contains('Set-Content -LiteralPath $ReceiptFile') | Should -BeFalse
     }
 }

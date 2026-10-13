@@ -10,6 +10,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 Import-Module (Join-Path $PSScriptRoot 'modules/InstallationState.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'modules/FoundrySupervisorDeployment.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'modules/FoundrySupervisorReconciliation.psm1') -Force
 
 $state=Read-JawsInstallationState -Path $StateFile
 if ($null -eq $state) { throw 'JAWS-RECOVER-001: Valid installation state required.' }
@@ -28,13 +29,15 @@ $url="$($p.ProjectEndpoint)/agents/$($p.AgentName)?api-version=v1"
 $json=& az rest --method get --url $url --resource https://ai.azure.com --output json --only-show-errors 2>$null
 if ($LASTEXITCODE -ne 0) {throw 'JAWS-RECOVER-004: Failed to read the existing hosted agent; no receipt created.'}
 $agent=$json | Out-String | ConvertFrom-Json -ErrorAction Stop
-# The v1 GET endpoint returns an agent.version record, rather than the agent summary used by the POST parser.
-if ($null -eq $agent -or [string]$agent.name -cne $p.AgentName -or
-    [string]$agent.object -cne 'agent.version' -or [string]$agent.id -cne "$($p.AgentName):1" -or
-    [string]$agent.version -cne '1' -or [string]$agent.status -ine 'active' -or
-    [string]$agent.definition.kind -cne 'hosted' -or
-    [string]$agent.definition.container_configuration.image -cne $p.Image) {
-    throw 'JAWS-RECOVER-005: Existing agent version, status, kind or immutable image does not exactly match approved plan; no receipt created.'
+# Compare the live agent to the desired installation, field by field. On drift, save
+# diagnostics only; never issue a successful deployment receipt.
+$comparison=Compare-JawsFoundrySupervisorState -DeploymentPlan $plan -ActualAgent $agent
+$diagnosticPath=Join-Path $PSScriptRoot ".local/jaws-foundry-supervisor-reconciliation.$($state.EnvironmentName).generated.json"
+$comparison | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $diagnosticPath -Encoding utf8
+$comparison.Checks | Format-Table -AutoSize | Out-Host
+Write-Host "Reconciliation report: $diagnosticPath"
+if ($comparison.OverallStatus -ne 'MATCH') {
+    throw "JAWS-RECOVER-005: Existing agent differs from approved configuration: $($comparison.FailedFields -join ', '). No deployment receipt created."
 }
 $path=Join-Path $PSScriptRoot ".local/jaws-foundry-supervisor-deploy-receipt.$($state.EnvironmentName).generated.json"
 if (Test-Path -LiteralPath $path -PathType Leaf) {

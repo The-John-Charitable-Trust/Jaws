@@ -101,6 +101,27 @@ function Test-JawsFoundryDeploymentPlan {
     $actual=([BitConverter]::ToString($bytes)).Replace('-','').ToLowerInvariant()
     if ($actual -cne $DeploymentPlan.PlanSha256) {throw 'JAWS-FOUNDRY-006: Fingerprint differs from requested deployment.'}
 }
+function Test-JawsFoundryAcrPullRole {
+    [CmdletBinding()]
+    param([AllowNull()][object[]]$Assignments,
+          [Parameter(Mandatory)][string]$PrincipalId,
+          [Parameter(Mandatory)][string]$RegistryScope)
+    foreach ($assignment in @($Assignments)) {
+        if ($null -eq $assignment) { continue }
+        $props=$assignment.PSObject.Properties
+        if (-not $props['principalId'] -or -not $props['scope'] -or
+            -not $props['roleDefinitionName']) { continue }
+        if ([string]$assignment.principalId -ine $PrincipalId) { continue }
+        $scope=[string]$assignment.scope
+        $validScope=($RegistryScope -ieq $scope -or
+            $RegistryScope.StartsWith(($scope.TrimEnd('/') + '/'),[System.StringComparison]::OrdinalIgnoreCase))
+        if (-not $validScope) { continue }
+        if ([string]$assignment.roleDefinitionName -in @('AcrPull','Container Registry Repository Reader')) {
+            return $true
+        }
+    }
+    return $false
+}
 function Invoke-JawsFoundrySupervisorDeployment {
     [CmdletBinding()]
     param([Parameter(Mandatory)]$DeploymentPlan)
@@ -128,11 +149,11 @@ function Invoke-JawsFoundrySupervisorDeployment {
     if ([string]$acr.id -ine $acrId -or $acr.adminUserEnabled -ne $false) {
         throw 'JAWS-FOUNDRY-011: Registry mismatch or insecure admin configuration.'
     }
-    $rolesJson=& az role assignment list --assignee $identity --scope $acrId --include-inherited --output json --only-show-errors 2>$null
+    $rolesJson=& az role assignment list --assignee-object-id $identity --scope $acrId `
+        --include-inherited --fill-principal-name false --output json --only-show-errors 2>$null
     if ($LASTEXITCODE -ne 0) {throw 'JAWS-FOUNDRY-012: Cannot verify project image-pull RBAC.'}
     $roles=@($rolesJson | Out-String | ConvertFrom-Json)
-    $readers=@($roles | Where-Object { $_.roleDefinitionName -in @('AcrPull','Container Registry Repository Reader') })
-    if ($readers.Count -lt 1) {
+    if (-not (Test-JawsFoundryAcrPullRole -Assignments $roles -PrincipalId $identity -RegistryScope $acrId)) {
         throw 'JAWS-FOUNDRY-013: No verified ACR pull role for project identity. Installer-managed RBAC setup required.'
     }
     # Inspect existing agent. An unavailable API (403/5xx) is not treated as absence.
@@ -165,4 +186,4 @@ function Invoke-JawsFoundrySupervisorDeployment {
         AzureWrites=1;ActiveVerified=$false;InvocationVerified=$false
     }
 }
-Export-ModuleMember -Function Resolve-JawsSupervisorPublishReceipt,New-JawsFoundrySupervisorPlan,Test-JawsFoundryDeploymentPlan,Invoke-JawsFoundrySupervisorDeployment
+Export-ModuleMember -Function Resolve-JawsSupervisorPublishReceipt,New-JawsFoundrySupervisorPlan,Test-JawsFoundryDeploymentPlan,Invoke-JawsFoundrySupervisorDeployment,Test-JawsFoundryAcrPullRole

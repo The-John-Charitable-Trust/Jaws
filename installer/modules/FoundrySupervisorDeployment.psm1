@@ -176,62 +176,27 @@ function Invoke-JawsFoundrySupervisorDeployment {
     }
     $agent=$creation | Out-String | ConvertFrom-Json
     if ([string]$agent.name -cne [string]$p.AgentName) {throw 'JAWS-FOUNDRY-017: Created agent identity mismatch.'}
-    # Foundry POST may return an agent summary with versions.latest rather than
-    # the agent.version representation returned by GET. Handle both.
+    # Prefer the version from the creation response. A summary may provide
+    # versions.latest instead of the top-level agent.version returned by GET.
     $version=$null
-    if ($agent.PSObject.Properties['version'] -and [string]$agent.version -match '^[0-9]+
-    [pscustomobject]@{
-        Status='PROVISIONING_STARTED';AgentName=[string]$p.AgentName;Version=$version
-        Image=[string]$p.Image;ProjectEndpoint=[string]$p.ProjectEndpoint
-        AgentVersionUri="$($p.ProjectEndpoint)/agents/$($p.AgentName)/versions/$version"
-        PlanSha256=[string]$DeploymentPlan.PlanSha256;FoundryDeploymentPerformed=$true
-        AzureWrites=1;ActiveVerified=$false;InvocationVerified=$false
+    if ($agent.PSObject.Properties['version']) {
+        $candidate=[string]$agent.version
+        if ($candidate -match '^[0-9]+$') { $version=$candidate }
     }
-}
-Export-ModuleMember -Function Resolve-JawsSupervisorPublishReceipt,New-JawsFoundrySupervisorPlan,Test-JawsFoundryDeploymentPlan,Invoke-JawsFoundrySupervisorDeployment,Test-JawsFoundryAcrPullRole
-) {
-        $version=[string]$agent.version
-    } elseif ($agent.PSObject.Properties['versions'] -and $null -ne $agent.versions -and
-              $agent.versions.PSObject.Properties['latest'] -and $null -ne $agent.versions.latest) {
-        $latest=$agent.versions.latest
-        if ([string]$latest -match '^[0-9]+
-    [pscustomobject]@{
-        Status='PROVISIONING_STARTED';AgentName=[string]$p.AgentName;Version=$version
-        Image=[string]$p.Image;ProjectEndpoint=[string]$p.ProjectEndpoint
-        AgentVersionUri="$($p.ProjectEndpoint)/agents/$($p.AgentName)/versions/$version"
-        PlanSha256=[string]$DeploymentPlan.PlanSha256;FoundryDeploymentPerformed=$true
-        AzureWrites=1;ActiveVerified=$false;InvocationVerified=$false
-    }
-}
-Export-ModuleMember -Function Resolve-JawsSupervisorPublishReceipt,New-JawsFoundrySupervisorPlan,Test-JawsFoundryDeploymentPlan,Invoke-JawsFoundrySupervisorDeployment,Test-JawsFoundryAcrPullRole
-) {
-            $version=[string]$latest
-        } elseif ($latest.PSObject.Properties['version'] -and [string]$latest.version -match '^[0-9]+
-    [pscustomobject]@{
-        Status='PROVISIONING_STARTED';AgentName=[string]$p.AgentName;Version=$version
-        Image=[string]$p.Image;ProjectEndpoint=[string]$p.ProjectEndpoint
-        AgentVersionUri="$($p.ProjectEndpoint)/agents/$($p.AgentName)/versions/$version"
-        PlanSha256=[string]$DeploymentPlan.PlanSha256;FoundryDeploymentPerformed=$true
-        AzureWrites=1;ActiveVerified=$false;InvocationVerified=$false
-    }
-}
-Export-ModuleMember -Function Resolve-JawsSupervisorPublishReceipt,New-JawsFoundrySupervisorPlan,Test-JawsFoundryDeploymentPlan,Invoke-JawsFoundrySupervisorDeployment,Test-JawsFoundryAcrPullRole
-) {
-            $version=[string]$latest.version
+    if (-not $version -and $agent.PSObject.Properties['versions'] -and $null -ne $agent.versions) {
+        $nested=$agent.versions.PSObject.Properties['latest']
+        if ($null -ne $nested -and $null -ne $nested.Value) {
+            $latest=$nested.Value
+            if ([string]$latest -match '^[0-9]+$') {
+                $version=[string]$latest
+            } elseif ($latest.PSObject.Properties['version'] -and
+                [string]$latest.version -match '^[0-9]+$') {
+                $version=[string]$latest.version
+            }
         }
     }
-    if ([string]$version -notmatch '^[0-9]+
-    [pscustomobject]@{
-        Status='PROVISIONING_STARTED';AgentName=[string]$p.AgentName;Version=$version
-        Image=[string]$p.Image;ProjectEndpoint=[string]$p.ProjectEndpoint
-        AgentVersionUri="$($p.ProjectEndpoint)/agents/$($p.AgentName)/versions/$version"
-        PlanSha256=[string]$DeploymentPlan.PlanSha256;FoundryDeploymentPerformed=$true
-        AzureWrites=1;ActiveVerified=$false;InvocationVerified=$false
-    }
-}
-Export-ModuleMember -Function Resolve-JawsSupervisorPublishReceipt,New-JawsFoundrySupervisorPlan,Test-JawsFoundryDeploymentPlan,Invoke-JawsFoundrySupervisorDeployment,Test-JawsFoundryAcrPullRole
-) {
-        throw 'JAWS-FOUNDRY-018: Creation returned without recognized agent version; inspect existing Azure agent. Do not retry POST.'
+    if (-not $version) {
+        throw 'JAWS-FOUNDRY-018: Creation response omitted a recognizable version. Inspect existing Azure agent; do not retry POST.'
     }
     [pscustomobject]@{
         Status='PROVISIONING_STARTED';AgentName=[string]$p.AgentName;Version=$version

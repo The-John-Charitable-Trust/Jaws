@@ -9,8 +9,8 @@ Describe 'Foundry Supervisor recovery is read-only and fail-closed' {
         @($errors).Count | Should -Be 0
     }
     It 'retrieves the agent version record, not the summary' {
-        $script:source | Should -Match '/agents/\\$\\(\\$p.AgentName\\)/versions/1\\?api-version=v1'
-        $script:source | Should -Not -Match '/agents/\\$\\(\\$p.AgentName\\)\\?api-version=v1'
+        $script:source.Contains('/agents/$($p.AgentName)/versions/1?api-version=v1') | Should -BeTrue
+        $script:source.Contains('/agents/$($p.AgentName)?api-version=v1') | Should -BeFalse
     }
     It 'queries Azure but never sends an Azure write' {
         $script:source | Should -Match 'az rest --method get'

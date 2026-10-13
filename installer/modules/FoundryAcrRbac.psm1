@@ -132,18 +132,104 @@ function Test-JawsFoundryAcrRbacPlan {
 
 function Test-JawsExactRoleAssignment {
     param([AllowNull()][object[]]$Assignments,[Parameter(Mandatory)][string]$PrincipalId,
-          [Parameter(Mandatory)][string]$Scope,[Parameter(Mandatory)][string]$RoleName)
+          [Parameter(Mandatory)][string]$Scope,[Parameter(Mandatory)][string]$RoleName,
+          [string]$RoleDefinitionId)
     foreach ($assignment in @($Assignments)) {
         if ($null -eq $assignment) { continue }
         $properties=$assignment.PSObject.Properties
-        if (-not $properties['principalId'] -or -not $properties['scope'] -or -not $properties['roleDefinitionName']) { continue }
-        if ([string]$assignment.principalId -ieq $PrincipalId -and
-            [string]$assignment.scope -ieq $Scope -and
-            [string]$assignment.roleDefinitionName -ceq $RoleName) {
-            return $true
-        }
+        if (-not $properties['principalId'] -or -not $properties['scope']) { continue }
+        if ([string]$assignment.principalId -ine $PrincipalId -or
+            [string]$assignment.scope -ine $Scope) { continue }
+        $nameMatches=($properties['roleDefinitionName'] -and
+            [string]$assignment.roleDefinitionName -ceq $RoleName)
+        $idMatches=($RoleDefinitionId -and $properties['roleDefinitionId'] -and
+            [string]$assignment.roleDefinitionId -ieq $RoleDefinitionId)
+        if ($nameMatches -or $idMatches) { return $true }
     }
     return $false
+}
+
+function Get-JawsApprovedAcrRoleDefinitionId {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$RoleName,
+          [Parameter(Mandatory)][string]$SubscriptionId,
+          [Parameter(Mandatory)][string]$Scope)
+    if ($RoleName -notin @('AcrPull','Container Registry Repository Reader')) {
+        throw 'JAWS-RBAC-ASSIGN-008: Role is not in the approved allowlist.'
+    }
+    $json=& az role definition list --name $RoleName --scope $Scope --subscription $SubscriptionId --output json --only-show-errors 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        throw 'JAWS-RBAC-ASSIGN-009: Could not resolve approved role definition before any write.'
+    }
+    $roles=@($json | Out-String | ConvertFrom-Json | Where-Object { $null -ne $_ })
+    if ($roles.Count -ne 1 -or -not $roles[0].PSObject.Properties['id']) {
+        throw 'JAWS-RBAC-ASSIGN-009: Expected one authoritative role definition with an ID.'
+    }
+    $id=[string]$roles[0].id
+    if ($id -notmatch '(?i)/providers/Microsoft.Authorization/roleDefinitions/[0-9a-f-]{36}
+
+function Invoke-JawsFoundryAcrRbacAssignment {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$RbacPlan)
+    Test-JawsFoundryAcrRbacPlan -RbacPlan $RbacPlan
+    $p=$RbacPlan.Plan
+    $projectJson=& az resource show --ids $p.ProjectResourceId --output json --only-show-errors 2>$null
+    if ($LASTEXITCODE -ne 0) { throw 'JAWS-RBAC-ASSIGN-001: Cannot revalidate Foundry project.' }
+    $project=$projectJson | Out-String | ConvertFrom-Json
+    if (-not $project.PSObject.Properties['identity'] -or -not $project.identity -or
+        -not $project.identity.PSObject.Properties['principalId'] -or
+        [string]$project.identity.principalId -ine [string]$p.ProjectPrincipalId) {
+        throw 'JAWS-RBAC-ASSIGN-002: Foundry project identity changed after approval.'
+    }
+    $acrJson=& az acr show --subscription $p.SubscriptionId --resource-group $p.ResourceGroupName --name $p.RegistryName --output json --only-show-errors 2>$null
+    if ($LASTEXITCODE -ne 0) { throw 'JAWS-RBAC-ASSIGN-003: Cannot revalidate registry.' }
+    $acr=$acrJson | Out-String | ConvertFrom-Json
+    if ([string]$acr.id -ine [string]$p.RegistryResourceId -or $acr.adminUserEnabled -ne $false -or
+        [string]$acr.roleAssignmentMode -cne [string]$p.RegistryRoleAssignmentMode) {
+        throw 'JAWS-RBAC-ASSIGN-004: Registry changed after approval.'
+    }
+    $approvedRoleId=Get-JawsApprovedAcrRoleDefinitionId -RoleName $p.RoleDefinitionName `
+        -SubscriptionId $p.SubscriptionId -Scope $p.RegistryResourceId
+    $existingJson=& az role assignment list --assignee-object-id $p.ProjectPrincipalId --scope $p.RegistryResourceId `
+        --include-inherited --fill-principal-name false --output json --only-show-errors 2>$null
+    if ($LASTEXITCODE -ne 0) { throw 'JAWS-RBAC-ASSIGN-005: Cannot inspect existing role assignments.' }
+    $existing=@($existingJson | Out-String | ConvertFrom-Json)
+    if (Test-JawsExactRoleAssignment -Assignments $existing -PrincipalId $p.ProjectPrincipalId -Scope $p.RegistryResourceId -RoleName $p.RoleDefinitionName -RoleDefinitionId $approvedRoleId) {
+        return [pscustomobject]@{Status='ALREADY_ASSIGNED_AND_VERIFIED';RoleDefinitionName=$p.RoleDefinitionName;Scope=$p.RegistryResourceId;AzureWrites=0}
+    }
+    # The only Azure write in this module: exact principal, role and ACR scope from the approved plan.
+    $createdJson=& az role assignment create --subscription $p.SubscriptionId `
+        --assignee-object-id $p.ProjectPrincipalId --assignee-principal-type ServicePrincipal `
+        --role $p.RoleDefinitionName --scope $p.RegistryResourceId --output json --only-show-errors 2>$null
+    if ($LASTEXITCODE -ne 0) { throw 'JAWS-RBAC-ASSIGN-006: Role assignment failed; inspect Azure before retry.' }
+    $created=$createdJson | Out-String | ConvertFrom-Json
+    if ($null -eq $created -or -not $created.PSObject.Properties['id']) {
+        throw 'JAWS-RBAC-ASSIGN-007: Role assignment create response omitted its resource identity.'
+    }
+    # Azure CLI create responses can omit roleDefinitionName. Verify through an authoritative read-back,
+    # allowing briefly for role-assignment propagation without issuing another write.
+    $verified=$false
+    for ($attempt=1; $attempt -le 3 -and -not $verified; $attempt++) {
+        $verifyJson=& az role assignment list --assignee-object-id $p.ProjectPrincipalId --scope $p.RegistryResourceId `
+            --include-inherited --fill-principal-name false --output json --only-show-errors 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            $verify=@($verifyJson | Out-String | ConvertFrom-Json)
+            $verified=Test-JawsExactRoleAssignment -Assignments $verify -PrincipalId $p.ProjectPrincipalId `
+                -Scope $p.RegistryResourceId -RoleName $p.RoleDefinitionName -RoleDefinitionId $approvedRoleId
+        }
+        if (-not $verified -and $attempt -lt 3) { Start-Sleep -Seconds 2 }
+    }
+    if (-not $verified) {
+        throw 'JAWS-RBAC-ASSIGN-007: Created role assignment does not match approved plan.'
+    }
+    [pscustomobject]@{Status='ASSIGNED_AND_VERIFIED';RoleDefinitionName=$p.RoleDefinitionName;Scope=$p.RegistryResourceId;AzureWrites=1}
+}
+
+Export-ModuleMember -Function New-JawsFoundryAcrRbacPlan,Get-JawsFoundryAcrRbacLivePlan,Test-JawsFoundryAcrRbacPlan,Invoke-JawsFoundryAcrRbacAssignment,Test-JawsExactRoleAssignment
+) {
+        throw 'JAWS-RBAC-ASSIGN-009: Role definition ID is malformed.'
+    }
+    return $id
 }
 
 function Invoke-JawsFoundryAcrRbacAssignment {

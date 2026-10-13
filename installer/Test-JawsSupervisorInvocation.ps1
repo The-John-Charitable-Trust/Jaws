@@ -33,7 +33,7 @@ if ($endpoint -cne 'https://jaws-foundry-dev.services.ai.azure.com/api/projects/
     throw 'JAWS-INVOKE-003: Receipt/plan identity, image or active status mismatch.'
 }
 # Re-read the actual immutable version before making a potentially billable request.
-$versionJson=& az rest --method get --url "$versionUri?api-version=v1" --resource https://ai.azure.com --output json --only-show-errors 2>$null
+$versionJson=& az rest --method get --url "$($versionUri)?api-version=v1" --resource https://ai.azure.com --output json --only-show-errors 2>$null
 if ($LASTEXITCODE -ne 0) { throw 'JAWS-INVOKE-004: Cannot verify active Foundry agent version.' }
 $versionObj=$versionJson | Out-String | ConvertFrom-Json -ErrorAction Stop
 $comparison=Compare-JawsFoundrySupervisorState -DeploymentPlan $plan -ActualAgent $versionObj

@@ -176,8 +176,63 @@ function Invoke-JawsFoundrySupervisorDeployment {
     }
     $agent=$creation | Out-String | ConvertFrom-Json
     if ([string]$agent.name -cne [string]$p.AgentName) {throw 'JAWS-FOUNDRY-017: Created agent identity mismatch.'}
-    $version=[string]$agent.version
-    if ($version -notmatch '^[0-9]+$') {throw 'JAWS-FOUNDRY-018: Response omitted agent version; inspect Azure.'}
+    # Foundry POST may return an agent summary with versions.latest rather than
+    # the agent.version representation returned by GET. Handle both.
+    $version=$null
+    if ($agent.PSObject.Properties['version'] -and [string]$agent.version -match '^[0-9]+
+    [pscustomobject]@{
+        Status='PROVISIONING_STARTED';AgentName=[string]$p.AgentName;Version=$version
+        Image=[string]$p.Image;ProjectEndpoint=[string]$p.ProjectEndpoint
+        AgentVersionUri="$($p.ProjectEndpoint)/agents/$($p.AgentName)/versions/$version"
+        PlanSha256=[string]$DeploymentPlan.PlanSha256;FoundryDeploymentPerformed=$true
+        AzureWrites=1;ActiveVerified=$false;InvocationVerified=$false
+    }
+}
+Export-ModuleMember -Function Resolve-JawsSupervisorPublishReceipt,New-JawsFoundrySupervisorPlan,Test-JawsFoundryDeploymentPlan,Invoke-JawsFoundrySupervisorDeployment,Test-JawsFoundryAcrPullRole
+) {
+        $version=[string]$agent.version
+    } elseif ($agent.PSObject.Properties['versions'] -and $null -ne $agent.versions -and
+              $agent.versions.PSObject.Properties['latest'] -and $null -ne $agent.versions.latest) {
+        $latest=$agent.versions.latest
+        if ([string]$latest -match '^[0-9]+
+    [pscustomobject]@{
+        Status='PROVISIONING_STARTED';AgentName=[string]$p.AgentName;Version=$version
+        Image=[string]$p.Image;ProjectEndpoint=[string]$p.ProjectEndpoint
+        AgentVersionUri="$($p.ProjectEndpoint)/agents/$($p.AgentName)/versions/$version"
+        PlanSha256=[string]$DeploymentPlan.PlanSha256;FoundryDeploymentPerformed=$true
+        AzureWrites=1;ActiveVerified=$false;InvocationVerified=$false
+    }
+}
+Export-ModuleMember -Function Resolve-JawsSupervisorPublishReceipt,New-JawsFoundrySupervisorPlan,Test-JawsFoundryDeploymentPlan,Invoke-JawsFoundrySupervisorDeployment,Test-JawsFoundryAcrPullRole
+) {
+            $version=[string]$latest
+        } elseif ($latest.PSObject.Properties['version'] -and [string]$latest.version -match '^[0-9]+
+    [pscustomobject]@{
+        Status='PROVISIONING_STARTED';AgentName=[string]$p.AgentName;Version=$version
+        Image=[string]$p.Image;ProjectEndpoint=[string]$p.ProjectEndpoint
+        AgentVersionUri="$($p.ProjectEndpoint)/agents/$($p.AgentName)/versions/$version"
+        PlanSha256=[string]$DeploymentPlan.PlanSha256;FoundryDeploymentPerformed=$true
+        AzureWrites=1;ActiveVerified=$false;InvocationVerified=$false
+    }
+}
+Export-ModuleMember -Function Resolve-JawsSupervisorPublishReceipt,New-JawsFoundrySupervisorPlan,Test-JawsFoundryDeploymentPlan,Invoke-JawsFoundrySupervisorDeployment,Test-JawsFoundryAcrPullRole
+) {
+            $version=[string]$latest.version
+        }
+    }
+    if ([string]$version -notmatch '^[0-9]+
+    [pscustomobject]@{
+        Status='PROVISIONING_STARTED';AgentName=[string]$p.AgentName;Version=$version
+        Image=[string]$p.Image;ProjectEndpoint=[string]$p.ProjectEndpoint
+        AgentVersionUri="$($p.ProjectEndpoint)/agents/$($p.AgentName)/versions/$version"
+        PlanSha256=[string]$DeploymentPlan.PlanSha256;FoundryDeploymentPerformed=$true
+        AzureWrites=1;ActiveVerified=$false;InvocationVerified=$false
+    }
+}
+Export-ModuleMember -Function Resolve-JawsSupervisorPublishReceipt,New-JawsFoundrySupervisorPlan,Test-JawsFoundryDeploymentPlan,Invoke-JawsFoundrySupervisorDeployment,Test-JawsFoundryAcrPullRole
+) {
+        throw 'JAWS-FOUNDRY-018: Creation returned without recognized agent version; inspect existing Azure agent. Do not retry POST.'
+    }
     [pscustomobject]@{
         Status='PROVISIONING_STARTED';AgentName=[string]$p.AgentName;Version=$version
         Image=[string]$p.Image;ProjectEndpoint=[string]$p.ProjectEndpoint

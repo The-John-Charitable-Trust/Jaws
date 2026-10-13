@@ -14,12 +14,12 @@ Describe 'Foundry Supervisor recovery is read-only and fail-closed' {
         $script:source | Should -Not -Match 'az role assignment create'
         $script:source | Should -Not -Match 'az resource create'
     }
-    It 'requires a matching approved plan, active version 1 and identical immutable image' {
+    It 'requires approved plan and compares every required field before receipt' {
         $script:source | Should -Match 'Test-JawsFoundryDeploymentPlan'
         $script:source | Should -Match 'ApprovedPlanSha256 -cne \$plan.PlanSha256'
-        $script:source | Should -Match 'agent.status -ine ''active'''
-        $script:source | Should -Match 'agent.version -cne ''1'''
-        $script:source | Should -Match 'container_configuration.image -cne \$p.Image'
+        $script:source | Should -Match 'Compare-JawsFoundrySupervisorState'
+        $script:source | Should -Match 'comparison.OverallStatus -ne ''MATCH'''
+        $script:source | Should -Match 'comparison.FailedFields'
     }
     It 'refuses to overwrite an existing receipt or claim inference acceptance' {
         $script:source | Should -Match 'JAWS-RECOVER-006'

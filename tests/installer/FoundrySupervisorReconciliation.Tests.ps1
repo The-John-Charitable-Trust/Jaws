@@ -10,29 +10,27 @@ BeforeAll {
             Request=[pscustomobject]@{definition=[pscustomobject]@{
                 cpu='1';memory='2Gi';environment_variables=[pscustomobject]@{
                     AZURE_AI_MODEL_DEPLOYMENT_NAME='gpt-5-mini'
-                    FOUNDRY_PROJECT_ENDPOINT=$script:endpoint
                 }
             }}
         }
     }
 }
 Describe 'Foundry actual-state comparison against Azure response' {
-    It 'reports the missing FOUNDRY_PROJECT_ENDPOINT explicitly rather than issuing a receipt' {
+    It 'accepts the platform-injected endpoint being absent from persisted version configuration' {
         $result=Compare-JawsFoundrySupervisorState -DeploymentPlan $script:plan -ActualAgent $script:live
-        $result.OverallStatus | Should -Be 'DRIFT'
-        $result.FailedFields | Should -Contain 'definition.environment_variables.FOUNDRY_PROJECT_ENDPOINT'
+        $result.OverallStatus | Should -Be 'MATCH'
+        $result.FailedFields.Count | Should -Be 0
         $result.AzureWrites | Should -Be 0
     }
-    It 'recognizes an exact match when the required variable is present' {
+    It 'rejects a persisted environment variable that uses a reserved platform prefix' {
         $actual=$script:live | ConvertTo-Json -Depth 20 | ConvertFrom-Json
         $actual.definition.environment_variables | Add-Member -NotePropertyName FOUNDRY_PROJECT_ENDPOINT -NotePropertyValue $script:endpoint
         $result=Compare-JawsFoundrySupervisorState -DeploymentPlan $script:plan -ActualAgent $actual
-        $result.OverallStatus | Should -Be 'MATCH'
-        $result.FailedFields.Count | Should -Be 0
+        $result.OverallStatus | Should -Be 'DRIFT'
+        $result.FailedFields | Should -Contain 'definition.environment_variables.reserved_platform_prefixes'
     }
     It 'detects immutable image drift even when the agent is active' {
         $actual=$script:live | ConvertTo-Json -Depth 20 | ConvertFrom-Json
-        $actual.definition.environment_variables | Add-Member -NotePropertyName FOUNDRY_PROJECT_ENDPOINT -NotePropertyValue $script:endpoint
         $actual.definition.container_configuration.image='jawsregistrydev001.azurecr.io/jaws/supervisor@sha256:' + ('0'*64)
         $result=Compare-JawsFoundrySupervisorState -DeploymentPlan $script:plan -ActualAgent $actual
         $result.FailedFields | Should -Contain 'definition.container_configuration.image'

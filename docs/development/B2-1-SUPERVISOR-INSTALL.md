@@ -33,7 +33,7 @@ Microsoft's current hosted-agent documentation describes a Linux/amd64 container
 
 ## Runtime source and packaging checkpoint (new; pending execution)
 - Source: `src/Jaws.Supervisor.Host/Program.cs`, project `Jaws.Supervisor.Host.csproj` and its Linux/amd64 `Dockerfile`.
-- Uses Microsoft Agent Framework Foundry Responses hosting, `DefaultAzureCredential`, `FOUNDRY_PROJECT_ENDPOINT` and `AZURE_AI_MODEL_DEPLOYMENT_NAME`. Supervisor has no worker tools or authorization broker yet and must never imply otherwise.
+- Uses Microsoft Agent Framework Foundry Responses hosting and `DefaultAzureCredential`. The container reads the platform-injected `FOUNDRY_PROJECT_ENDPOINT`; the deployment payload declares only `AZURE_AI_MODEL_DEPLOYMENT_NAME` because `FOUNDRY_*` and `AGENT_*` names are reserved by the hosted-agent platform. Supervisor has no worker tools or authorization broker yet and must never imply otherwise.
 - The JAWS installer now supports `-Mode Package`: local `.NET 10 dotnet publish` and optional `-BuildContainer` (local Docker build only). Results reside in `installer/.local/supervisor/publish`; no ACR image push or Azure deployment occurs.
 - Run `dotnet build Jaws.slnx -c Release`, `.\installer\Install-Jaws.ps1 -Mode Package`, then `Invoke-Pester .\tests\installer\ -Output Detailed` in an approved PowerShell 7 terminal. Optional `.\installer\Install-Jaws.ps1 -Mode Package -BuildContainer` requires Docker.
 - Baseline is 45 accepted Pester tests; five new tests target a total of 50. Build and tests are **unverified** until run on an actual Windows .NET 10 workstation.

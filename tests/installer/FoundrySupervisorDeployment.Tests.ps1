@@ -63,7 +63,7 @@ Describe 'Foundry Supervisor installation safety and specification' {
         $p.CanDeploy | Should -BeFalse
         $p.Plan.Request.definition.protocol_versions[0].version | Should -Be '2.0.0'
         $p.Plan.Request.definition.environment_variables.AZURE_AI_MODEL_DEPLOYMENT_NAME | Should -Be 'gpt-5-mini'
-        $p.Plan.Request.definition.environment_variables.FOUNDRY_PROJECT_ENDPOINT | Should -Be 'https://jaws-foundry-dev.services.ai.azure.com/api/projects/jaws-dev'
+        @($p.Plan.Request.definition.environment_variables.PSObject.Properties.Name | Where-Object { $_ -match '^(FOUNDRY_|AGENT_)' }) | Should -HaveCount 0
         $p.Plan.Image | Should -Be $script:receipt.Image
     }
     It 'generates stable plan fingerprints' {
@@ -105,6 +105,13 @@ Describe 'Foundry Supervisor installation safety and specification' {
         @([regex]::Matches($s,'& az rest --method post')).Count | Should -Be 1
         $s | Should -Match 'JAWS-FOUNDRY-013'
         $s | Should -Not -Match '& az role assignment create'
+    }
+    It 'uses file-backed JSON and preserves the Azure create error in Windows PowerShell' {
+        $s=Get-Content (Join-Path $PSScriptRoot '../../installer/modules/FoundrySupervisorDeployment.psm1') -Raw
+        $s | Should -Match '--body "@\$bodyFile"'
+        $s | Should -Match 'UTF8Encoding\(\$false\)'
+        $s | Should -Match 'Azure response: \$azureError'
+        $s | Should -Not -Match '--body \$body'
     }
     It 'parses both Foundry installer files' {
         foreach ($path in @('installer/Deploy-JawsSupervisor.ps1','installer/modules/FoundrySupervisorDeployment.psm1')) {

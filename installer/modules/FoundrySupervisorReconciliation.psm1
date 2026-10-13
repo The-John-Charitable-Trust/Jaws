@@ -50,7 +50,10 @@ function Compare-JawsFoundrySupervisorState {
     Add-Check 'definition.memory' ([string]$p.Request.definition.memory) (Get-JawsFoundryField $ActualAgent @('definition','memory'))
     Add-Check 'definition.container_configuration.image' ([string]$p.Image) (Get-JawsFoundryField $ActualAgent @('definition','container_configuration','image'))
     Add-Check 'definition.environment_variables.AZURE_AI_MODEL_DEPLOYMENT_NAME' ([string]$p.Request.definition.environment_variables.AZURE_AI_MODEL_DEPLOYMENT_NAME) (Get-JawsFoundryField $ActualAgent @('definition','environment_variables','AZURE_AI_MODEL_DEPLOYMENT_NAME'))
-    Add-Check 'definition.environment_variables.FOUNDRY_PROJECT_ENDPOINT' ([string]$p.ProjectEndpoint) (Get-JawsFoundryField $ActualAgent @('definition','environment_variables','FOUNDRY_PROJECT_ENDPOINT'))
+    $actualEnvironment=Get-JawsFoundryField $ActualAgent @('definition','environment_variables')
+    $actualEnvironmentNames=if($null -eq $actualEnvironment){@()}else{@($actualEnvironment.PSObject.Properties.Name)}
+    $actualReserved=@($actualEnvironmentNames | Where-Object { $_ -match '^(FOUNDRY_|AGENT_)' })
+    Add-Check 'definition.environment_variables.reserved_platform_prefixes' '<none>' $(if($actualReserved.Count -eq 0){'<none>'}else{$actualReserved -join ','})
     $protocols=@(Get-JawsFoundryField $ActualAgent @('definition','protocol_versions'))
     $protocolMatch=$false
     foreach($entry in $protocols) {

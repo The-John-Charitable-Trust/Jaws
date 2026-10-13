@@ -60,7 +60,8 @@ function New-JawsFoundrySupervisorPlan {
         container_configuration=[ordered]@{image=[string]$PublishReceipt.Image}
         cpu='1';memory='2Gi'
         protocol_versions=@([ordered]@{protocol='responses';version='2.0.0'})
-        environment_variables=[ordered]@{FOUNDRY_PROJECT_ENDPOINT=$endpoint;AZURE_AI_MODEL_DEPLOYMENT_NAME=[string]$model[0].Name}
+        # Foundry injects FOUNDRY_PROJECT_ENDPOINT at runtime. FOUNDRY_* and AGENT_* are reserved.
+        environment_variables=[ordered]@{AZURE_AI_MODEL_DEPLOYMENT_NAME=[string]$model[0].Name}
     }
     $request=[ordered]@{name=$AgentName;definition=$definition}
     $payload=[ordered]@{
@@ -85,13 +86,16 @@ function New-JawsFoundrySupervisorPlan {
 function Test-JawsFoundryDeploymentPlan {
     [CmdletBinding()]
     param([Parameter(Mandatory)]$DeploymentPlan)
+    $environmentNames=@($DeploymentPlan.Plan.Request.definition.environment_variables.PSObject.Properties.Name)
+    $reservedEnvironmentNames=@($environmentNames | Where-Object { $_ -match '^(FOUNDRY_|AGENT_)' })
     if ($DeploymentPlan.Plan.Operation -ne 'CreateHostedSupervisorVersion' -or
         $DeploymentPlan.Plan.ApiVersion -ne 'v1' -or
         $DeploymentPlan.Plan.Image -cnotmatch '^jawsregistrydev001\.azurecr\.io/jaws/supervisor@sha256:[a-f0-9]{64}$' -or
         $DeploymentPlan.Plan.Request.definition.container_configuration.image -cne $DeploymentPlan.Plan.Image -or
         $DeploymentPlan.Plan.Request.definition.kind -ne 'hosted' -or
         $DeploymentPlan.Plan.Request.definition.cpu -ne '1' -or
-        $DeploymentPlan.Plan.Request.definition.memory -ne '2Gi') {
+        $DeploymentPlan.Plan.Request.definition.memory -ne '2Gi' -or
+        $reservedEnvironmentNames.Count -ne 0) {
         throw 'JAWS-FOUNDRY-005: Unsafe or altered hosted agent plan.'
     }
     $json=ConvertTo-Json -InputObject $DeploymentPlan.Plan -Depth 20 -Compress
@@ -106,11 +110,12 @@ function Test-JawsFoundryAcrPullRole {
     param([AllowNull()][object[]]$Assignments,
           [Parameter(Mandatory)][string]$PrincipalId,
           [Parameter(Mandatory)][string]$RegistryScope)
-    foreach ($assignment in @($Assignments)) {
+    $flattened=@($Assignments | ForEach-Object { $_ })
+    foreach ($assignment in $flattened) {
         if ($null -eq $assignment) { continue }
-        $props=$assignment.PSObject.Properties
-        if (-not $props['principalId'] -or -not $props['scope'] -or
-            -not $props['roleDefinitionName']) { continue }
+        $propertyNames=@($assignment.PSObject.Properties.Name)
+        if ($propertyNames -notcontains 'principalId' -or $propertyNames -notcontains 'scope' -or
+            $propertyNames -notcontains 'roleDefinitionName') { continue }
         if ([string]$assignment.principalId -ine $PrincipalId) { continue }
         $scope=[string]$assignment.scope
         $validScope=($RegistryScope -ieq $scope -or
@@ -169,11 +174,22 @@ function Invoke-JawsFoundrySupervisorDeployment {
     }
     if ($exists) {throw 'JAWS-FOUNDRY-015: Agent already exists; no overwrite or new version without separate approval.'}
     $body=ConvertTo-Json -InputObject $p.Request -Depth 20 -Compress
-    # Only approved Azure write. Using documented Foundry v1 REST agent creation.
-    $creation=& az rest --method post --url "$($p.ProjectEndpoint)/agents?api-version=v1" --resource https://ai.azure.com --headers 'Content-Type=application/json' --body $body --output json --only-show-errors 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        throw 'JAWS-FOUNDRY-016: Agent creation failed; inspect for partial deployment before retry.'
+    $bodyFile=[System.IO.Path]::GetTempFileName()
+    try {
+        $utf8NoBom=New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::WriteAllText($bodyFile,$body,$utf8NoBom)
+        # Only approved Azure write. File input preserves JSON quoting in Windows PowerShell 5.1.
+        $creationOutput=& az rest --method post --url "$($p.ProjectEndpoint)/agents?api-version=v1" --resource https://ai.azure.com --headers 'Content-Type=application/json' --body "@$bodyFile" --output json --only-show-errors 2>&1
+        $creationExitCode=$LASTEXITCODE
     }
+    finally {
+        Remove-Item -LiteralPath $bodyFile -Force -ErrorAction SilentlyContinue
+    }
+    if ($creationExitCode -ne 0) {
+        $azureError=($creationOutput | Out-String).Trim()
+        throw "JAWS-FOUNDRY-016: Agent creation failed; inspect for partial deployment before retry. Azure response: $azureError"
+    }
+    $creation=$creationOutput
     $agent=$creation | Out-String | ConvertFrom-Json
     if ([string]$agent.name -cne [string]$p.AgentName) {throw 'JAWS-FOUNDRY-017: Created agent identity mismatch.'}
     # Prefer the version from the creation response. A summary may provide

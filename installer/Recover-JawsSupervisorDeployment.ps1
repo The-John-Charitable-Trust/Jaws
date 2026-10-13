@@ -25,7 +25,9 @@ if ($p.ProjectEndpoint -cne 'https://jaws-foundry-dev.services.ai.azure.com/api/
     $p.AgentName -cne 'jaws-supervisor-dev') {
     throw 'JAWS-RECOVER-003: Refusing recovery outside the JAWS dev project.'
 }
-$url="$($p.ProjectEndpoint)/agents/$($p.AgentName)?api-version=v1"
+# A GET on /agents/{name} returns a summary, not the agent.version configuration.
+# Recovery must inspect the immutable version record to avoid false drift.
+$url="$($p.ProjectEndpoint)/agents/$($p.AgentName)/versions/1?api-version=v1"
 $json=& az rest --method get --url $url --resource https://ai.azure.com --output json --only-show-errors 2>$null
 if ($LASTEXITCODE -ne 0) {throw 'JAWS-RECOVER-004: Failed to read the existing hosted agent; no receipt created.'}
 $agent=$json | Out-String | ConvertFrom-Json -ErrorAction Stop

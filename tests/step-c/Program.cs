@@ -58,5 +58,40 @@ await Check("honor cancellation", async () =>
     try { await planner.InvestigateAsync(request, cts.Token); return false; }
     catch (OperationCanceledException) { return true; }
 });
+var delegation = new SupervisorInvestigationDelegator(planner);
+await Check("Supervisor delegates a bound task and preserves correlation", async () =>
+{
+    var result = await delegation.DelegateAsync(request);
+    return result.Status == InvestigationStatus.Planned &&
+        result.TaskId == request.TaskId && result.CorrelationId == request.CorrelationId &&
+        result.VerifiedClaims.Count == 0;
+});
+await Check("Supervisor blocks unverified tasks before specialist call", async () =>
+{
+    var result = await delegation.DelegateAsync(request with { Scope = scope with { IsVerifiedByBroker = false } });
+    return result.Status == InvestigationStatus.Denied && result.AgentName == "jaws-supervisor";
+});
+await Check("Supervisor rejects a specialist that alters correlation", async () =>
+{
+    var fake = new StubInvestigationAgent(task =>
+        new InvestigationResult("1.0",task.TaskId,Guid.NewGuid().ToString(),
+            "jaws-investigation","offline",InvestigationStatus.Planned,[],[],[],[],[]));
+    var result = await new SupervisorInvestigationDelegator(fake).DelegateAsync(request);
+    return result.Status == InvestigationStatus.Failed && result.Diagnostics[0].StartsWith("WORKER_RESULT_REJECTED");
+});
+await Check("Supervisor rejects unsupported success without evidence", async () =>
+{
+    var fake = new StubInvestigationAgent(task =>
+        new InvestigationResult("1.0",task.TaskId,task.CorrelationId,
+            "jaws-investigation","offline",InvestigationStatus.Succeeded,[],[],["Claim without evidence"],[],[]));
+    var result = await new SupervisorInvestigationDelegator(fake).DelegateAsync(request);
+    return result.Status == InvestigationStatus.Failed;
+});
 Console.WriteLine($"Step C offline tests: {passed} passed; {failures.Count} failed.");
 return failures.Count == 0 ? 0 : 1;
+
+sealed class StubInvestigationAgent(Func<InvestigationTask, InvestigationResult> callback) : IInvestigationAgent
+{
+    public Task<InvestigationResult> InvestigateAsync(InvestigationTask task, CancellationToken cancellationToken = default)
+        => Task.FromResult(callback(task));
+}

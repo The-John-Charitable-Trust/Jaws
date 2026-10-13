@@ -1,5 +1,128 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>JAWS Stage A | Discovery and State Reconciliation Tutorial</title><style>:root{font-family:"Segoe UI",Arial,sans-serif;color:#243247;background:#fff}*{box-sizing:border-box}body{margin:0;line-height:1.65}aside{position:fixed;inset:0 auto 0 0;width:280px;background:#f3f6fa;padding:22px 14px;height:100vh;overflow-y:auto;border-right:1px solid #d9e2ee}aside a{display:block;padding:8px;text-decoration:none;color:#145d99}main{margin-left:280px;max-width:1000px;padding:36px 50px 80px}section{border-top:1px solid #dce5ef;margin-top:35px;padding-top:16px}h1{line-height:1.2}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#142638;color:#f2f7ff;padding:15px;border-radius:6px}code{font-family:Consolas,monospace}p code,li code{background:#ebf1f7;padding:2px 5px}table{border-collapse:collapse;width:100%}th,td{text-align:left;vertical-align:top;border-bottom:1px solid #dce4ed;padding:8px}.note{background:#eef6fd;border-left:4px solid #1672b5;padding:12px 16px}.warn{background:#fff7eb;border-left:4px solid #be6a12;padding:12px 16px}@media(max-width:850px){aside{position:static;width:auto;height:auto}main{margin:0;padding:22px}}</style></head><body><aside><strong>JAWS Stage A</strong><a href="index.html">Development tutorial home</a><a href="stage-b.html">Stage B tutorial</a><a href="#purpose">Purpose</a><a href="#prerequisites">Prerequisites</a><a href="#state">Authoritative state</a><a href="#discover">Run discovery</a><a href="#verify">Verification</a><a href="#safety">Safety and troubleshooting</a></aside><main><h1>Stage A: Discover and Reconcile Azure State</h1><p>JAWS development tutorial · Status: Stage A discovery accepted. This tutorial documents the implemented installer, not a proposal to create resources.</p><section id="purpose"><h2>1. Purpose and architecture</h2><p>Stage A establishes a <strong>state-first, read-only</strong> discovery process. The operator-maintained installation state file is the desired-state authority; the installer scans Azure resources visible to the authenticated identity, compares live resources against the state, and writes evidence reports. Discovery does not create, delete, or reconfigure Azure resources and does not rewrite the authoritative state.</p><p>For the current development environment, the target is the East US JAWS environment in <code>rg-aiops-lab</code>. Stage A discovers the Foundry account, Foundry project, model deployment, and Key Vault. Legacy or unrelated infrastructure is not an installation target.</p></section><section id="prerequisites"><h2>2. Prerequisites</h2><p>Use a Windows workstation with VS Code, PowerShell 7, Git, Azure CLI and Pester 5.9.1. Azure sign-in must have read access to the authorized subscriptions and the target resources. Repository branch: <code>codex/0.2-add-mcp-server</code>.</p><pre><code>cd "C:\Users\CecilJohn\Documents\jaws\JawsOSS"
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>JAWS Stage A · Code-First Tutorial</title><style>:root{--line:#d8dee4;--blue:#0f6cbd;font-family:"Segoe UI",Arial,sans-serif;color:#1f2328}*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:70px}body{margin:0;line-height:1.65}.top{padding:16px 24px;border-bottom:1px solid var(--line);position:sticky;top:0;background:white;z-index:5}.top a{margin-left:20px}aside{position:fixed;top:57px;bottom:0;left:0;width:265px;overflow:auto;background:#f6f8fa;border-right:1px solid var(--line);padding:22px 13px}aside a{display:block;padding:9px;text-decoration:none;color:#245b89}main{margin-left:265px;max-width:1100px;padding:35px 55px 85px}h1{font-size:2.3rem;line-height:1.2}h2{font-size:1.6rem;border-top:1px solid #eaeef2;padding-top:26px;margin-top:42px}h3{margin-top:23px}p{margin:10px 0 16px}p code,li code{background:#edf2f7;padding:2px 5px}table{border-collapse:collapse;width:100%}th,td{border:1px solid var(--line);text-align:left;vertical-align:top;padding:9px}th{background:#f6f8fa}.code-block{border:1px solid var(--line);border-radius:7px;overflow:hidden;margin:20px 0;background:#f7f9fb}.code-header{display:flex;align-items:center;gap:12px;padding:9px 14px;background:#f1f3f6;border-bottom:1px solid var(--line)}.code-header small{color:#59636e;flex:1;word-break:break-word}.copy-button{border:1px solid #cbd5e1;background:white;padding:7px 15px;border-radius:5px;cursor:pointer;font:inherit}pre{margin:0;padding:20px;overflow:auto;tab-size:4}pre code{font-family:Consolas,"Cascadia Code",monospace;font-size:14px;white-space:pre}.tabs{border:1px solid var(--line);border-radius:7px;margin:20px 0}.tab-bar{background:#f1f3f6;padding:10px}.tab-button{border:1px solid transparent;padding:9px 16px;background:transparent;font:inherit;cursor:pointer}.tab-button[aria-selected=true]{background:#dcecfb;border-color:#0f6cbd}.tabs .code-block{border:0;margin:0}[hidden]{display:none!important}.note{padding:15px 20px;background:#f1f8ff;border-left:4px solid #78b7f5;margin:18px 0}.warn{padding:15px 20px;background:#fff7e9;border-left:4px solid #d89b39;margin:18px 0}a{color:#0f6cbd}@media(max-width:800px){aside{position:static;width:auto}main{margin:0;padding:22px}.top{position:static}}</style></head><body><header class="top"><strong>JAWS Development Tutorial</strong><a href="index.html">Home</a><a href="stage-b.html">Stage B</a><a href="../tutorial/index.html">Legacy Agent Framework tutorial</a></header><aside><strong>Stage A · Chapters</strong><a href="#overview">Learning objectives</a><a href="#prereqs">Prerequisites</a><a href="#state">Configuration JSON</a><a href="#parser">State validation code</a><a href="#discovery">Azure discovery</a><a href="#reconcile">Reconciliation implementation</a><a href="#reports">Reporting & JSON</a><a href="#tests">Testing</a><a href="#security">Security & troubleshooting</a><a href="#handoff">Stage B handoff</a></aside><main><h1>Stage A: Azure Discovery and State Reconciliation</h1><p>Detailed engineering tutorial with configuration JSON, actual PowerShell implementation, copyable commands, language tabs, expected evidence and testing.</p><div class="note">Status: Stage A discovery accepted. This tutorial follows the current JAWS implementation. All Azure queries are read-only.</div><section id="overview"><h2>1. What Stage A builds</h2><p>Stage A establishes a <strong>state-first, read-only Azure discovery and reconciliation pipeline</strong>. The installer treats an operator-maintained JSON manifest as desired state and checks live Azure resources without changing them.</p><table><tr><th>Input / component</th><th>Purpose</th></tr><tr><td><code>installer/config/jaws-installation-state.dev.json</code></td><td>Operator-maintained desired state</td></tr><tr><td><code>installer/Install-Jaws.ps1 -Mode Discover</code></td><td>Tenant scan and resource discovery</td></tr><tr><td><code>modules/InstallationState.psm1</code></td><td>Schema checks and comparison rules</td></tr><tr><td><code>installer/.local/</code></td><td>Generated reports, not a gold-copy state file</td></tr></table></section><section id="prereqs"><h2>2. Prepare the development workstation</h2><p>Open the JAWS repository in VS Code and use the PowerShell terminal. Install PowerShell 7, Azure CLI, Git and Pester 5.9.1. Do not discard local changes if Git cannot fast-forward.</p><div class="code-block"><div class="code-header"><strong>PowerShell</strong><small>Repository checkout and identity check</small><button class="copy-button" type="button">Copy</button></div><pre><code>cd "C:\Users\CecilJohn\Documents\jaws\JawsOSS"
 git status -sb
 git pull --ff-only origin codex/0.2-add-mcp-server
 az account show --output table
-Import-Module Pester -RequiredVersion 5.9.1 -Force</code></pre><p>Do not force a pull over uncommitted changes. Resolve Git changes first.</p></section><section id="state"><h2>3. Read the authoritative state</h2><pre><code>code .\installer\config\jaws-installation-state.dev.json</code></pre><p>Verify <code>Platform=JAWS</code>, <code>EnvironmentName=dev</code>, the authorized subscription, <code>rg-aiops-lab</code>, and four expected resource entries. The state JSON is the gold copy; generated evidence belongs under <code>installer/.local/</code>. Never replace the state file with a discovery report.</p></section><section id="discover"><h2>4. Run Stage A discovery</h2><pre><code>.\installer\Install-Jaws.ps1 -Mode Discover -EnvironmentName dev -NonInteractive</code></pre><p>The installer reads the operator-maintained state, enumerates visible enabled subscriptions, checks the authorized resource group, scans the tenant, discovers expected resources, and reconciles them to the state. A subscription or permission mismatch is a stop condition, not permission to select another environment silently.</p><p>Inspect generated reports in <code>installer/.local/</code>, especially <code>jaws-tenant-scan.dev.generated.json</code>, the state comparison and resource discovery output. File creation is local only.</p></section><section id="verify"><h2>5. Execute the acceptance tests</h2><pre><code>Invoke-Pester .\tests\installer\ -Output Detailed</code></pre><p>The original Stage A acceptance baseline was 21 passing tests. The installer suite subsequently expanded as Stage B was built; the total displayed today is therefore expected to exceed 21. Acceptance requires zero failures, completed tenant scan, consistent targeted resource reconciliation and no Azure infrastructure writes.</p><p>Compare the state with discovered Foundry, project, model deployment, and Key Vault identities. Record missing resources or configuration drift explicitly; never count absence as success.</p></section><section id="safety"><h2>6. Safety and troubleshooting</h2><table><tr><th>Situation</th><th>Required response</th></tr><tr><td>Azure authentication missing</td><td>Sign in using the organization's authorized account; do not change subscription implicitly.</td></tr><tr><td>Tenant scan incomplete</td><td>Stop and inspect the generated scan; do not report complete discovery.</td></tr><tr><td>State differs from Azure</td><td>Preserve the state file; record the discrepancy for reviewed planning.</td></tr><tr><td>Git contains local edits</td><td>Preserve edits before updating the branch; avoid forced resets.</td></tr></table><div class="note">Next: <a href="stage-b.html">Stage B: Supervisor Installation, Reconciliation and Runtime Acceptance</a>. Separate <a href="../installation/standard/index.html">Standard</a> and <a href="../installation/developer/index.html">Developer/Tester</a> installation guides remain available.</div></section></main></body></html>
+Import-Module Pester -RequiredVersion 5.9.1 -Force</code></pre></div><p><strong>Expected:</strong> Authorized Azure account and a synchronized branch. Stage A does not require creating cloud resources.</p></section><section id="state"><h2>3. Inspect the actual installation-state JSON</h2><p>The following is the complete <strong>current JAWS configuration file</strong>. Unlike an invented example, it preserves the actual property names, expected resource types and ownership semantics.</p><div class="tabs"><div class="tab-bar"><button class="tab-button" data-tab="0" aria-selected="true">JSON</button><button class="tab-button" data-tab="1" aria-selected="false">PowerShell</button></div><div class="tab-panel" data-panel="0" ><div class="code-block"><div class="code-header"><strong>JSON</strong><small>installer/config/jaws-installation-state.dev.json</small><button class="copy-button" type="button">Copy</button></div><pre><code>{
+  "SchemaVersion": "1.1",
+  "Platform": "JAWS",
+  "InstallerVersion": "0.4.6",
+  "EnvironmentName": "dev",
+  "SubscriptionId": "c52f597b-7753-45b4-a764-67e290dcfd5e",
+  "ResourceGroupName": "rg-aiops-lab",
+  "StateAuthority": "OperatorManaged",
+  "StatePurpose": "Expected JAWS installation inventory; tenant discovery compares Azure observations to this file.",
+  "Resources": [
+    {
+      "Name": "jaws-foundry-dev",
+      "Type": "Microsoft.CognitiveServices/accounts",
+      "ResourceId": null,
+      "Ownership": "External",
+      "CreatedByInstaller": false,
+      "ExpectedConfiguration": {
+        "Kind": "AIServices",
+        "Location": "eastus"
+      }
+    },
+    {
+      "Name": "jaws-dev",
+      "Type": "Microsoft.CognitiveServices/accounts/projects",
+      "ResourceId": null,
+      "Ownership": "External",
+      "CreatedByInstaller": false,
+      "ExpectedConfiguration": {
+        "ParentResource": "jaws-foundry-dev"
+      }
+    },
+    {
+      "Name": "gpt-5-mini",
+      "Type": "Microsoft.CognitiveServices/accounts/deployments",
+      "ResourceId": null,
+      "Ownership": "External",
+      "CreatedByInstaller": false,
+      "ExpectedConfiguration": {
+        "ParentResource": "jaws-foundry-dev",
+        "ModelName": "gpt-5-mini",
+        "ModelVersion": "2025-08-07",
+        "ProvisioningState": "Succeeded"
+      }
+    },
+    {
+      "Name": "kv-jaws-dev-001",
+      "Type": "Microsoft.KeyVault/vaults",
+      "ResourceId": null,
+      "Ownership": "External",
+      "CreatedByInstaller": false,
+      "ExpectedConfiguration": {
+        "Location": "eastus",
+        "EnableRbacAuthorization": true,
+        "EnablePurgeProtection": true
+      }
+    }
+  ]
+}</code></pre></div></div><div class="tab-panel" data-panel="1" hidden><div class="code-block"><div class="code-header"><strong>PowerShell</strong><small>Read configuration without modifying it</small><button class="copy-button" type="button">Copy</button></div><pre><code>$state = Get-Content ".\installer\config\jaws-installation-state.dev.json" -Raw | ConvertFrom-Json
+$state | Select-Object Platform,EnvironmentName,SubscriptionId,ResourceGroupName,StateAuthority
+$state.Resources | Select-Object Name,Type,Ownership | Format-Table -AutoSize</code></pre></div></div></div><p><code>StateAuthority=OperatorManaged</code> means the installer must not rewrite this file. <code>Ownership=External</code> means discovery must not assume it may reconfigure preexisting resources.</p></section><section id="parser"><h2>4. Study the actual PowerShell state parser</h2><p>The code below is from <code>installer/modules/InstallationState.psm1</code>. It validates the supported schema version, required fields, subscription GUID, resource types and duplicate entries. StrictMode makes missing/incorrect assumptions visible.</p><div class="code-block"><div class="code-header"><strong>PowerShell</strong><small>Actual source: Read-JawsInstallationState</small><button class="copy-button" type="button">Copy</button></div><pre><code>function Read-JawsInstallationState {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) { return $null }
+    $state=Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -ErrorAction Stop
+    if ($state.SchemaVersion -notin @('1.1') -or $state.Platform -ne 'JAWS' -or $null -eq $state.Resources) {
+        throw 'JAWS-STATE-001: Unsupported or malformed JAWS installation state (expected 1.1).'
+    }
+    $subscriptionGuid=[guid]::Empty
+    if (-not [guid]::TryParse([string]$state.SubscriptionId,[ref]$subscriptionGuid)) {
+        throw 'JAWS-STATE-001: Installation state contains an invalid Azure subscription ID.'
+    }
+    if (-not [string]$state.ResourceGroupName -or -not [string]$state.EnvironmentName) {
+        throw 'JAWS-STATE-001: Installation state must identify its environment and resource group.'
+    }
+    $supported=@('Microsoft.CognitiveServices/accounts','Microsoft.CognitiveServices/accounts/projects',
+        'Microsoft.CognitiveServices/accounts/deployments','Microsoft.KeyVault/vaults')
+    $keys=@{}
+    foreach($r in @($state.Resources)) {
+        if (-not $r.Name -or $r.Type -notin $supported -or [string]$r.Name -match '(?i)tight.?fang|tfang') {
+            throw 'JAWS-STATE-004: Invalid or non-JAWS resource in installation state.'
+        }
+        $key=([string]$r.Type + '|' + [string]$r.Name).ToLowerInvariant()
+        if ($keys.ContainsKey($key)) { throw "JAWS-STATE-005: Duplicate state resource $key" }
+        $keys[$key]=$true
+    }
+    return $state
+}</code></pre></div><p>Read and understand each guard before changing the state format. Validation errors block the installer; they are not permission to fabricate replacement resource identities.</p></section><section id="discovery"><h2>5. Run the actual Azure discovery entrypoint</h2><p>Use the existing installer; do not manually provision anything via Azure CLI.</p><div class="code-block"><div class="code-header"><strong>PowerShell</strong><small>Actual Stage A command and report inspection</small><button class="copy-button" type="button">Copy</button></div><pre><code>.\installer\Install-Jaws.ps1 -Mode Discover -EnvironmentName dev -NonInteractive
+
+# Inspect the resulting scan
+$scan=Get-Content ".\installer\.local\jaws-tenant-scan.dev.generated.json" -Raw | ConvertFrom-Json
+$scan | Select-Object Completed,SubscriptionCount</code></pre></div><div class="note">The installer enumerates authorized visible subscriptions, discovers targeted Foundry/project/model/Key Vault resources, and writes local reports. It does not perform Azure infrastructure writes.</div></section><section id="reconcile"><h2>6. Understand the reconciliation algorithm</h2><p>Discovery gathers actual state; reconciliation decides whether it matches the desired-state inventory. This is the existing tenant scan comparison function, not pseudocode.</p><div class="code-block"><div class="code-header"><strong>PowerShell</strong><small>Actual source: Compare-JawsTenantScanToState</small><button class="copy-button" type="button">Copy</button></div><pre><code>function Compare-JawsTenantScanToState {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)]$Scan)
+    $comparisons=@()
+    foreach($r in @($State.Resources)) {
+        $matching=@($Scan.Candidates | Where-Object {
+            $_.Platform -eq 'JAWS' -and $_.SubscriptionId -ieq $State.SubscriptionId -and
+            $_.ResourceGroup -ieq $State.ResourceGroupName -and $_.Type -ieq $r.Type -and
+            ($_.Name -ieq $r.Name -or $_.Name -like "*/$($r.Name)")
+        })
+        # Tenant heuristics may miss resources without a JAWS name/tag.
+        # A missing match is NOT proof of absence; targeted discovery follows.
+        $classification=if ($matching.Count -eq 1) { 'CandidateLocated' } elseif ($matching.Count -gt 1) {'Ambiguous'} else {'NotInTenantCandidateScan'}
+        $observedId=if ($matching.Count -eq 1) { [string]$matching[0].ResourceId } else { $null }
+        $idMatch=if ($r.ResourceId -and $observedId) { $r.ResourceId -ieq $observedId } else { $null }
+        if ($idMatch -eq $false) { $classification='IdentityDrift' }
+        $comparisons += [pscustomobject]@{Name=$r.Name;Type=$r.Type;Status=$classification;ExpectedResourceId=$r.ResourceId;ObservedResourceId=$observedId}
+    }
+    return @($comparisons)
+}</code></pre></div><p>Missing target resources and incomplete scans are failures. Related Tight Fang resources do not become JAWS resources merely because they share a subscription.</p></section><section id="reports"><h2>7. Inspect the JSON evidence</h2><p>Generated files belong under <code>installer/.local/</code>. Review the exact JSON output with the editor or select useful fields with PowerShell.</p><div class="tabs"><div class="tab-bar"><button class="tab-button" data-tab="0" aria-selected="true">PowerShell</button><button class="tab-button" data-tab="1" aria-selected="false">JSON</button></div><div class="tab-panel" data-panel="0" ><div class="code-block"><div class="code-header"><strong>PowerShell</strong><small>Actual generated evidence</small><button class="copy-button" type="button">Copy</button></div><pre><code>Get-ChildItem ".\installer\.local" -Filter "*.generated.json" | Select-Object Name,Length
+code ".\installer\.local\jaws-tenant-scan.dev.generated.json"</code></pre></div></div><div class="tab-panel" data-panel="1" hidden><div class="code-block"><div class="code-header"><strong>JSON</strong><small>ILLUSTRATIVE schema (not a real generated file)</small><button class="copy-button" type="button">Copy</button></div><pre><code>{
+  "ExampleOnly": true,
+  "ResourceName": "jaws-foundry-dev",
+  "Expected": "Present",
+  "Observed": "Present",
+  "Match": "PASS",
+  "AzureWrites": 0
+}</code></pre></div></div></div><p>The JSON tab is explicitly illustrative. Actual report schemas come from JAWS installer outputs. Never commit sensitive local inventory reports to the public repository.</p></section><section id="tests"><h2>8. Run acceptance and regression tests</h2><p>Stage A's original accepted baseline was 21 Pester tests. The shared installer suite now includes many additional Stage B tests, so the total will be higher.</p><div class="code-block"><div class="code-header"><strong>PowerShell</strong><small>Run Pester 5</small><button class="copy-button" type="button">Copy</button></div><pre><code>Import-Module Pester -RequiredVersion 5.9.1 -Force
+Invoke-Pester ".\tests\installer\" -Output Detailed
+
+# Inspect available targeted suites
+Get-ChildItem ".\tests\installer" -Filter "*.Tests.ps1" | Select-Object Name</code></pre></div><table><tr><th>Acceptance check</th><th>Required outcome</th></tr><tr><td>State parsing and validation</td><td>Approved schema, no unknown resource types</td></tr><tr><td>Tenant scan</td><td>Completed for expected accessible subscriptions</td></tr><tr><td>Target discovery</td><td>Expected resources accurately identified</td></tr><tr><td>Azure writes</td><td>Zero</td></tr><tr><td>Pester</td><td>Zero failed</td></tr></table></section><section id="security"><h2>9. Troubleshooting and least-privilege safeguards</h2><p>Check subscription permissions and the gold-copy manifest before rerunning a failed discovery. Do not change protected infrastructure, ignore a mismatch, or force-sync Git.</p><div class="code-block"><div class="code-header"><strong>PowerShell</strong><small>Read-only diagnostics</small><button class="copy-button" type="button">Copy</button></div><pre><code>git status -sb
+az account show --query "{subscription:id,tenant:tenantId,user:user.name}" -o json
+Get-Content ".\installer\config\jaws-installation-state.dev.json" -Raw | ConvertFrom-Json | Select-Object SubscriptionId,ResourceGroupName,EnvironmentName</code></pre></div><div class="warn">Stage A Discover must remain read-only. A remediation, new resource, role assignment or subscription switch is a separate Stage B planning/approval task.</div></section><section id="handoff"><h2>10. Transition from Stage A to Stage B</h2><p>Stage A establishes the trusted resource inventory and discovery evidence on which the Supervisor installation depends. Follow the next tutorial for local packaging, ACR, Foundry, RBAC, reconciliation and authenticated runtime acceptance.</p><p><a href="stage-b.html"><strong>Continue to the Stage B code tutorial →</strong></a></p></section><footer><a href="index.html">Development tutorial home</a> · <a href="stage-b.html">Next: Stage B</a></footer></main><script>document.querySelectorAll('.copy-button').forEach(b=>b.addEventListener('click',async()=>{let t=b.closest('.code-block').querySelector('code').innerText;try{await navigator.clipboard.writeText(t);b.textContent='Copied';setTimeout(()=>b.textContent='Copy',1300)}catch(e){b.textContent='Select code manually'}}));document.querySelectorAll('.tabs').forEach(t=>t.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>{t.querySelectorAll('[data-tab]').forEach(x=>x.setAttribute('aria-selected',String(x===b)));t.querySelectorAll('[data-panel]').forEach(x=>x.hidden=x.dataset.panel!==b.dataset.tab)})));</script></body></html>

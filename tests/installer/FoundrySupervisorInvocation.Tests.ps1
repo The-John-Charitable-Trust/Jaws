@@ -9,7 +9,7 @@ Describe 'JAWS hosted Supervisor runtime acceptance guardrails' {
         @($errors).Count | Should -Be 0
     }
     It 'targets the dedicated Foundry Responses protocol endpoint' {
-        $script:src | Should -Match '/agents/jaws-supervisor-dev/endpoint/protocols/openai/responses\\?api-version=v1'
+        $script:src.Contains('/agents/jaws-supervisor-dev/endpoint/protocols/openai/responses?api-version=v1') | Should -BeTrue
         $script:src | Should -Match 'az rest --method post'
         $script:src | Should -Match 'az rest --method get'
     }

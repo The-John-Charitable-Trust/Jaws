@@ -208,7 +208,7 @@ function Invoke-JawsFoundrySupervisorDeployment {
     $version=$null
     if ($agent.PSObject.Properties['version']) {
         $candidate=[string]$agent.version
-        if ($candidate -match '^(draft-[0-9]+|[0-9]+) { $version=$candidate }
+        if ($candidate -match '^(draft-[0-9]+|[0-9]+)
     }
     if (-not $version -and $agent.PSObject.Properties['versions'] -and $null -ne $agent.versions) {
         $nested=$agent.versions.PSObject.Properties['latest']

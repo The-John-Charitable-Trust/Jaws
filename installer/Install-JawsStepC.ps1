@@ -1,7 +1,7 @@
 # Consolidated JAWS Step C installer. Preserves existing resources and approvals.
 [CmdletBinding()]
 param(
- [ValidateSet('Plan','Install','Verify','DelegationPlan','DelegationInstall','DelegationVerify','SupervisorV2Build','SupervisorV2Plan','SupervisorV2Publish','SupervisorV2Deploy')][string]$Mode='Plan',
+ [ValidateSet('Plan','Install','Verify','DelegationPlan','DelegationInstall','DelegationVerify','SupervisorV2Build','SupervisorV2Plan','SupervisorV2Publish','SupervisorV2Deploy','SupervisorReleasePlan')][string]$Mode='Plan',
  [string]$ApprovedA2APlanSha256,
  [switch]$AcknowledgeAgentEndpointChange,
  [string]$ApprovedDelegationConnectionSha256,
@@ -12,6 +12,10 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $root=$PSScriptRoot
+if($Mode -eq 'SupervisorReleasePlan') {
+ & (Join-Path $root 'Release-JawsSupervisorDraft.ps1') -Mode Plan
+ return
+}
 if($Mode -in @('SupervisorV2Publish','SupervisorV2Deploy')) {
  $action=if($Mode -eq 'SupervisorV2Publish'){'Publish'}else{'Deploy'}
  & (Join-Path $root 'Invoke-JawsSupervisorV2Approved.ps1') -Mode $action

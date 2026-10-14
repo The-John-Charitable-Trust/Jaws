@@ -1,7 +1,7 @@
 # Consolidated JAWS Step C installer. Preserves existing resources and approvals.
 [CmdletBinding()]
 param(
- [ValidateSet('Plan','Install','Verify','DelegationPlan','DelegationInstall','DelegationVerify','DelegationRbacPlan','DelegationRbacInstall','DelegationRbacVerify','SupervisorV2Build','SupervisorV2Plan','SupervisorV2Publish','SupervisorV2Deploy','SupervisorReleasePlan','SupervisorRelease','SupervisorV2Verify','ToolboxDiscovery','RuntimeToolDiscovery','ToolboxRepairPlan','ToolboxRepairCreate','ToolboxRepairVerify','ToolboxRepairPromote','RuntimeToolDiscoveryV2','A2AIdentityContext')][string]$Mode='Plan',
+ [ValidateSet('Plan','Install','Verify','DelegationPlan','DelegationInstall','DelegationVerify','DelegationRbacPlan','DelegationRbacInstall','DelegationRbacVerify','SupervisorV2Build','SupervisorV2Plan','SupervisorV2Publish','SupervisorV2Deploy','SupervisorReleasePlan','SupervisorRelease','SupervisorV2Verify','ToolboxDiscovery','RuntimeToolDiscovery','ToolboxRepairPlan','ToolboxRepairCreate','ToolboxRepairVerify','ToolboxRepairPromote','ToolboxRepairRollback','RuntimeToolDiscoveryV2','A2AIdentityContext')][string]$Mode='Plan',
  [string]$ApprovedA2APlanSha256,
  [switch]$AcknowledgeAgentEndpointChange,
  [string]$ApprovedDelegationConnectionSha256,
@@ -17,7 +17,7 @@ if($Mode -eq 'A2AIdentityContext') {
  return
 }
 if($Mode -like 'ToolboxRepair*') {
- $action=switch($Mode){'ToolboxRepairPlan'{'Plan'}'ToolboxRepairCreate'{'Create'}'ToolboxRepairVerify'{'Verify'}'ToolboxRepairPromote'{'Promote'}}
+ $action=switch($Mode){'ToolboxRepairPlan'{'Plan'}'ToolboxRepairCreate'{'Create'}'ToolboxRepairVerify'{'Verify'}'ToolboxRepairPromote'{'Promote'}'ToolboxRepairRollback'{'Rollback'}}
  & (Join-Path $root 'Repair-JawsDelegationToolbox.ps1') -Mode $action
  return
 }

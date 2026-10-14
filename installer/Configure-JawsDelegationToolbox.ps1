@@ -48,10 +48,9 @@ $versionsUrl="$project/toolboxes/$name/versions?api-version=v1"
 $existing=Get-Api -Url $versionsUrl -AllowNotFound
 $items=@()
 if($null -ne $existing) {
- $valueProperty=$existing.PSObject.Properties['value']
- if($null -ne $valueProperty -and $null -ne $valueProperty.Value) {
-  $items=@($valueProperty.Value)
- }
+ $listProp=$existing.PSObject.Properties['data']
+ if($null -eq $listProp){$listProp=$existing.PSObject.Properties['value']}
+ if($null -ne $listProp -and $null -ne $listProp.Value){$items=@($listProp.Value)}
 }
 if($Mode -eq 'Plan') {
  Write-Host "Toolbox versions discovered: $($items.Count); Plan SHA-256: $hash"
@@ -75,13 +74,14 @@ if($Mode -eq 'Install' -and $items.Count -eq 0){
 $actual=Get-Api -Url $versionsUrl
 $actualItems=@()
 if($null -ne $actual) {
- $actualValueProperty=$actual.PSObject.Properties['value']
- if($null -ne $actualValueProperty -and $null -ne $actualValueProperty.Value) {
-  $actualItems=@($actualValueProperty.Value)
- }
+ $listProp=$actual.PSObject.Properties['data']
+ if($null -eq $listProp){$listProp=$actual.PSObject.Properties['value']}
+ if($null -ne $listProp -and $null -ne $listProp.Value){$actualItems=@($listProp.Value)}
 }
 if($actualItems.Count -eq 0) {
  throw 'JAWS-TOOLBOX-007: Toolbox version not verifiable.'
 }
-Write-Host "Toolbox versions available: $($actualItems.Count)"
+$match=@($actualItems | Where-Object { $_.name -ceq $name -and $_.version -eq '1' -and $_.tools.Count -eq 1 -and $_.tools[0].type -ceq 'a2a' -and $_.tools[0].a2a_version -ceq '1.0' -and $_.tools[0].base_url -ceq $target -and $_.tools[0].project_connection_id -ceq [string]$conn.id })
+if($match.Count -ne 1){throw 'JAWS-TOOLBOX-008: Existing toolbox version configuration mismatch. No writes.'}
+Write-Host "Toolbox version 1 verified: $name"
 Write-Host 'Supervisor v1 unchanged. Hosted runtime toolbox registration and live delegation are not yet verified.'

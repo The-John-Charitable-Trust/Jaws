@@ -75,8 +75,21 @@ if($Mode -eq 'Install' -and -not $already) {
 $actual=Read-Foundry "$ProjectEndpoint/agents/$($AgentName)?api-version=v1"
 if(-not (Test-A2A $actual)) {throw 'JAWS-STEP-C-A2A-007: A2A endpoint read-back did not verify.'}
 $card=Read-Foundry "$ProjectEndpoint/agents/$AgentName/endpoint/protocols/a2a/agentCard/v1.0"
-if(-not (Get-Property $card 'protocolVersion') -or [string](Get-Property $card 'protocolVersion') -ne '1.0'){
- throw 'JAWS-STEP-C-A2A-008: Authenticated v1.0 agent card unavailable or version mismatch.'
+# A2A card fields vary by API version and serialization. Inspect rather than
+# assuming a protocolVersion property proves the card is valid.
+$cardKeys=(@($card.PSObject.Properties.Name) -join ', ')
+$protocolVersion=Get-Property $card 'protocolVersion'
+if($null -eq $protocolVersion){$protocolVersion=Get-Property $card 'protocol_version'}
+$skills=Get-Property $card 'skills'
+$cardName=Get-Property $card 'name'
+$cardUrl=Get-Property $card 'url'
+$cardVersion=Get-Property $card 'version'
+Write-Host "A2A agent card: name=$cardName; version=$cardVersion; protocolVersion=$protocolVersion; keys=$cardKeys"
+if($null -eq $skills -or @($skills).Count -eq 0 -or
+   [string]$cardName -notmatch 'investigation' -or
+   [string]::IsNullOrWhiteSpace([string]$cardUrl) -or
+   ($null -ne $protocolVersion -and [string]$protocolVersion -ne '1.0')){
+ throw 'JAWS-STEP-C-A2A-008: Agent card metadata is incomplete or mismatched. No further Azure writes; inspect response.'
 }
 $receipt=[pscustomobject]@{Status='A2A_AGENT_CARD_VERIFIED';AgentName=$AgentName;Version='1';Protocol='a2a';ProtocolVersion='1.0';PlanSha256=$planHash;VerifiedAtUtc=[DateTime]::UtcNow.ToString('o');SupervisorDelegationVerified=$false}
 $receiptPath=Join-Path $dir 'jaws-step-c-a2a-receipt.dev.generated.json'

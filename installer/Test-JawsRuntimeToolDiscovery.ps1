@@ -3,7 +3,7 @@
 param([ValidateSet('1','2')][string]$ToolboxVersion='1')
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
-$endpoint='https://jaws-foundry-dev.services.ai.azure.com/api/projects/jaws-dev/toolboxes/jaws-investigation-a2a-tools/versions/$ToolboxVersion/mcp?api-version=v1'
+$endpoint="https://jaws-foundry-dev.services.ai.azure.com/api/projects/jaws-dev/toolboxes/jaws-investigation-a2a-tools/versions/$ToolboxVersion/mcp?api-version=v1"
 $reportPath=Join-Path $PSScriptRoot '.local/jaws-step-c-runtime-tool-discovery.dev.generated.json'
 $tokenJson=& az account get-access-token --resource https://ai.azure.com --output json --only-show-errors 2>&1
 if($LASTEXITCODE -ne 0){throw 'JAWS-MCP-DISCOVERY-001: Azure CLI cannot obtain a Foundry token.'}

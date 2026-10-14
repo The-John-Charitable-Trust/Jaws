@@ -83,11 +83,13 @@ if($null -eq $protocolVersion){$protocolVersion=Get-Property $card 'protocol_ver
 $skills=Get-Property $card 'skills'
 $cardName=Get-Property $card 'name'
 $cardUrl=Get-Property $card 'url'
+$interfaces=@(Get-Property $card 'supportedInterfaces')
+$hasInterface=($interfaces.Count -gt 0 -and @($interfaces | Where-Object { $null -ne $_ }).Count -gt 0)
 $cardVersion=Get-Property $card 'version'
-Write-Host "A2A agent card: name=$cardName; version=$cardVersion; protocolVersion=$protocolVersion; keys=$cardKeys"
+Write-Host "A2A agent card: name=$cardName; version=$cardVersion; protocolVersion=$protocolVersion; interfaces=$($interfaces.Count); keys=$cardKeys"
 if($null -eq $skills -or @($skills).Count -eq 0 -or
    [string]$cardName -notmatch 'investigation' -or
-   [string]::IsNullOrWhiteSpace([string]$cardUrl) -or
+   ([string]::IsNullOrWhiteSpace([string]$cardUrl) -and -not $hasInterface) -or
    ($null -ne $protocolVersion -and [string]$protocolVersion -ne '1.0')){
  throw 'JAWS-STEP-C-A2A-008: Agent card metadata is incomplete or mismatched. No further Azure writes; inspect response.'
 }

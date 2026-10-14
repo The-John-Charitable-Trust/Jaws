@@ -24,9 +24,9 @@ function Get-Field($Object,[string]$Property) {
  if($null -eq $p) {return $null}
  return $p.Value
 }
-$supervisor=Read-Agent $Supervisor
-$investigation=Read-Agent $Investigation
-foreach($item in @(@{Name=$Supervisor;Data=$supervisor},@{Name=$Investigation;Data=$investigation})) {
+$supervisorAgent=Read-Agent $Supervisor
+$investigationAgent=Read-Agent $Investigation
+foreach($item in @(@{Name=$Supervisor;Data=$supervisorAgent},@{Name=$Investigation;Data=$investigationAgent})) {
  $agent=$item.Data
  $name=Get-Field $agent 'name'
  $status=Get-Field $agent 'status'
@@ -43,7 +43,7 @@ foreach($item in @(@{Name=$Supervisor;Data=$supervisor},@{Name=$Investigation;Da
   throw "JAWS-A2A-003: $($item.Name) version 1 is not active (status=$status)."
  }
 }
-$definition=Get-Field $investigation 'definition'
+$definition=Get-Field $investigationAgent 'definition'
 $protocols=@(Get-Field $definition 'protocol_versions')
 $protocolNames=@($protocols | Where-Object { $null -ne $_ } | ForEach-Object { Get-Field $_ 'protocol' })
 $target="$ProjectEndpoint/agents/$Investigation/endpoint/protocols/a2a"

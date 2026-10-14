@@ -1,7 +1,7 @@
 # Consolidated JAWS Step C installer. Preserves existing resources and approvals.
 [CmdletBinding()]
 param(
- [ValidateSet('Plan','Install','Verify','DelegationPlan','DelegationInstall','DelegationVerify','SupervisorV2Build','SupervisorV2Plan','SupervisorV2Publish','SupervisorV2Deploy','SupervisorReleasePlan')][string]$Mode='Plan',
+ [ValidateSet('Plan','Install','Verify','DelegationPlan','DelegationInstall','DelegationVerify','SupervisorV2Build','SupervisorV2Plan','SupervisorV2Publish','SupervisorV2Deploy','SupervisorReleasePlan','SupervisorRelease')][string]$Mode='Plan',
  [string]$ApprovedA2APlanSha256,
  [switch]$AcknowledgeAgentEndpointChange,
  [string]$ApprovedDelegationConnectionSha256,
@@ -12,8 +12,16 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $root=$PSScriptRoot
-if($Mode -eq 'SupervisorReleasePlan') {
- & (Join-Path $root 'Release-JawsSupervisorDraft.ps1') -Mode Plan
+if($Mode -in @('SupervisorReleasePlan','SupervisorRelease')) {
+ $release=Join-Path $root 'Release-JawsSupervisorDraft.ps1'
+ & $release -Mode Plan
+ if($Mode -eq 'SupervisorReleasePlan'){return}
+ $planPath=Join-Path $root '.local/jaws-step-c-supervisor-release-plan.dev.generated.json'
+ $plan=Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json
+ Write-Host 'WARNING: This non-draft release may change latest-agent routing. Version 1 remains available.'
+ $answer=Read-Host 'Approve release and potential hosting/inference charges? [y/N]'
+ if($answer.Trim() -ine 'y'){throw 'JAWS-STEP-C-RELEASE-001: Release declined.'}
+ & $release -Mode Release -ApprovedPlanSha256 $plan.PlanSha256 -AcknowledgeTrafficAndInferenceCharges
  return
 }
 if($Mode -in @('SupervisorV2Publish','SupervisorV2Deploy')) {

@@ -1,7 +1,7 @@
 # Consolidated JAWS Step C installer. Preserves existing resources and approvals.
 [CmdletBinding()]
 param(
- [ValidateSet('Plan','Install','Verify','DelegationPlan','DelegationInstall','DelegationVerify')][string]$Mode='Plan',
+ [ValidateSet('Plan','Install','Verify','DelegationPlan','DelegationInstall','DelegationVerify','SupervisorV2Build','SupervisorV2Plan')][string]$Mode='Plan',
  [string]$ApprovedA2APlanSha256,
  [switch]$AcknowledgeAgentEndpointChange,
  [string]$ApprovedDelegationConnectionSha256,
@@ -12,6 +12,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $root=$PSScriptRoot
+if($Mode -in @('SupervisorV2Build','SupervisorV2Plan')) {
+ $modeArg=if($Mode -eq 'SupervisorV2Build'){'Build'}else{'Plan'}
+ & (Join-Path $root 'Prepare-JawsSupervisorV2.ps1') -Mode $modeArg
+ if(-not $?){throw 'JAWS-STEP-C-V2-001: Supervisor candidate preparation failed.'}
+ return
+}
 if($Mode -like 'Delegation*'){
  # A2A agent-card must be verified before any delegated connection actions.
  $receiptPath=Join-Path $root '.local/jaws-step-c-a2a-receipt.dev.generated.json'

@@ -13,16 +13,16 @@ Describe 'Step C A2A identity context regression guard' {
     It 'reads connection authentication from ARM rather than a partial project projection' {
         $scriptText | Should -Match 'https://management.azure.com/'
         $scriptText | Should -Match "'https://management.azure.com/'"
-        $scriptText | Should -Match "Get-OptionalProperty \\$props 'authType'"
+        $scriptText | Should -Match 'Get-OptionalProperty \$props ''authType'''
     }
     It 'never dereferences a missing authType property directly' {
-        $scriptText | Should -Not -Match '\\$props\\.authType'
+        $scriptText | Should -Not -Match '\$props\.authType'
     }
     It 'does not persist client identifiers or credentials in its diagnostic report' {
         $scriptText | Should -Match 'InstanceClientIdPresent='
         $scriptText | Should -Match 'BlueprintClientIdPresent='
-        $scriptText | Should -Not -Match 'InstanceClientId=\\$instanceClientId'
-        $scriptText | Should -Not -Match 'BlueprintClientId=\\$blueprintClientId'
+        $scriptText | Should -Not -Match 'InstanceClientId=\$instanceClientId'
+        $scriptText | Should -Not -Match 'BlueprintClientId=\$blueprintClientId'
     }
     It 'performs read-only Azure REST requests' {
         $scriptText | Should -Match 'az rest --method get'

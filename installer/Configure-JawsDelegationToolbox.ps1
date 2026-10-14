@@ -46,7 +46,13 @@ $planPath=Join-Path $local 'jaws-step-c-toolbox-plan.dev.generated.json'
  ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $planPath -Encoding utf8
 $versionsUrl="$project/toolboxes/$name/versions?api-version=v1"
 $existing=Get-Api -Url $versionsUrl -AllowNotFound
-$items=if($null -ne $existing -and $null -ne $existing.value){@($existing.value)}else{@()}
+$items=@()
+if($null -ne $existing) {
+ $valueProperty=$existing.PSObject.Properties['value']
+ if($null -ne $valueProperty -and $null -ne $valueProperty.Value) {
+  $items=@($valueProperty.Value)
+ }
+}
 if($Mode -eq 'Plan') {
  Write-Host "Toolbox versions discovered: $($items.Count); Plan SHA-256: $hash"
  Write-Host "Plan: $planPath"
@@ -67,8 +73,15 @@ if($Mode -eq 'Install' -and $items.Count -eq 0){
  throw 'JAWS-TOOLBOX-006: Existing toolbox versions detected. Refuse to replace or add a version without verified configuration comparison.'
 }
 $actual=Get-Api -Url $versionsUrl
-if($null -eq $actual -or $null -eq $actual.value -or @($actual.value).Count -eq 0) {
+$actualItems=@()
+if($null -ne $actual) {
+ $actualValueProperty=$actual.PSObject.Properties['value']
+ if($null -ne $actualValueProperty -and $null -ne $actualValueProperty.Value) {
+  $actualItems=@($actualValueProperty.Value)
+ }
+}
+if($actualItems.Count -eq 0) {
  throw 'JAWS-TOOLBOX-007: Toolbox version not verifiable.'
 }
-Write-Host "Toolbox versions available: $(@($actual.value).Count)"
+Write-Host "Toolbox versions available: $($actualItems.Count)"
 Write-Host 'Supervisor v1 unchanged. Hosted runtime toolbox registration and live delegation are not yet verified.'

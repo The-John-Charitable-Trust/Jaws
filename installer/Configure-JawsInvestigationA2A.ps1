@@ -35,7 +35,7 @@ if((Get-Property $version 'name') -cne $AgentName -or (Get-Property $version 'st
  (Get-Property (Get-Property $version 'definition') 'kind') -ne 'hosted') {
  throw 'JAWS-STEP-C-A2A-003: Existing Investigation v1 is not the expected active hosted agent.'
 }
-$agent=Read-Foundry "$ProjectEndpoint/agents/$AgentName?api-version=v1"
+$agent=Read-Foundry "$ProjectEndpoint/agents/$($AgentName)?api-version=v1"
 if((Get-Property $agent 'name') -cne $AgentName) {throw 'JAWS-STEP-C-A2A-004: Agent identity mismatch.'}
 $desired=[ordered]@{
  agent_card=[ordered]@{

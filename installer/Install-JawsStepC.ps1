@@ -1,7 +1,7 @@
 # Consolidated JAWS Step C installer. Preserves existing resources and approvals.
 [CmdletBinding()]
 param(
- [ValidateSet('Plan','Install','Verify','DelegationPlan','DelegationInstall','DelegationVerify','SupervisorV2Build','SupervisorV2Plan','SupervisorV2Publish','SupervisorV2Deploy','SupervisorReleasePlan','SupervisorRelease')][string]$Mode='Plan',
+ [ValidateSet('Plan','Install','Verify','DelegationPlan','DelegationInstall','DelegationVerify','SupervisorV2Build','SupervisorV2Plan','SupervisorV2Publish','SupervisorV2Deploy','SupervisorReleasePlan','SupervisorRelease','SupervisorV2Verify')][string]$Mode='Plan',
  [string]$ApprovedA2APlanSha256,
  [switch]$AcknowledgeAgentEndpointChange,
  [string]$ApprovedDelegationConnectionSha256,
@@ -12,6 +12,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $root=$PSScriptRoot
+if($Mode -eq 'SupervisorV2Verify') {
+ $answer=Read-Host 'Run billable authenticated Supervisor-to-Investigation acceptance test? [y/N]'
+ if($answer.Trim() -ine 'y'){throw 'JAWS-STEP-C-ACCEPT-001: Test declined.'}
+ & (Join-Path $root 'Test-JawsStepCDelegation.ps1') -AcknowledgeInferenceCharges
+ return
+}
 if($Mode -in @('SupervisorReleasePlan','SupervisorRelease')) {
  $release=Join-Path $root 'Release-JawsSupervisorDraft.ps1'
  & $release -Mode Plan

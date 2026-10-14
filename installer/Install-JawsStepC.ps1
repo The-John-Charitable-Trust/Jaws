@@ -1,13 +1,56 @@
 # Consolidated JAWS Step C installer. Preserves existing resources and approvals.
 [CmdletBinding()]
 param(
- [ValidateSet('Plan','Install','Verify')][string]$Mode='Plan',
+ [ValidateSet('Plan','Install','Verify','DelegationPlan','DelegationInstall','DelegationVerify')][string]$Mode='Plan',
  [string]$ApprovedA2APlanSha256,
- [switch]$AcknowledgeAgentEndpointChange
+ [switch]$AcknowledgeAgentEndpointChange,
+ [string]$ApprovedDelegationConnectionSha256,
+ [switch]$AcknowledgeA2AConnection,
+ [string]$ApprovedDelegationToolboxSha256,
+ [switch]$AcknowledgeToolboxChargesAndAccess
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $root=$PSScriptRoot
+if($Mode -like 'Delegation*'){
+ # A2A agent-card must be verified before any delegated connection actions.
+ $receiptPath=Join-Path $root '.local/jaws-step-c-a2a-receipt.dev.generated.json'
+ if(-not(Test-Path -LiteralPath $receiptPath -PathType Leaf)){
+  throw 'JAWS-STEP-C-DELEGATION-001: Verified Investigation incoming A2A receipt is missing.'
+ }
+ $receipt=Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+ if($receipt.Status -cne 'A2A_AGENT_CARD_VERIFIED' -or $receipt.AgentName -cne 'jaws-investigation-dev'){
+  throw 'JAWS-STEP-C-DELEGATION-002: Investigation A2A receipt does not match.'
+ }
+ $connection=Join-Path $root 'Configure-JawsDelegationConnection.ps1'
+ $toolbox=Join-Path $root 'Configure-JawsDelegationToolbox.ps1'
+ switch($Mode){
+  'DelegationPlan' {
+   & $connection -Mode Plan
+   $connectionReceipt=Join-Path $root '.local/jaws-step-c-delegation-connection-receipt.dev.generated.json'
+   if(Test-Path $connectionReceipt){ & $toolbox -Mode Plan }
+   else { Write-Host 'Toolbox planning waits for a verified RemoteA2A connection.' }
+  }
+  'DelegationInstall' {
+   if([string]::IsNullOrWhiteSpace($ApprovedDelegationConnectionSha256)){
+    throw 'JAWS-STEP-C-DELEGATION-003: Exact connection plan approval required.'
+   }
+   & $connection -Mode Install -ApprovedPlanSha256 $ApprovedDelegationConnectionSha256 -AcknowledgeA2AConnection:$AcknowledgeA2AConnection
+   if(-not $?){throw 'JAWS-STEP-C-DELEGATION-004: Connection installation failed.'}
+   # Toolbox install separately approved; never create it implicitly.
+   if($ApprovedDelegationToolboxSha256){
+    & $toolbox -Mode Install -ApprovedPlanSha256 $ApprovedDelegationToolboxSha256 -AcknowledgeToolboxChargesAndAccess:$AcknowledgeToolboxChargesAndAccess
+   } else { & $toolbox -Mode Plan }
+  }
+  'DelegationVerify' {
+   & $connection -Mode Verify
+   if(-not $?){throw 'JAWS-STEP-C-DELEGATION-005: Connection verification failed.'}
+   & $toolbox -Mode Verify
+  }
+ }
+ Write-Host 'Supervisor v1 unchanged. Runtime integration and invocation still require acceptance.'
+ return
+}
 $local=Join-Path $root '.local'
 $publish=Join-Path $local 'jaws-investigation-publish-receipt.dev.generated.json'
 $deploy=Join-Path $local 'jaws-foundry-investigation-deploy-receipt.dev.generated.json'

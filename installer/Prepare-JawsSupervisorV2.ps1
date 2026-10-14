@@ -1,4 +1,4 @@
-# Prepare and verify isolated Supervisor v2 candidate without changing Supervisor v1.
+# Prepare and verify versioned Supervisor candidate without changing Supervisor v1.
 [CmdletBinding()]
 param([ValidateSet('Build','Plan','Verify')][string]$Mode='Build')
 Set-StrictMode -Version Latest
@@ -32,5 +32,5 @@ $published=Join-Path $PSScriptRoot '.local/jaws-supervisor-publish-receipt.dev.g
 if(-not(Test-Path $published)){throw 'JAWS-SUP-V2-005: Supervisor image publish receipt missing.'}
 $p=Get-Content $published -Raw | ConvertFrom-Json
 if($p.RegistryPushPerformed -ne $true -or $p.Status -ne 'PUBLISHED_AND_DIGEST_VERIFIED'){throw 'JAWS-SUP-V2-006: Valid publish receipt required.'}
-& (Join-Path $PSScriptRoot 'Deploy-JawsSupervisor.ps1') -Mode Plan -AgentName 'jaws-supervisor-v2-dev' -ToolboxName $toolbox -PublishReceiptFile $published
-Write-Host 'Review the new isolated candidate plan. Do not use the default jaws-supervisor-dev agent name.'
+& (Join-Path $PSScriptRoot 'Deploy-JawsSupervisor.ps1') -Mode Plan -AgentName 'jaws-supervisor-dev' -ToolboxName $toolbox -PublishReceiptFile $published
+Write-Host 'Review the candidate draft version plan on existing jaws-supervisor-dev; v1 remains the routing target.'

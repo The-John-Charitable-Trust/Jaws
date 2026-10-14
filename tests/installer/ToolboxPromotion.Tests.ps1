@@ -25,6 +25,6 @@ Describe 'Step C toolbox promotion regression' {
    $contents['installer/Configure-JawsDelegationToolbox.ps1'] | Should -Match 'project_connection_id'
  }
  It 'retains strict rejection of base_url plus connection_id' {
-   $contents['installer/Configure-JawsDelegationToolbox.ps1'] | Should -Match "PSObject.Properties\\['base_url'\\]"
+   $contents['installer/Configure-JawsDelegationToolbox.ps1'] | Should -Match 'PSObject\.Properties\[''base_url''\]'
  }
 }

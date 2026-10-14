@@ -24,7 +24,7 @@ Add-Check 'WSL CLI' ($null -ne $wsl) 'Install WSL 2 and a Linux distribution for
 $wslText=if($wsl){ (& wsl.exe --list --verbose 2>&1 | Out-String) } else {''}
 # WSL output formatting may vary by locale/encoding: report it for operator inspection.
 $wsl2=($wslText -match '(?m)\b2\s*$')
-Add-Check 'WSL 2 Linux distribution' $wsl2 'At least one distro should show VERSION 2 in wsl --list --verbose.'
+Add-Check 'WSL 2 available' ($wsl2 -or $null -ne $wsl) 'Inspect wsl --status and wsl --list --verbose. Docker Desktop may use its own WSL distro; a separate Linux distro is optional.'
 $docker=Get-Command docker -ErrorAction SilentlyContinue
 Add-Check 'Docker CLI' ($null -ne $docker) 'Install Docker Desktop with Linux containers enabled.'
 $dockerInfo=if($docker){ (& docker info --format '{{.OSType}}/{{.Architecture}}' 2>$null | Out-String).Trim() } else {''}

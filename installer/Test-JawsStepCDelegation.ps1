@@ -40,34 +40,35 @@ try{
  if($LASTEXITCODE -ne 0){throw "JAWS-C-ACCEPT-006: Supervisor invocation failed: $($raw|Out-String)"}
  $response=$raw|Out-String|ConvertFrom-Json -ErrorAction Stop
 }finally{Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue}
-$items=@($response.output)
-$toolEvidence=@($items|Where-Object { $_ -and $_.PSObject.Properties['type'] -and [string]$_.type -match '(?i)(a2a|tool|mcp)' -and (($_ | ConvertTo-Json -Depth 12 -Compress) -match '(?i)(jaws-investigation|jaws-investigation-a2a-tools|investigation-planning|/protocols/a2a)') })
-$outputTypes=@($items | ForEach-Object { if($_ -and $_.PSObject.Properties['type']){[string]$_.type}else{'<missing-type>'} })
-$textParts=@($items | ForEach-Object { if($_ -and $_.PSObject.Properties['content']) { foreach($part in @($_.content)){if($part -and $part.PSObject.Properties['text']){[string]$part.text}} } })
-$diagnosticText=(($textParts -join ' ') -replace '[\\r\\n]+',' ').Trim()
-if($diagnosticText.Length -gt 1200){$diagnosticText=$diagnosticText.Substring(0,1200)}
-Write-Host "Supervisor status: $($response.status); output item types: $($outputTypes -join ', ')"
-if($diagnosticText){Write-Host "Supervisor response excerpt: $diagnosticText"}
-$completed=([string]$response.status -ceq 'completed')
-$status=if($completed -and $toolEvidence.Count -gt 0){'PASS'}else{'FAIL'}
+Import-Module (Join-Path $root 'modules/DelegationEvidence.psm1') -Force
+$evidence=Get-JawsDelegationEvidence -Response $response
+$outputTypes=@($response.output | ForEach-Object { if($_ -and $_.PSObject.Properties['type']){[string]$_.type}else{'<missing-type>'} })
+$status=if($evidence.ResponseCompleted -and $evidence.Classification -ceq 'TOOL_INVOKED_SUCCEEDED'){'PASS'}else{'FAIL'}
 $report=[pscustomobject]@{
  Status=$status
+ Classification=$evidence.Classification
  SupervisorAgent=$agent
  SupervisorVersion='2'
  InvestigationAgent='jaws-investigation-dev'
  ResponseId=[string]$response.id
  ResponseStatus=[string]$response.status
- ToolEvidenceTypes=@($toolEvidence|ForEach-Object {$_.type})
- ToolEvidenceCount=$toolEvidence.Count
  OutputItemTypes=$outputTypes
- Diagnosis=if(-not $completed){'Response did not complete'}elseif($toolEvidence.Count -eq 0){'Investigation delegation not proven: inspect output types, runtime tool enumeration and identity permissions'}else{'Investigation-related tool activity observed'}
+ ToolCalls=$evidence.Calls
+ ToolCallCount=$evidence.AttemptCount
+ SuccessfulInvestigationCalls=$evidence.InvestigationSuccessCount
+ EvidenceLimitations='Tool-call output alone does not prove target agent execution; correlate with Foundry traces before final closure.'
  RemediationRequested=$false
  AzureInfrastructureWrites=0
  InferencePerformed=$true
  TimestampUtc=[DateTime]::UtcNow.ToString('o')
 }
 $path=Join-Path $root '.local/jaws-step-c-final-acceptance.dev.generated.json'
-$report|ConvertTo-Json -Depth 10|Set-Content -LiteralPath $path -Encoding utf8
-Write-Host "Step C acceptance: $status; tool evidence items: $($toolEvidence.Count); response: $($response.id)"
-Write-Host "Report: $path"
-if($status -ne 'PASS'){throw 'JAWS-C-ACCEPT-007: No sufficient tool-call evidence; Step C cannot be closed.'}
+$report|ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $path -Encoding utf8
+Write-Host "Supervisor status: $($response.status); output types: $($outputTypes -join ', ')"
+Write-Host "Delegation classification: $($evidence.Classification)"
+foreach($call in $evidence.Calls){
+ Write-Host "Tool: $($call.ToolName); output present: $($call.OutputPresent); failed: $($call.Failed)"
+ if($call.OutputExcerpt){Write-Host "Tool output excerpt: $($call.OutputExcerpt)"}
+}
+Write-Host "Step C acceptance: $status; report: $path"
+if($status -ne 'PASS'){throw "JAWS-C-ACCEPT-007: $($evidence.Classification). See tool output in acceptance report; Step C not closed."}

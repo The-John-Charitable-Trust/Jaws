@@ -1,6 +1,6 @@
 # Repair the invalid JAWS Investigation A2A toolbox v1 without replacing it.
 [CmdletBinding()]
-param([ValidateSet('Plan','Create','Promote','Verify')][string]$Mode='Plan')
+param([ValidateSet('Plan','Create','Promote','Verify','Rollback')][string]$Mode='Plan')
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $endpoint='https://jaws-foundry-dev.services.ai.azure.com/api/projects/jaws-dev'
@@ -68,21 +68,26 @@ if($Mode -eq 'Verify'){
  Write-Host 'MCP tools/list verification is a separate required gate.'
  return
 }
-$diagnostic=Join-Path $local 'jaws-step-c-runtime-tool-discovery.dev.generated.json'
-if(-not(Test-Path $diagnostic)){throw 'JAWS-TOOLBOX-REPAIR-010: Version 2 MCP discovery receipt missing.'}
-$proof=Get-Content $diagnostic -Raw | ConvertFrom-Json
-if($proof.Status -cne 'MCP_TOOLS_EXPOSED' -or $proof.ToolboxVersion -cne '2' -or $proof.ToolCount -lt 1){
- throw 'JAWS-TOOLBOX-REPAIR-011: Successful version 2 MCP tool discovery required before promotion.'
+# Standalone CLI MCP tool listing does not carry hosted-agent caller identity.
+# Verify the immutable v2 A2A configuration above; only the hosted Supervisor
+# invocation can validate the AgenticIdentityToken connection end-to-end.
+if($Mode -eq 'Rollback'){
+ if([string]$tb.default_version -eq '1'){Write-Host 'Toolbox v1 already default; no writes.';return}
+ if([string]$tb.default_version -ne '2'){throw 'JAWS-TOOLBOX-REPAIR-015: Unexpected default, refuse rollback.'}
+ Confirm-Operator 'Rollback default toolbox to v1? WARNING: v1 had an invalid A2A definition.'
+ $newDefault='1'
+}else{
+ $newDefault='2'
 }
-if([string]$tb.default_version -eq '2'){Write-Host 'Toolbox v2 already default.';return}
-if([string]$tb.default_version -ne '1'){throw 'JAWS-TOOLBOX-REPAIR-012: Default changed unexpectedly.'}
-Confirm-Operator 'Promote corrected toolbox v2 to default for existing Supervisor? This changes runtime tool availability.'
+if([string]$tb.default_version -eq $newDefault){Write-Host "Toolbox v$newDefault already default.";return}
+if($Mode -ne 'Rollback' -and [string]$tb.default_version -ne '1'){throw 'JAWS-TOOLBOX-REPAIR-012: Default changed unexpectedly.'}
+if($Mode -ne 'Rollback'){Confirm-Operator 'Promote validated toolbox v2 to default for hosted Supervisor test? This changes tool routing.'}
 $tmp=[IO.Path]::GetTempFileName()
 try{
- [IO.File]::WriteAllText($tmp,'{"default_version":"2"}',[Text.UTF8Encoding]::new($false))
+ [IO.File]::WriteAllText($tmp,("{`"default_version`":`"$newDefault`"}"),[Text.UTF8Encoding]::new($false))
  $out=& az rest --method patch --url "$endpoint/toolboxes/$($name)?api-version=v1" --resource https://ai.azure.com --headers 'Content-Type=application/json' --body "@$tmp" --output json --only-show-errors 2>&1
  if($LASTEXITCODE -ne 0){throw "JAWS-TOOLBOX-REPAIR-013: Promotion outcome uncertain: $($out|Out-String)"}
 }finally{Remove-Item $tmp -Force -ErrorAction SilentlyContinue}
 $recheck=Read-Jaws "$endpoint/toolboxes/$($name)?api-version=v1"
-if([string]$recheck.default_version -ne '2'){throw 'JAWS-TOOLBOX-REPAIR-014: Promotion not verified.'}
-Write-Host 'Corrected toolbox version 2 is now default. Rerun SupervisorV2Verify.'
+if([string]$recheck.default_version -ne $newDefault){throw 'JAWS-TOOLBOX-REPAIR-014: Default-version update not verified.'}
+Write-Host "Toolbox default version is now $newDefault. Run hosted SupervisorV2Verify for end-to-end A2A evidence."

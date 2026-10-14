@@ -64,14 +64,14 @@ function New-JawsFoundrySupervisorPlan {
         environment_variables=[ordered]@{AZURE_AI_MODEL_DEPLOYMENT_NAME=[string]$model[0].Name}
     }
     if(-not [string]::IsNullOrWhiteSpace($ToolboxName)) {
-        if($ToolboxName -cne 'jaws-investigation-a2a-tools' -or $AgentName -cne 'jaws-supervisor-v2-dev') {
+        if($ToolboxName -cne 'jaws-investigation-a2a-tools' -or $AgentName -cne 'jaws-supervisor-dev') {
             throw 'JAWS-FOUNDRY-TOOLBOX-001: Toolbox deployment requires isolated Supervisor v2 candidate.'
         }
         $definition.environment_variables['JAWS_INVESTIGATION_TOOLBOX_NAME']=$ToolboxName
     }
     $request=[ordered]@{name=$AgentName;definition=$definition}
     $payload=[ordered]@{
-        SchemaVersion='1.0';Operation='CreateHostedSupervisorVersion'
+        SchemaVersion='1.0';Operation=if($ToolboxName){'CreateExistingSupervisorVersion'}else{'CreateHostedSupervisorVersion'}
         SubscriptionId=[string]$State.SubscriptionId
         ResourceGroupName=[string]$State.ResourceGroupName
         ProjectEndpoint=$endpoint;FoundryResource=$resource;ProjectName=$projectName
@@ -94,7 +94,7 @@ function Test-JawsFoundryDeploymentPlan {
     param([Parameter(Mandatory)]$DeploymentPlan)
     $environmentNames=@($DeploymentPlan.Plan.Request.definition.environment_variables.PSObject.Properties.Name)
     $reservedEnvironmentNames=@($environmentNames | Where-Object { $_ -match '^(FOUNDRY_|AGENT_)' })
-    if ($DeploymentPlan.Plan.Operation -ne 'CreateHostedSupervisorVersion' -or
+    if ($DeploymentPlan.Plan.Operation -notin @('CreateHostedSupervisorVersion','CreateExistingSupervisorVersion') -or
         $DeploymentPlan.Plan.ApiVersion -ne 'v1' -or
         $DeploymentPlan.Plan.Image -cnotmatch '^jawsregistrydev001\.azurecr\.io/jaws/supervisor@sha256:[a-f0-9]{64}$' -or
         $DeploymentPlan.Plan.Request.definition.container_configuration.image -cne $DeploymentPlan.Plan.Image -or
@@ -102,7 +102,7 @@ function Test-JawsFoundryDeploymentPlan {
         $DeploymentPlan.Plan.Request.definition.cpu -ne '1' -or
         $DeploymentPlan.Plan.Request.definition.memory -ne '2Gi' -or
         $reservedEnvironmentNames.Count -ne 0 -or
-        ($DeploymentPlan.Plan.AgentName -ceq 'jaws-supervisor-v2-dev' -and
+        ($DeploymentPlan.Plan.Operation -eq 'CreateExistingSupervisorVersion' -and
           [string]$DeploymentPlan.Plan.Request.definition.environment_variables.JAWS_INVESTIGATION_TOOLBOX_NAME -cne 'jaws-investigation-a2a-tools')) {
         throw 'JAWS-FOUNDRY-005: Unsafe or altered hosted agent plan.'
     }
@@ -169,25 +169,28 @@ function Invoke-JawsFoundrySupervisorDeployment {
     if (-not (Test-JawsFoundryAcrPullRole -Assignments $roles -PrincipalId $identity -RegistryScope $acrId)) {
         throw 'JAWS-FOUNDRY-013: No verified ACR pull role for project identity. Installer-managed RBAC setup required.'
     }
-    # Inspect existing agent. An unavailable API (403/5xx) is not treated as absence.
+    # A toolbox-enabled update must target an existing Supervisor, not a second agent.
     $url="$($p.ProjectEndpoint)/agents/$($p.AgentName)?api-version=v1"
-    $exists=$null
     $existingOutput=& az rest --method get --url $url --resource https://ai.azure.com --output json --only-show-errors 2>&1
-    if ($LASTEXITCODE -eq 0) {$exists=$existingOutput}
-    else {
-        $errorText=($existingOutput | Out-String)
-        if ($errorText -notmatch '(?i)(404|not.?found)') {
-            throw 'JAWS-FOUNDRY-014: Could not prove agent name is unused; stop without provisioning.'
-        }
+    if($LASTEXITCODE -ne 0){throw "JAWS-FOUNDRY-014: Cannot verify existing Supervisor: $($existingOutput | Out-String)"}
+    $existing=$existingOutput | Out-String | ConvertFrom-Json
+    if([string]$existing.name -cne 'jaws-supervisor-dev' -or $p.Operation -cne 'CreateExistingSupervisorVersion'){
+      throw 'JAWS-FOUNDRY-015: Refuse to create a duplicate Supervisor agent.'
     }
-    if ($exists) {throw 'JAWS-FOUNDRY-015: Agent already exists; no overwrite or new version without separate approval.'}
+    $v1Output=& az rest --method get --url "$($p.ProjectEndpoint)/agents/jaws-supervisor-dev/versions/1?api-version=v1" --resource https://ai.azure.com --output json --only-show-errors 2>&1
+    if($LASTEXITCODE -ne 0){throw 'JAWS-FOUNDRY-022: Existing Supervisor v1 could not be verified.'}
+    $v1=$v1Output | Out-String | ConvertFrom-Json
+    if($v1.status -ne 'active'){throw 'JAWS-FOUNDRY-023: Supervisor v1 is not active.'}
+    $v2Output=& az rest --method get --url "$($p.ProjectEndpoint)/agents/jaws-supervisor-dev/versions/2?api-version=v1" --resource https://ai.azure.com --output json --only-show-errors 2>&1
+    if($LASTEXITCODE -eq 0){throw 'JAWS-FOUNDRY-024: Supervisor v2 already exists; do not overwrite.'}
+    if(($v2Output|Out-String) -notmatch '(?i)(404|not.?found)'){throw 'JAWS-FOUNDRY-025: Could not prove v2 is absent.'}
     $body=ConvertTo-Json -InputObject $p.Request -Depth 20 -Compress
     $bodyFile=[System.IO.Path]::GetTempFileName()
     try {
         $utf8NoBom=New-Object System.Text.UTF8Encoding($false)
         [System.IO.File]::WriteAllText($bodyFile,$body,$utf8NoBom)
         # Only approved Azure write. File input preserves JSON quoting in Windows PowerShell 5.1.
-        $creationOutput=& az rest --method post --url "$($p.ProjectEndpoint)/agents?api-version=v1" --resource https://ai.azure.com --headers 'Content-Type=application/json' --body "@$bodyFile" --output json --only-show-errors 2>&1
+        $creationOutput=& az rest --method post --url "$($p.ProjectEndpoint)/agents/jaws-supervisor-dev/versions?api-version=v1" --resource https://ai.azure.com --headers 'Content-Type=application/json' --body "@$bodyFile" --output json --only-show-errors 2>&1
         $creationExitCode=$LASTEXITCODE
     }
     finally {

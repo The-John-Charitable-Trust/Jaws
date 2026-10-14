@@ -44,14 +44,14 @@ function Invoke-Mcp([hashtable]$payload,[string]$session='', [string]$stage='req
  return [pscustomobject]@{ Data=$data;Session=$id }
 }
 $init=Invoke-Mcp -stage 'initialize' -payload @{jsonrpc='2.0';id=1;method='initialize';params=@{protocolVersion='2025-11-25';capabilities=@{};clientInfo=@{name='jaws-step-c-diagnostic';version='1.0'}}}
-if(-not @($init.Data|Where-Object {$_.result}).Count){throw 'JAWS-MCP-DISCOVERY-004: MCP initialize did not return a result.'}
+if(-not @($init.Data|Where-Object { $_ -and $_.PSObject.Properties['result'] -and $null -ne $_.result }).Count){throw 'JAWS-MCP-DISCOVERY-004: MCP initialize did not return a result.'}
 # Session-aware initialized notification. Do not issue tool calls.
 $null=Invoke-Mcp -stage 'notifications/initialized' -payload @{jsonrpc='2.0';method='notifications/initialized'} -session $init.Session
 $list=Invoke-Mcp -stage 'tools/list' -payload @{jsonrpc='2.0';id=2;method='tools/list';params=@{}} -session $init.Session
-$matches=@($list.Data|Where-Object {$_.result -and $_.result.PSObject.Properties['tools']})
+$matches=@($list.Data|Where-Object { $_ -and $_.PSObject.Properties['result'] -and $null -ne $_.result -and $_.result.PSObject.Properties['tools'] })
 if($matches.Count -ne 1){throw 'JAWS-MCP-DISCOVERY-005: tools/list unavailable or malformed.'}
 $tools=@($matches[0].result.tools)
-$names=@($tools|ForEach-Object {$_.name})
+$names=@($tools|Where-Object { $_ -and $_.PSObject.Properties['name'] }|ForEach-Object { [string]$_.name })
 $status=if($names.Count -gt 0){'MCP_TOOLS_EXPOSED'}else{'MCP_TOOL_LIST_EMPTY'}
 [pscustomobject]@{
  Status=$status;Toolbox='jaws-investigation-a2a-tools';ToolCount=$names.Count

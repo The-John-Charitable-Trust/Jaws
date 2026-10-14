@@ -86,7 +86,15 @@ if($null -ne $actual) {
 if($actualItems.Count -eq 0) {
  throw 'JAWS-TOOLBOX-007: Toolbox version not verifiable.'
 }
-$match=@($actualItems | Where-Object { $_.name -ceq $name -and $_.version -eq '1' -and $_.tools.Count -eq 1 -and $_.tools[0].type -ceq 'a2a' -and $_.tools[0].a2a_version -ceq '1.0' -and -not $_.tools[0].PSObject.Properties['base_url'] -and $_.tools[0].project_connection_id -ceq [string]$conn.id })
+$toolboxInfo=Get-Api -Url "$project/toolboxes/$($name)?api-version=v1"
+$defaultVersion=[string]$toolboxInfo.default_version
+$match=@($actualItems | Where-Object {
+ $_.name -ceq $name -and [string]$_.version -ceq $defaultVersion -and
+ @($_.tools).Count -eq 1 -and $_.tools[0].type -ceq 'a2a' -and
+ $_.tools[0].a2a_version -ceq '1.0' -and
+ -not $_.tools[0].PSObject.Properties['base_url'] -and
+ $_.tools[0].project_connection_id -ceq [string]$conn.id
+})
 if($match.Count -ne 1){throw 'JAWS-TOOLBOX-008: Existing toolbox version configuration mismatch. No writes.'}
-Write-Host "Toolbox version 1 verified: $name"
+Write-Host "Toolbox default version $defaultVersion verified: $name"
 Write-Host 'Supervisor v1 unchanged. Hosted runtime toolbox registration and live delegation are not yet verified.'

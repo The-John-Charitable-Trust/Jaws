@@ -33,7 +33,6 @@ $desired=[ordered]@{
  tools=@([ordered]@{
   type='a2a'
   a2a_version='1.0'
-  base_url=$target
   project_connection_id=[string]$conn.id
  })
 }
@@ -52,7 +51,13 @@ if($null -ne $existing) {
  if($null -eq $listProp){$listProp=$existing.PSObject.Properties['value']}
  if($null -ne $listProp -and $null -ne $listProp.Value){$items=@($listProp.Value)}
 }
+$invalid=@($items|Where-Object {
+ $_ -and $_.PSObject.Properties['tools'] -and @($_.tools|Where-Object {
+  $_.type -ceq 'a2a' -and $_.PSObject.Properties['base_url'] -and $_.PSObject.Properties['project_connection_id']
+ }).Count -gt 0
+})
 if($Mode -eq 'Plan') {
+ if($invalid.Count -gt 0){Write-Warning 'JAWS-TOOLBOX-009: Existing A2A toolbox version includes both base_url and project_connection_id. Must create corrected version; do not retry original installation.'}
  Write-Host "Toolbox versions discovered: $($items.Count); Plan SHA-256: $hash"
  Write-Host "Plan: $planPath"
  Write-Host 'PLAN ONLY: no writes; existing versions must be reconciled before new version creation.'
@@ -81,7 +86,7 @@ if($null -ne $actual) {
 if($actualItems.Count -eq 0) {
  throw 'JAWS-TOOLBOX-007: Toolbox version not verifiable.'
 }
-$match=@($actualItems | Where-Object { $_.name -ceq $name -and $_.version -eq '1' -and $_.tools.Count -eq 1 -and $_.tools[0].type -ceq 'a2a' -and $_.tools[0].a2a_version -ceq '1.0' -and $_.tools[0].base_url -ceq $target -and $_.tools[0].project_connection_id -ceq [string]$conn.id })
+$match=@($actualItems | Where-Object { $_.name -ceq $name -and $_.version -eq '1' -and $_.tools.Count -eq 1 -and $_.tools[0].type -ceq 'a2a' -and $_.tools[0].a2a_version -ceq '1.0' -and -not $_.tools[0].PSObject.Properties['base_url'] -and $_.tools[0].project_connection_id -ceq [string]$conn.id })
 if($match.Count -ne 1){throw 'JAWS-TOOLBOX-008: Existing toolbox version configuration mismatch. No writes.'}
 Write-Host "Toolbox version 1 verified: $name"
 Write-Host 'Supervisor v1 unchanged. Hosted runtime toolbox registration and live delegation are not yet verified.'

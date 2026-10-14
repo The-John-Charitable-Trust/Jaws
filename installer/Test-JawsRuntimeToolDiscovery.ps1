@@ -3,14 +3,14 @@
 param()
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
-$endpoint='https://jaws-foundry-dev.services.ai.azure.com/api/projects/jaws-dev/toolboxes/jaws-investigation-a2a-tools/mcp?api-version=v1'
+$endpoint='https://jaws-foundry-dev.services.ai.azure.com/api/projects/jaws-dev/toolboxes/jaws-investigation-a2a-tools/versions/1/mcp?api-version=v1'
 $reportPath=Join-Path $PSScriptRoot '.local/jaws-step-c-runtime-tool-discovery.dev.generated.json'
 $tokenJson=& az account get-access-token --resource https://ai.azure.com --output json --only-show-errors 2>&1
 if($LASTEXITCODE -ne 0){throw 'JAWS-MCP-DISCOVERY-001: Azure CLI cannot obtain a Foundry token.'}
 $access=($tokenJson|Out-String|ConvertFrom-Json).accessToken
 if([string]::IsNullOrWhiteSpace($access)){throw 'JAWS-MCP-DISCOVERY-002: Empty bearer token.'}
 $baseHeaders=@{ Authorization="Bearer $access"; Accept='application/json, text/event-stream'; 'MCP-Protocol-Version'='2025-03-26' }
-function Invoke-Mcp([hashtable]$payload,[string]$session='') {
+function Invoke-Mcp([hashtable]$payload,[string]$session='', [string]$stage='request') {
  $headers=@{}
  foreach($key in $baseHeaders.Keys){$headers[$key]=$baseHeaders[$key]}
  if($session){$headers['Mcp-Session-Id']=$session}
@@ -19,10 +19,18 @@ function Invoke-Mcp([hashtable]$payload,[string]$session='') {
   $web=Invoke-WebRequest -Uri $endpoint -Method Post -Headers $headers -Body ([Text.Encoding]::UTF8.GetBytes($json)) -ContentType 'application/json' -TimeoutSec 40 -ErrorAction Stop
  }catch{
   $code=if($_.Exception.Response){[int]$_.Exception.Response.StatusCode}else{0}
-  throw "JAWS-MCP-DISCOVERY-003: MCP request failed (HTTP $code). Examine project access and toolbox endpoint."
+  $detail=''
+  try { if($_.ErrorDetails.Message){$detail=[string]$_.ErrorDetails.Message} } catch {}
+  if(-not $detail -and $_.Exception.Response){
+   try {$detail=[string]$_.Exception.Response.Content.ReadAsStringAsync().GetAwaiter().GetResult()} catch {}
+  }
+  if($detail.Length -gt 800){$detail=$detail.Substring(0,800)}
+  $detail=$detail -replace '(?i)Bearer\\s+[^\\s"'']+','Bearer [REDACTED]'
+  throw "JAWS-MCP-DISCOVERY-003: $stage failed (HTTP $code). Response: $detail" 
  }
  $id=if($web.Headers['Mcp-Session-Id']){[string]$web.Headers['Mcp-Session-Id']}else{$session}
  $textBody=[string]$web.Content
+ if([int]$web.StatusCode -eq 202 -or [int]$web.StatusCode -eq 204){return [pscustomobject]@{Data=@();Session=$id}}
  $data=@()
  if($textBody.TrimStart().StartsWith('{')){
   $data=@($textBody|ConvertFrom-Json)
@@ -35,11 +43,11 @@ function Invoke-Mcp([hashtable]$payload,[string]$session='') {
  }
  return [pscustomobject]@{ Data=$data;Session=$id }
 }
-$init=Invoke-Mcp @{jsonrpc='2.0';id=1;method='initialize';params=@{protocolVersion='2025-03-26';capabilities=@{};clientInfo=@{name='jaws-step-c-diagnostic';version='1.0'}}}
+$init=Invoke-Mcp -stage 'initialize' -payload @{jsonrpc='2.0';id=1;method='initialize';params=@{protocolVersion='2025-03-26';capabilities=@{};clientInfo=@{name='jaws-step-c-diagnostic';version='1.0'}}}
 if(-not @($init.Data|Where-Object {$_.result}).Count){throw 'JAWS-MCP-DISCOVERY-004: MCP initialize did not return a result.'}
 # Session-aware initialized notification. Do not issue tool calls.
-$null=Invoke-Mcp @{jsonrpc='2.0';method='notifications/initialized'} $init.Session
-$list=Invoke-Mcp @{jsonrpc='2.0';id=2;method='tools/list';params=@{}} $init.Session
+$null=Invoke-Mcp -stage 'notifications/initialized' -payload @{jsonrpc='2.0';method='notifications/initialized'} -session $init.Session
+$list=Invoke-Mcp -stage 'tools/list' -payload @{jsonrpc='2.0';id=2;method='tools/list';params=@{}} -session $init.Session
 $matches=@($list.Data|Where-Object {$_.result -and $_.result.PSObject.Properties['tools']})
 if($matches.Count -ne 1){throw 'JAWS-MCP-DISCOVERY-005: tools/list unavailable or malformed.'}
 $tools=@($matches[0].result.tools)

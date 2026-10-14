@@ -11,18 +11,27 @@ function Read-Json([string]$url) {
 $supervisor=Read-Json "$root/agents/jaws-supervisor-dev/versions/2?api-version=v1"
 $connection=Read-Json "$root/connections/jaws-investigation-a2a-dev?api-version=v1"
 $props=if($connection.PSObject.Properties['properties']){$connection.properties}else{$connection}
+function Get-OptionalProperty($Object,[string]$Name) {
+ if($null -ne $Object -and $null -ne $Object.PSObject.Properties[$Name]) {return $Object.PSObject.Properties[$Name].Value}
+ return $null
+}
+$authType=Get-OptionalProperty $props 'authType'
+if(-not $authType){$authType=Get-OptionalProperty $props 'authenticationType'}
+$category=Get-OptionalProperty $props 'category'
+$target=Get-OptionalProperty $props 'target'
 $identity=$supervisor.instance_identity
 $blueprint=$supervisor.blueprint
-$status=if($identity -and $identity.client_id -and $blueprint -and $blueprint.client_id -and [string]$props.authType -eq 'AgenticIdentityToken'){'IDENTITY_CONTEXT_AVAILABLE'}else{'IDENTITY_CONTEXT_INCOMPLETE'}
+$status=if($identity -and $identity.client_id -and $blueprint -and $blueprint.client_id -and [string]$authType -eq 'AgenticIdentityToken'){'IDENTITY_CONTEXT_AVAILABLE'}else{'IDENTITY_CONTEXT_INCOMPLETE'}
 $result=[pscustomobject]@{
  Status=$status
  SupervisorVersion=[string]$supervisor.version
  InstanceClientId=if($identity){[string]$identity.client_id}else{''}
  BlueprintClientId=if($blueprint){[string]$blueprint.client_id}else{''}
  ConnectionAuthType=[string]$props.authType
- ConnectionCategory=[string]$props.category
- Target=[string]$props.target
- Finding='Standalone Azure CLI MCP tools/list lacks the hosted caller identity context; not proof the persisted connection is invalid.'
+ ConnectionCategory=[string]$category
+ Target=[string]$target
+ ConnectionPropertyNames=@($props.PSObject.Properties.Name)
+ Finding='Connection authType missing from this projection does not prove the stored ARM connection is invalid. Confirm via management-plane read if needed.'
  AzureWrites=0
  VerifiedAtUtc=[DateTime]::UtcNow.ToString('o')
 }

@@ -69,7 +69,7 @@ function New-JawsFoundrySupervisorPlan {
         }
         $definition.environment_variables['JAWS_INVESTIGATION_TOOLBOX_NAME']=$ToolboxName
     }
-    $request=[ordered]@{name=$AgentName;definition=$definition}
+    $request=if($ToolboxName){[ordered]@{draft=$true;definition=$definition}}else{[ordered]@{name=$AgentName;definition=$definition}}
     $payload=[ordered]@{
         SchemaVersion='1.0';Operation=if($ToolboxName){'CreateExistingSupervisorVersion'}else{'CreateHostedSupervisorVersion'}
         SubscriptionId=[string]$State.SubscriptionId
@@ -202,13 +202,39 @@ function Invoke-JawsFoundrySupervisorDeployment {
     }
     $creation=$creationOutput
     $agent=$creation | Out-String | ConvertFrom-Json
-    if ([string]$agent.name -cne [string]$p.AgentName) {throw 'JAWS-FOUNDRY-017: Created agent identity mismatch.'}
+    if ($agent.PSObject.Properties['name'] -and [string]$agent.name -cne [string]$p.AgentName) {throw 'JAWS-FOUNDRY-017: Created agent identity mismatch.'}
     # Prefer the version from the creation response. A summary may provide
     # versions.latest instead of the top-level agent.version returned by GET.
     $version=$null
     if ($agent.PSObject.Properties['version']) {
         $candidate=[string]$agent.version
-        if ($candidate -match '^[0-9]+$') { $version=$candidate }
+        if ($candidate -match '^(draft-[0-9]+|[0-9]+) { $version=$candidate }
+    }
+    if (-not $version -and $agent.PSObject.Properties['versions'] -and $null -ne $agent.versions) {
+        $nested=$agent.versions.PSObject.Properties['latest']
+        if ($null -ne $nested -and $null -ne $nested.Value) {
+            $latest=$nested.Value
+            if ([string]$latest -match '^[0-9]+$') {
+                $version=[string]$latest
+            } elseif ($latest.PSObject.Properties['version'] -and
+                [string]$latest.version -match '^[0-9]+$') {
+                $version=[string]$latest.version
+            }
+        }
+    }
+    if (-not $version) {
+        throw 'JAWS-FOUNDRY-018: Creation response omitted a recognizable version. Inspect existing Azure agent; do not retry POST.'
+    }
+    [pscustomobject]@{
+        Status='PROVISIONING_STARTED';AgentName=[string]$p.AgentName;Version=$version
+        Image=[string]$p.Image;ProjectEndpoint=[string]$p.ProjectEndpoint
+        AgentVersionUri="$($p.ProjectEndpoint)/agents/$($p.AgentName)/versions/$version"
+        PlanSha256=[string]$DeploymentPlan.PlanSha256;FoundryDeploymentPerformed=$true
+        AzureWrites=1;ActiveVerified=$false;InvocationVerified=$false
+    }
+}
+Export-ModuleMember -Function Resolve-JawsSupervisorPublishReceipt,New-JawsFoundrySupervisorPlan,Test-JawsFoundryDeploymentPlan,Invoke-JawsFoundrySupervisorDeployment,Test-JawsFoundryAcrPullRole
+) { $version=$candidate }
     }
     if (-not $version -and $agent.PSObject.Properties['versions'] -and $null -ne $agent.versions) {
         $nested=$agent.versions.PSObject.Properties['latest']

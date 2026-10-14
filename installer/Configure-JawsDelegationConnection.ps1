@@ -17,7 +17,6 @@ $foundry='jaws-foundry-dev'; $project='jaws-dev'; $name='jaws-investigation-a2a-
 $endpoint="https://$foundry.services.ai.azure.com/api/projects/$project"
 $target="$endpoint/agents/jaws-investigation-dev/endpoint/protocols/a2a"
 $id="/subscriptions/$($state.SubscriptionId)/resourceGroups/$($state.ResourceGroupName)/providers/Microsoft.CognitiveServices/accounts/$foundry/projects/$project/connections/$name"
-$url="https://management.azure.com$id?api-version=2025-04-01-preview"
 # Correct PowerShell interpolation: a question mark immediately after a variable needs $().
 $url="https://management.azure.com/$($id.TrimStart('/'))?api-version=2025-04-01-preview"
 $payload=[ordered]@{

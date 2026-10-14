@@ -1,7 +1,7 @@
 # Consolidated JAWS Step C installer. Preserves existing resources and approvals.
 [CmdletBinding()]
 param(
- [ValidateSet('Plan','Install','Verify','DelegationPlan','DelegationInstall','DelegationVerify','DelegationRbacPlan','DelegationRbacInstall','DelegationRbacVerify','SupervisorV2Build','SupervisorV2Plan','SupervisorV2Publish','SupervisorV2Deploy','SupervisorReleasePlan','SupervisorRelease','SupervisorV2Verify','ToolboxDiscovery')][string]$Mode='Plan',
+ [ValidateSet('Plan','Install','Verify','DelegationPlan','DelegationInstall','DelegationVerify','DelegationRbacPlan','DelegationRbacInstall','DelegationRbacVerify','SupervisorV2Build','SupervisorV2Plan','SupervisorV2Publish','SupervisorV2Deploy','SupervisorReleasePlan','SupervisorRelease','SupervisorV2Verify','ToolboxDiscovery','RuntimeToolDiscovery')][string]$Mode='Plan',
  [string]$ApprovedA2APlanSha256,
  [switch]$AcknowledgeAgentEndpointChange,
  [string]$ApprovedDelegationConnectionSha256,
@@ -12,6 +12,10 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $root=$PSScriptRoot
+if($Mode -eq 'RuntimeToolDiscovery') {
+ & (Join-Path $root 'Test-JawsRuntimeToolDiscovery.ps1')
+ return
+}
 if($Mode -eq 'ToolboxDiscovery') {
  & (Join-Path $root 'Test-JawsToolboxDiscovery.ps1')
  return

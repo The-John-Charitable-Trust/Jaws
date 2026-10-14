@@ -6,6 +6,7 @@ param(
     [string]$StateFile=(Join-Path $PSScriptRoot 'config/jaws-installation-state.dev.json'),
     [string]$PublishReceiptFile=(Join-Path $PSScriptRoot '.local/jaws-supervisor-publish-receipt.dev.generated.json'),
     [string]$AgentName='jaws-supervisor-dev',
+    [string]$ToolboxName,
     [string]$ApprovedPlanSha256,
     [switch]$AcknowledgeHostingAndInferenceCharges
 )
@@ -19,7 +20,7 @@ if (-not (Test-Path -LiteralPath $PublishReceiptFile -PathType Leaf)) {
     throw 'JAWS-FOUNDRY-020: Verified ACR publish receipt not found.'
 }
 $receipt=Get-Content -LiteralPath $PublishReceiptFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
-$plan=New-JawsFoundrySupervisorPlan -State $state -PublishReceipt $receipt -AgentName $AgentName
+$plan=New-JawsFoundrySupervisorPlan -State $state -PublishReceipt $receipt -AgentName $AgentName -ToolboxName $ToolboxName
 $outDir=Join-Path $PSScriptRoot '.local'
 if (-not (Test-Path -LiteralPath $outDir)) {$null=New-Item -ItemType Directory -Path $outDir -Force}
 $report=Join-Path $outDir "jaws-foundry-supervisor-plan.$($state.EnvironmentName).generated.json"

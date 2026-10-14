@@ -10,6 +10,10 @@ $expectedImage='jawsregistrydev001.azurecr.io/jaws/supervisor@sha256:5a9cd89cfc6
 if(-not $AcknowledgeInferenceCharges){throw 'JAWS-C-ACCEPT-001: Explicit inference charge acknowledgment required.'}
 & (Join-Path $root 'Install-JawsStepC.ps1') -Mode DelegationVerify
 if(-not $?){throw 'JAWS-C-ACCEPT-002: Delegation prerequisites not verified.'}
+# Reject before billable inference when the released Supervisor identity cannot
+# authenticate to the project toolbox and Investigation A2A endpoint.
+& (Join-Path $root 'Configure-JawsDelegationConsumerRbac.ps1') -Mode Verify
+if(-not $?){throw 'JAWS-C-ACCEPT-008: Supervisor delegation RBAC not verified.'}
 function Get-Jaws([string]$url){
  $out=& az rest --method get --url $url --resource https://ai.azure.com --output json --only-show-errors 2>&1
  if($LASTEXITCODE -ne 0){throw "JAWS-C-ACCEPT-003: Cannot verify agent: $($out|Out-String)"}

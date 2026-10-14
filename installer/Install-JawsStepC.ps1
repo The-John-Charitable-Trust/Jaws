@@ -1,7 +1,7 @@
 # Consolidated JAWS Step C installer. Preserves existing resources and approvals.
 [CmdletBinding()]
 param(
- [ValidateSet('Plan','Install','Verify','DelegationPlan','DelegationInstall','DelegationVerify','SupervisorV2Build','SupervisorV2Plan','SupervisorV2Publish','SupervisorV2Deploy','SupervisorReleasePlan','SupervisorRelease','SupervisorV2Verify')][string]$Mode='Plan',
+ [ValidateSet('Plan','Install','Verify','DelegationPlan','DelegationInstall','DelegationVerify','DelegationRbacPlan','DelegationRbacInstall','DelegationRbacVerify','SupervisorV2Build','SupervisorV2Plan','SupervisorV2Publish','SupervisorV2Deploy','SupervisorReleasePlan','SupervisorRelease','SupervisorV2Verify')][string]$Mode='Plan',
  [string]$ApprovedA2APlanSha256,
  [switch]$AcknowledgeAgentEndpointChange,
  [string]$ApprovedDelegationConnectionSha256,
@@ -12,6 +12,25 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $root=$PSScriptRoot
+if($Mode -like 'DelegationRbac*'){
+ $rbac=Join-Path $root 'Configure-JawsDelegationConsumerRbac.ps1'
+ if($Mode -eq 'DelegationRbacPlan'){& $rbac -Mode Plan; return}
+ if($Mode -eq 'DelegationRbacVerify'){& $rbac -Mode Verify; return}
+ & $rbac -Mode Plan
+ $planPath=Join-Path $root '.local/jaws-step-c-delegation-consumer-rbac-plan.dev.generated.json'
+ $plan=Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json
+ if($plan.AssignmentExists -eq $true){
+  & $rbac -Mode Verify
+  return
+ }
+ Write-Host "Principal: $($plan.PrincipalId)"
+ Write-Host "Role definition: $($plan.RoleDefinitionId) (Foundry Agent Consumer)"
+ Write-Host "Scope: $($plan.Scope)"
+ $answer=Read-Host 'Approve this least-privilege security role assignment? [y/N]'
+ if($answer.Trim() -ine 'y'){throw 'JAWS-STEP-C-RBAC-001: Role assignment declined.'}
+ & $rbac -Mode Assign -ApprovedPlanSha256 $plan.PlanSha256 -AcknowledgeSecurityRoleAssignment
+ return
+}
 if($Mode -eq 'SupervisorV2Verify') {
  $answer=Read-Host 'Run billable authenticated Supervisor-to-Investigation acceptance test? [y/N]'
  if($answer.Trim() -ine 'y'){throw 'JAWS-STEP-C-ACCEPT-001: Test declined.'}

@@ -9,7 +9,7 @@ $tokenJson=& az account get-access-token --resource https://ai.azure.com --outpu
 if($LASTEXITCODE -ne 0){throw 'JAWS-MCP-DISCOVERY-001: Azure CLI cannot obtain a Foundry token.'}
 $access=($tokenJson|Out-String|ConvertFrom-Json).accessToken
 if([string]::IsNullOrWhiteSpace($access)){throw 'JAWS-MCP-DISCOVERY-002: Empty bearer token.'}
-$baseHeaders=@{ Authorization="Bearer $access"; Accept='application/json, text/event-stream'; 'MCP-Protocol-Version'='2025-03-26' }
+$baseHeaders=@{ Authorization="Bearer $access"; Accept='application/json, text/event-stream'; 'MCP-Protocol-Version'='2025-11-25' }
 function Invoke-Mcp([hashtable]$payload,[string]$session='', [string]$stage='request') {
  $headers=@{}
  foreach($key in $baseHeaders.Keys){$headers[$key]=$baseHeaders[$key]}
@@ -43,7 +43,7 @@ function Invoke-Mcp([hashtable]$payload,[string]$session='', [string]$stage='req
  }
  return [pscustomobject]@{ Data=$data;Session=$id }
 }
-$init=Invoke-Mcp -stage 'initialize' -payload @{jsonrpc='2.0';id=1;method='initialize';params=@{protocolVersion='2025-03-26';capabilities=@{};clientInfo=@{name='jaws-step-c-diagnostic';version='1.0'}}}
+$init=Invoke-Mcp -stage 'initialize' -payload @{jsonrpc='2.0';id=1;method='initialize';params=@{protocolVersion='2025-11-25';capabilities=@{};clientInfo=@{name='jaws-step-c-diagnostic';version='1.0'}}}
 if(-not @($init.Data|Where-Object {$_.result}).Count){throw 'JAWS-MCP-DISCOVERY-004: MCP initialize did not return a result.'}
 # Session-aware initialized notification. Do not issue tool calls.
 $null=Invoke-Mcp -stage 'notifications/initialized' -payload @{jsonrpc='2.0';method='notifications/initialized'} -session $init.Session

@@ -48,8 +48,23 @@ if(-not @($init.Data|Where-Object { $_ -and $_.PSObject.Properties['result'] -an
 # Session-aware initialized notification. Do not issue tool calls.
 $null=Invoke-Mcp -stage 'notifications/initialized' -payload @{jsonrpc='2.0';method='notifications/initialized'} -session $init.Session
 $list=Invoke-Mcp -stage 'tools/list' -payload @{jsonrpc='2.0';id=2;method='tools/list';params=@{}} -session $init.Session
-$matches=@($list.Data|Where-Object { $_ -and $_.PSObject.Properties['result'] -and $null -ne $_.result -and $_.result.PSObject.Properties['tools'] })
-if($matches.Count -ne 1){throw 'JAWS-MCP-DISCOVERY-005: tools/list unavailable or malformed.'}
+$errors=@($list.Data | Where-Object { $_ -and $_.PSObject.Properties['error'] })
+if($errors.Count -gt 0){
+ foreach($entry in $errors){
+  $code=if($entry.error.PSObject.Properties['code']){[string]$entry.error.code}else{'unknown'}
+  $message=if($entry.error.PSObject.Properties['message']){[string]$entry.error.message}else{'unspecified'}
+  Write-Warning "MCP tools/list JSON-RPC error: code=$code; message=$message"
+ }
+ throw 'JAWS-MCP-DISCOVERY-007: MCP server returned a tools/list error. No Azure writes or tool calls.'
+}
+$matches=@($list.Data | Where-Object { $_ -and $_.PSObject.Properties['result'] -and $null -ne $_.result -and $_.result.PSObject.Properties['tools'] })
+if($matches.Count -ne 1){
+ $shapes=@($list.Data | ForEach-Object {
+  if($_){'['+($_.PSObject.Properties.Name -join ',')+']'}else{'<null>'}
+ })
+ Write-Warning "MCP tools/list response shapes: $($shapes -join '; '); session present: $(-not [string]::IsNullOrWhiteSpace($list.Session))"
+ throw 'JAWS-MCP-DISCOVERY-005: tools/list unavailable or malformed.'
+}
 $tools=@($matches[0].result.tools)
 $names=@($tools|Where-Object { $_ -and $_.PSObject.Properties['name'] }|ForEach-Object { [string]$_.name })
 $status=if($names.Count -gt 0){'MCP_TOOLS_EXPOSED'}else{'MCP_TOOL_LIST_EMPTY'}

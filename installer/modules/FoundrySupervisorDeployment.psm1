@@ -234,29 +234,3 @@ function Invoke-JawsFoundrySupervisorDeployment {
     }
 }
 Export-ModuleMember -Function Resolve-JawsSupervisorPublishReceipt,New-JawsFoundrySupervisorPlan,Test-JawsFoundryDeploymentPlan,Invoke-JawsFoundrySupervisorDeployment,Test-JawsFoundryAcrPullRole
-) { $version=$candidate }
-    }
-    if (-not $version -and $agent.PSObject.Properties['versions'] -and $null -ne $agent.versions) {
-        $nested=$agent.versions.PSObject.Properties['latest']
-        if ($null -ne $nested -and $null -ne $nested.Value) {
-            $latest=$nested.Value
-            if ([string]$latest -match '^[0-9]+$') {
-                $version=[string]$latest
-            } elseif ($latest.PSObject.Properties['version'] -and
-                [string]$latest.version -match '^[0-9]+$') {
-                $version=[string]$latest.version
-            }
-        }
-    }
-    if (-not $version) {
-        throw 'JAWS-FOUNDRY-018: Creation response omitted a recognizable version. Inspect existing Azure agent; do not retry POST.'
-    }
-    [pscustomobject]@{
-        Status='PROVISIONING_STARTED';AgentName=[string]$p.AgentName;Version=$version
-        Image=[string]$p.Image;ProjectEndpoint=[string]$p.ProjectEndpoint
-        AgentVersionUri="$($p.ProjectEndpoint)/agents/$($p.AgentName)/versions/$version"
-        PlanSha256=[string]$DeploymentPlan.PlanSha256;FoundryDeploymentPerformed=$true
-        AzureWrites=1;ActiveVerified=$false;InvocationVerified=$false
-    }
-}
-Export-ModuleMember -Function Resolve-JawsSupervisorPublishReceipt,New-JawsFoundrySupervisorPlan,Test-JawsFoundryDeploymentPlan,Invoke-JawsFoundrySupervisorDeployment,Test-JawsFoundryAcrPullRole

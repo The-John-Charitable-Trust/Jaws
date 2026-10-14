@@ -37,7 +37,7 @@ try{
  $response=$raw|Out-String|ConvertFrom-Json -ErrorAction Stop
 }finally{Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue}
 $items=@($response.output)
-$toolEvidence=@($items|Where-Object { $_ -and $_.PSObject.Properties['type'] -and [string]$_.type -match '(?i)(a2a|tool|mcp)' })
+$toolEvidence=@($items|Where-Object { $_ -and $_.PSObject.Properties['type'] -and [string]$_.type -match '(?i)(a2a|tool|mcp)' -and (($_ | ConvertTo-Json -Depth 12 -Compress) -match '(?i)(jaws-investigation|jaws-investigation-a2a-tools|investigation-planning|/protocols/a2a)') })
 $completed=([string]$response.status -ceq 'completed')
 $status=if($completed -and $toolEvidence.Count -gt 0){'PASS'}else{'FAIL'}
 $report=[pscustomobject]@{

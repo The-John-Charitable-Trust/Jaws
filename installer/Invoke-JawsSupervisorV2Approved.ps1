@@ -18,8 +18,8 @@ function Confirm-ApprovedPlan([string]$Label,[string]$PlanPath) {
   Write-Host "Target image: $($plan.Plan.TargetTag)"
  }
  Write-Host 'Azure storage, hosted compute, or model inference charges may apply.'
- $response=Read-Host 'Type APPROVE to execute this exact plan, or anything else to cancel'
- if($response -cne 'APPROVE'){throw 'JAWS-STEP-C-APPROVAL-003: Operator declined. No changes made.'}
+ $response=Read-Host 'Approve this exact plan and its potential charges? [y/N]'
+ if($null -eq $response -or $response.Trim() -ine 'y') {throw 'JAWS-STEP-C-APPROVAL-003: Operator declined. No changes made.'}
  return $sha
 }
 if($Mode -eq 'Publish'){

@@ -1,9 +1,9 @@
 # Step C: read-only MCP tools/list probe. No agent invocation, no Azure mutations.
 [CmdletBinding()]
-param()
+param([ValidateSet('1','2')][string]$ToolboxVersion='1')
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
-$endpoint='https://jaws-foundry-dev.services.ai.azure.com/api/projects/jaws-dev/toolboxes/jaws-investigation-a2a-tools/versions/1/mcp?api-version=v1'
+$endpoint='https://jaws-foundry-dev.services.ai.azure.com/api/projects/jaws-dev/toolboxes/jaws-investigation-a2a-tools/versions/$ToolboxVersion/mcp?api-version=v1'
 $reportPath=Join-Path $PSScriptRoot '.local/jaws-step-c-runtime-tool-discovery.dev.generated.json'
 $tokenJson=& az account get-access-token --resource https://ai.azure.com --output json --only-show-errors 2>&1
 if($LASTEXITCODE -ne 0){throw 'JAWS-MCP-DISCOVERY-001: Azure CLI cannot obtain a Foundry token.'}
@@ -69,7 +69,7 @@ $tools=@($matches[0].result.tools)
 $names=@($tools|Where-Object { $_ -and $_.PSObject.Properties['name'] }|ForEach-Object { [string]$_.name })
 $status=if($names.Count -gt 0){'MCP_TOOLS_EXPOSED'}else{'MCP_TOOL_LIST_EMPTY'}
 [pscustomobject]@{
- Status=$status;Toolbox='jaws-investigation-a2a-tools';ToolCount=$names.Count
+ Status=$status;Toolbox='jaws-investigation-a2a-tools';ToolboxVersion=$ToolboxVersion;ToolCount=$names.Count
  ToolNames=$names;McpInitialized=$true;McpSessionPresent= -not [string]::IsNullOrWhiteSpace($init.Session)
  AzureWrites=0;ToolCallsExecuted=0;InferenceCallsExecuted=0
  VerifiedAtUtc=[datetime]::UtcNow.ToString('o')

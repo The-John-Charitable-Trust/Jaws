@@ -38,6 +38,12 @@ try{
 }finally{Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue}
 $items=@($response.output)
 $toolEvidence=@($items|Where-Object { $_ -and $_.PSObject.Properties['type'] -and [string]$_.type -match '(?i)(a2a|tool|mcp)' -and (($_ | ConvertTo-Json -Depth 12 -Compress) -match '(?i)(jaws-investigation|jaws-investigation-a2a-tools|investigation-planning|/protocols/a2a)') })
+$outputTypes=@($items | ForEach-Object { if($_ -and $_.PSObject.Properties['type']){[string]$_.type}else{'<missing-type>'} })
+$textParts=@($items | ForEach-Object { if($_ -and $_.PSObject.Properties['content']) { foreach($part in @($_.content)){if($part -and $part.PSObject.Properties['text']){[string]$part.text}} } })
+$diagnosticText=(($textParts -join ' ') -replace '[\\r\\n]+',' ').Trim()
+if($diagnosticText.Length -gt 1200){$diagnosticText=$diagnosticText.Substring(0,1200)}
+Write-Host "Supervisor status: $($response.status); output item types: $($outputTypes -join ', ')"
+if($diagnosticText){Write-Host "Supervisor response excerpt: $diagnosticText"}
 $completed=([string]$response.status -ceq 'completed')
 $status=if($completed -and $toolEvidence.Count -gt 0){'PASS'}else{'FAIL'}
 $report=[pscustomobject]@{
@@ -49,6 +55,8 @@ $report=[pscustomobject]@{
  ResponseStatus=[string]$response.status
  ToolEvidenceTypes=@($toolEvidence|ForEach-Object {$_.type})
  ToolEvidenceCount=$toolEvidence.Count
+ OutputItemTypes=$outputTypes
+ Diagnosis=if(-not $completed){'Response did not complete'}elseif($toolEvidence.Count -eq 0){'Investigation delegation not proven: inspect output types, runtime tool enumeration and identity permissions'}else{'Investigation-related tool activity observed'}
  RemediationRequested=$false
  AzureInfrastructureWrites=0
  InferencePerformed=$true

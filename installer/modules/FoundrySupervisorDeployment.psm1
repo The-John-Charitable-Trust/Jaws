@@ -36,7 +36,7 @@ function Resolve-JawsSupervisorPublishReceipt {
 function New-JawsFoundrySupervisorPlan {
     [CmdletBinding()]
     param([Parameter(Mandatory)]$State,[Parameter(Mandatory)]$PublishReceipt,
-          [string]$AgentName='jaws-supervisor-dev')
+          [string]$AgentName='jaws-supervisor-dev', [string]$ToolboxName)
     if ($State.Platform -ne 'JAWS' -or $State.EnvironmentName -ne 'dev' -or
         $AgentName -cnotmatch '^[a-z][a-z0-9-]{2,62}$') {
         throw 'JAWS-FOUNDRY-001: Unexpected state or agent name.'
@@ -62,6 +62,12 @@ function New-JawsFoundrySupervisorPlan {
         protocol_versions=@([ordered]@{protocol='responses';version='2.0.0'})
         # Foundry injects FOUNDRY_PROJECT_ENDPOINT at runtime. FOUNDRY_* and AGENT_* are reserved.
         environment_variables=[ordered]@{AZURE_AI_MODEL_DEPLOYMENT_NAME=[string]$model[0].Name}
+    }
+    if(-not [string]::IsNullOrWhiteSpace($ToolboxName)) {
+        if($ToolboxName -cne 'jaws-investigation-a2a-tools' -or $AgentName -cne 'jaws-supervisor-v2-dev') {
+            throw 'JAWS-FOUNDRY-TOOLBOX-001: Toolbox deployment requires isolated Supervisor v2 candidate.'
+        }
+        $definition.environment_variables['JAWS_INVESTIGATION_TOOLBOX_NAME']=$ToolboxName
     }
     $request=[ordered]@{name=$AgentName;definition=$definition}
     $payload=[ordered]@{
@@ -95,7 +101,9 @@ function Test-JawsFoundryDeploymentPlan {
         $DeploymentPlan.Plan.Request.definition.kind -ne 'hosted' -or
         $DeploymentPlan.Plan.Request.definition.cpu -ne '1' -or
         $DeploymentPlan.Plan.Request.definition.memory -ne '2Gi' -or
-        $reservedEnvironmentNames.Count -ne 0) {
+        $reservedEnvironmentNames.Count -ne 0 -or
+        ($DeploymentPlan.Plan.AgentName -ceq 'jaws-supervisor-v2-dev' -and
+          [string]$DeploymentPlan.Plan.Request.definition.environment_variables.JAWS_INVESTIGATION_TOOLBOX_NAME -cne 'jaws-investigation-a2a-tools')) {
         throw 'JAWS-FOUNDRY-005: Unsafe or altered hosted agent plan.'
     }
     $json=ConvertTo-Json -InputObject $DeploymentPlan.Plan -Depth 20 -Compress

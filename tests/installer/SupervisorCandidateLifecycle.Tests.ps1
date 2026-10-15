@@ -25,6 +25,22 @@ Describe 'Foundry Supervisor candidate lifecycle' {
   $all=@(Get-JawsSupervisorVersionInventory -ReadPage $fetch -ProjectEndpoint $script:url)
   $all.Count | Should -Be 1
  }
+ It 'hydrates version-list summaries from version detail' {
+  $fetch={
+    param($url)
+    if($url -match '/versions/draft-100\\?'){
+      return $script:candidate
+    }
+    return [pscustomobject]@{data=@([pscustomobject]@{version='draft-100';status='active';draft=$true})}
+  }
+  $all=@(Get-JawsSupervisorVersionInventory -ReadPage $fetch -ProjectEndpoint $script:url)
+  $all.Count | Should -Be 1
+  $all[0].definition.container_configuration.image | Should -Be $script:image
+ }
+ It 'rejects malformed version identifiers before requesting version details' {
+  $fetch={param($url) [pscustomobject]@{data=@([pscustomobject]@{version='../other'})}}
+  {Get-JawsSupervisorVersionInventory -ReadPage $fetch -ProjectEndpoint $script:url} | Should -Throw '*Invalid version identifier*'
+ }
  It 'rejects unsafe pagination host changes' {
   $fetch={param($u) [pscustomobject]@{data=@();nextLink='https://other.example/agent'}} 
   {Get-JawsSupervisorVersionInventory -ReadPage $fetch -ProjectEndpoint $script:url} | Should -Throw '*Unexpected continuation*'

@@ -138,18 +138,36 @@ Describe 'Foundry Supervisor candidate lifecycle' {
    $visible | Should -Be 'Wait-JawsSupervisorCandidate'
   } finally { $ps.Dispose() }
  }
- It 'escapes include_drafts for cmd.exe inside a batch file' {
+ It 'passes include_drafts to Azure CLI python as one argument' {
+  $url='https://example.test/agents/jaws-supervisor-dev/versions?api-version=v1&continuation=abc&include_drafts=true'
+  $plan=Get-JawsAzRestGetCommand -Url $url -Resource 'https://ai.azure.com' -PythonPath 'C:\Program Files\Microsoft SDKs\Azure\CLI2\python.exe'
+  $plan.Runner | Should -Be 'python'
+  $plan.Arguments[6] | Should -Be $url
+  @($plan.Arguments | Where-Object { $_ -eq 'include_drafts=true' }).Count | Should -Be 0
+ }
+ It 'escapes include_drafts for both cmd.exe parses when python.exe is absent' {
   $previous=$env:OS
   try {
    $env:OS='Windows_NT'
    $plan=Get-JawsAzRestGetCommand -Url 'https://example.test/agents/jaws-supervisor-dev/versions?api-version=v1&continuation=abc&include_drafts=true' -Resource 'https://ai.azure.com'
    $plan.Runner | Should -Be 'cmd'
    $plan.Batch | Should -Match 'setlocal DisableDelayedExpansion'
-   $plan.Batch | Should -Match 'call az rest --method get --url https://example\.test/agents/jaws-supervisor-dev/versions\?api-version=v1\^&continuation=abc\^&include_drafts=true --resource https://ai\.azure\.com'
-   $plan.Batch | Should -Not -Match 'api-version=v1&'
+   $plan.Batch | Should -Match 'api-version=v1\^\^\^&continuation=abc\^\^\^&include_drafts=true'
+   ($plan.Batch -replace '\^\^\^&','') | Should -Not -Match '&'
   } finally {
    if($null -eq $previous){ Remove-Item Env:OS -ErrorAction SilentlyContinue } else { $env:OS=$previous }
   }
+ }
+ It 'finds the Azure CLI python.exe beside az.cmd' {
+  $root=Join-Path ([IO.Path]::GetTempPath()) ("jaws-az-layout-{0}" -f [guid]::NewGuid().ToString('n'))
+  $wbin=Join-Path $root 'wbin'
+  New-Item -ItemType Directory -Path $wbin -Force | Out-Null
+  try {
+   New-Item -ItemType File -Path (Join-Path $root 'python.exe') -Force | Out-Null
+   New-Item -ItemType File -Path (Join-Path $wbin 'az.cmd') -Force | Out-Null
+   Resolve-JawsAzureCliPython -AzCommandSource (Join-Path $wbin 'az.cmd') | Should -Be (Join-Path $root 'python.exe')
+   Resolve-JawsAzureCliPython -AzCommandSource (Join-Path $root 'az') | Should -BeNullOrEmpty
+  } finally { Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue }
  }
  It 'leaves urls without an ampersand on the direct az command' {
   $previous=$env:OS

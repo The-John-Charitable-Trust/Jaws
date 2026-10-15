@@ -17,34 +17,77 @@ function Get-JawsFoundryField {
     }
     return $current
 }
-function Get-JawsAzRestGetCommand {
-    param([Parameter(Mandatory)][string]$Url,[Parameter(Mandatory)][string]$Resource)
-    # az on Windows is az.cmd. PowerShell launches it through cmd.exe, and cmd.exe
-    # treats an unquoted & as a second command. Quotes added from PowerShell are
-    # stripped before cmd sees them, so include_drafts was executed as a program.
-    # A batch file lets cmd itself interpret ^& as a literal ampersand.
-    if($env:OS -eq 'Windows_NT' -and $Url.Contains('&')){
-        if($Url -match '["!\r\n\s]' -or $Resource -match '[&"!\r\n\s%]'){ throw 'JAWS-AZ-001: Foundry URL cannot be passed through cmd.exe safely.' }
-        $escaped=$Url.Replace('%','%%').Replace('&','^&')
-        $batch="@echo off`r`nsetlocal DisableDelayedExpansion`r`ncall az rest --method get --url $escaped --resource $Resource --output json --only-show-errors`r`nexit /b %ERRORLEVEL%`r`n"
-        return [pscustomobject]@{Runner='cmd';Batch=$batch;Url=$Url;Resource=$Resource}
+function Resolve-JawsAzureCliPython {
+    param([string]$AzCommandSource)
+    if([string]::IsNullOrWhiteSpace($AzCommandSource)){ return $null }
+    $leaf=Split-Path -Path $AzCommandSource -Leaf
+    if($leaf -notmatch '(?i)\.cmd$'){ return $null }
+    $dir=Split-Path -Path $AzCommandSource -Parent
+    foreach($candidate in @(
+        (Join-Path (Split-Path -Path $dir -Parent) 'python.exe'),
+        (Join-Path $dir 'python.exe')
+    )){
+        if(Test-Path -LiteralPath $candidate){ return $candidate }
     }
-    return [pscustomobject]@{Runner='az';Batch='';Url=$Url;Resource=$Resource}
+    return $null
+}
+function Get-JawsAzRestGetCommand {
+    param([Parameter(Mandatory)][string]$Url,[Parameter(Mandatory)][string]$Resource,[string]$PythonPath)
+    # Prefer the CLI's python.exe. It is a real program, so & in include_drafts stays
+    # inside one argument. az.cmd is parsed by cmd.exe twice when another batch file
+    # calls it, and a single caret is consumed by the first parse.
+    if(-not [string]::IsNullOrWhiteSpace($PythonPath)){
+        return [pscustomobject]@{
+            Runner='python';File=$PythonPath;Batch='';Url=$Url;Resource=$Resource
+            Arguments=@('-IBm','azure.cli','rest','--method','get','--url',$Url,'--resource',$Resource,'--output','json','--only-show-errors')
+        }
+    }
+    if($env:OS -eq 'Windows_NT' -and $Url.Contains('&')){
+        if($Url -match '["\r\n]' -or $Resource -match '[&"\r\n\s%]'){ throw 'JAWS-AZ-001: Foundry URL cannot be passed through cmd.exe safely.' }
+        $escaped=$Url.Replace('%','%%').Replace('&','^^^&')
+        $batch="@echo off`r`nsetlocal DisableDelayedExpansion`r`ncall az rest --method get --url $escaped --resource $Resource --output json --only-show-errors`r`nexit /b %ERRORLEVEL%`r`n"
+        return [pscustomobject]@{Runner='cmd';File='';Batch=$batch;Url=$Url;Resource=$Resource;Arguments=@()}
+    }
+    return [pscustomobject]@{
+        Runner='az';File='az';Batch='';Url=$Url;Resource=$Resource
+        Arguments=@('rest','--method','get','--url',$Url,'--resource',$Resource,'--output','json','--only-show-errors')
+    }
 }
 function Invoke-JawsAzRestGet {
     param([Parameter(Mandatory)][string]$Url,[Parameter(Mandatory)][string]$Resource)
-    $plan=Get-JawsAzRestGetCommand -Url $Url -Resource $Resource
-    if($plan.Runner -eq 'cmd'){
-        $bat=Join-Path ([IO.Path]::GetTempPath()) ("jaws-az-rest-{0}.cmd" -f [guid]::NewGuid().ToString('n'))
-        try {
+    $python=$null
+    if($env:OS -eq 'Windows_NT'){
+        $az=Get-Command az -ErrorAction SilentlyContinue
+        if($az){ $python=Resolve-JawsAzureCliPython -AzCommandSource $az.Source }
+    }
+    $plan=Get-JawsAzRestGetCommand -Url $Url -Resource $Resource -PythonPath $python
+    $stdout=Join-Path ([IO.Path]::GetTempPath()) ("jaws-az-out-{0}.txt" -f [guid]::NewGuid().ToString('n'))
+    $stderr=Join-Path ([IO.Path]::GetTempPath()) ("jaws-az-err-{0}.txt" -f [guid]::NewGuid().ToString('n'))
+    $bat=$null
+    try {
+        if($plan.Runner -eq 'python'){
+            & $plan.File @($plan.Arguments) 1> $stdout 2> $stderr
+        } elseif($plan.Runner -eq 'cmd'){
+            $bat=Join-Path ([IO.Path]::GetTempPath()) ("jaws-az-rest-{0}.cmd" -f [guid]::NewGuid().ToString('n'))
             [IO.File]::WriteAllText($bat,$plan.Batch,[Text.Encoding]::ASCII)
-            & cmd.exe /d /c $bat
-        } finally {
-            Remove-Item -LiteralPath $bat -Force -ErrorAction SilentlyContinue
+            & cmd.exe /d /c $bat 1> $stdout 2> $stderr
+        } else {
+            & az @($plan.Arguments) 1> $stdout 2> $stderr
         }
+        $code=$LASTEXITCODE
+        $outText=if(Test-Path -LiteralPath $stdout){ Get-Content -LiteralPath $stdout -Raw -ErrorAction SilentlyContinue } else { '' }
+        $errText=if(Test-Path -LiteralPath $stderr){ Get-Content -LiteralPath $stderr -Raw -ErrorAction SilentlyContinue } else { '' }
+    } finally {
+        Remove-Item -LiteralPath $stdout,$stderr -Force -ErrorAction SilentlyContinue
+        if($bat){ Remove-Item -LiteralPath $bat -Force -ErrorAction SilentlyContinue }
+    }
+    $global:LASTEXITCODE=$code
+    if($code -ne 0){
+        if($errText){ Write-Output $errText }
+        if($outText){ Write-Output $outText }
         return
     }
-    & az rest --method get --url $plan.Url --resource $plan.Resource --output json --only-show-errors
+    if($outText){ Write-Output $outText.TrimEnd() }
 }
 function Set-JawsSupervisorDraftListing {
     param([Parameter(Mandatory)][string]$Url)
@@ -225,4 +268,4 @@ function Wait-JawsSupervisorCandidate {
  }
  return [pscustomobject]@{Status='INDETERMINATE';Version='';ActiveVerified=$false;Attempts=$MaxAttempts;Reason='No unique active version before timeout'}
 }
-Export-ModuleMember -Function Get-JawsFoundryField,Get-JawsFoundryAgentVersion,Compare-JawsFoundrySupervisorState,Resolve-JawsSupervisorCandidate,Get-JawsSupervisorVersionInventory,Wait-JawsSupervisorCandidate,Get-JawsAzRestGetCommand,Invoke-JawsAzRestGet
+Export-ModuleMember -Function Get-JawsFoundryField,Get-JawsFoundryAgentVersion,Compare-JawsFoundrySupervisorState,Resolve-JawsSupervisorCandidate,Get-JawsSupervisorVersionInventory,Wait-JawsSupervisorCandidate,Resolve-JawsAzureCliPython,Get-JawsAzRestGetCommand,Invoke-JawsAzRestGet

@@ -47,8 +47,14 @@ Write-Host "Receipt: $receiptPath"
 # Automatically reconcile the submitted image by immutable digest.
 # Read-only reconciliation never retries the deployment POST.
 if($ToolboxName -eq 'jaws-investigation-a2a-tools'){
- & (Join-Path $PSScriptRoot 'Reconcile-JawsSupervisorCandidate.ps1') -Mode Wait
- if(-not $?){throw 'JAWS-FOUNDRY-025: Candidate reconciliation failed; no second deployment should be attempted.'}
+ try{
+  & (Join-Path $PSScriptRoot 'Reconcile-JawsSupervisorCandidate.ps1') -Mode Wait
+ }catch{
+  $result.Status='RECONCILIATION_INDETERMINATE'
+  $result.ActiveVerified=$false
+  $result | ConvertTo-Json -Depth 15 | Set-Content -LiteralPath $receiptPath -Encoding utf8
+  throw "JAWS-FOUNDRY-025: Candidate reconciliation incomplete. No second deployment permitted. $($_.Exception.Message)"
+ }
  $verified=Get-Content (Join-Path $outDir 'jaws-step-c-supervisor-deployment-verified.dev.generated.json') -Raw|ConvertFrom-Json
  $result.Status=[string]$verified.Status
  $result.Version=[string]$verified.ResolvedVersion

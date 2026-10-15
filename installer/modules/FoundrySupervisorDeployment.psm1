@@ -191,7 +191,8 @@ function Invoke-JawsFoundrySupervisorDeployment {
         [string]$_.definition.container_configuration.image -ceq [string]$p.Image -and
         [string]$_.definition.environment_variables.JAWS_INVESTIGATION_TOOLBOX_NAME -ceq 'jaws-investigation-a2a-tools'
     })
-    if($sameImage.Count -gt 0){
+    if($sameImage.Count -gt 1){throw 'JAWS-FOUNDRY-026: Ambiguous existing versions.'}
+    if($sameImage.Count -eq 1){
         $present=$sameImage[0]
         return [pscustomobject]@{
             Status='ALREADY_PRESENT';AgentName=[string]$p.AgentName;Version=[string]$present.version

@@ -1,5 +1,6 @@
 # B2 Foundry hosted Supervisor deployment: explicit approval, fail-closed checks.
 Set-StrictMode -Version Latest
+Import-Module (Join-Path $PSScriptRoot 'FoundrySupervisorReconciliation.psm1') -Force
 function Resolve-JawsSupervisorPublishReceipt {
     [CmdletBinding()]
     param([Parameter(Mandatory)]$ReceiptContent)
@@ -182,14 +183,16 @@ function Invoke-JawsFoundrySupervisorDeployment {
     $v1=$v1Output | Out-String | ConvertFrom-Json
     if($v1.status -ne 'active'){throw 'JAWS-FOUNDRY-023: Supervisor v1 is not active.'}
     # v1 and any already released version stay in place. A new image is a new version.
-    $listOutput=& az rest --method get --url "$($p.ProjectEndpoint)/agents/jaws-supervisor-dev/versions?api-version=v1" --resource https://ai.azure.com --output json --only-show-errors 2>&1
-    if($LASTEXITCODE -ne 0){throw "JAWS-FOUNDRY-024: Cannot list Supervisor versions: $($listOutput | Out-String)"}
-    $listed=$listOutput | Out-String | ConvertFrom-Json
-    $sameImage=@($listed.data | Where-Object {
-        $null -ne $_ -and
-        $_.PSObject.Properties['definition'] -and
-        [string]$_.definition.container_configuration.image -ceq [string]$p.Image -and
-        [string]$_.definition.environment_variables.JAWS_INVESTIGATION_TOOLBOX_NAME -ceq 'jaws-investigation-a2a-tools'
+    $fetchVersions={
+      param($url)
+      $out=& az rest --method get --url $url --resource https://ai.azure.com --output json --only-show-errors 2>&1
+      if($LASTEXITCODE -ne 0){throw "JAWS-FOUNDRY-024: Cannot read existing version state: $($out|Out-String)"}
+      return ($out|Out-String|ConvertFrom-Json -ErrorAction Stop)
+    }
+    $inventory=@(Get-JawsSupervisorVersionInventory -ReadPage $fetchVersions -ProjectEndpoint $p.ProjectEndpoint)
+    $sameImage=@($inventory | Where-Object {
+        [string](Get-JawsFoundryField $_ @('definition','container_configuration','image')) -ceq [string]$p.Image -and
+        [string](Get-JawsFoundryField $_ @('definition','environment_variables','JAWS_INVESTIGATION_TOOLBOX_NAME')) -ceq 'jaws-investigation-a2a-tools'
     })
     if($sameImage.Count -gt 1){throw 'JAWS-FOUNDRY-026: Ambiguous existing versions.'}
     if($sameImage.Count -eq 1){

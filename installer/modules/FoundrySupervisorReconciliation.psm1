@@ -73,4 +73,85 @@ function Compare-JawsFoundrySupervisorState {
         FailedFields=@($failed | ForEach-Object Field)
     }
 }
-Export-ModuleMember -Function Get-JawsFoundryAgentVersion,Compare-JawsFoundrySupervisorState
+
+# Step C candidate resolution: no Azure calls and no mutation.
+function Resolve-JawsSupervisorCandidate {
+ [CmdletBinding()]
+ param([Parameter(Mandatory)][object[]]$Versions,[Parameter(Mandatory)][string]$Image,[string]$Toolbox='jaws-investigation-a2a-tools')
+ $matches=@($Versions|Where-Object {
+   $actualImage=Get-JawsFoundryField $_ @('definition','container_configuration','image')
+   $actualToolbox=Get-JawsFoundryField $_ @('definition','environment_variables','JAWS_INVESTIGATION_TOOLBOX_NAME')
+   [string]$actualImage -ceq $Image -and [string]$actualToolbox -ceq $Toolbox
+ })
+ if($matches.Count -gt 1){throw 'JAWS-RECON-101: Ambiguous versions for approved image; no release.'}
+ if($matches.Count -eq 0){return $null}
+ $item=$matches[0]
+ $version=[string](Get-JawsFoundryField $item @('version'))
+ $status=[string](Get-JawsFoundryField $item @('status'))
+ $draft=Get-JawsFoundryField $item @('draft')
+ if(-not $version -or $null -eq $draft -or -not $status){throw 'JAWS-RECON-102: Candidate missing identity/state.'}
+ return [pscustomobject]@{Version=$version;Status=$status;Draft=[bool]$draft;Image=$Image}
+}
+function Get-JawsSupervisorVersionInventory {
+ [CmdletBinding()]
+ param([Parameter(Mandatory)][scriptblock]$ReadPage,[Parameter(Mandatory)][string]$ProjectEndpoint,[int]$MaxPages=20)
+ if($MaxPages -lt 1){throw 'JAWS-RECON-103: Invalid page limit.'}
+ $url="$ProjectEndpoint/agents/jaws-supervisor-dev/versions?api-version=v1"
+ $seen=@{};$all=@()
+ for($n=0;$n -lt $MaxPages;$n++){
+  if($seen.ContainsKey($url)){throw 'JAWS-RECON-104: Pagination cycle.'}
+  $seen[$url]=$true
+  $page=& $ReadPage $url
+  $data=Get-JawsFoundryField $page @('data')
+  if($null -eq $data){$data=Get-JawsFoundryField $page @('value')}
+  if($null -eq $data){throw 'JAWS-RECON-105: Unrecognized version-list response.'}
+  $all+=@($data)
+  $next=Get-JawsFoundryField $page @('nextLink')
+  if(-not $next){$next=Get-JawsFoundryField $page @('next')}
+  if(-not $next){
+   if((Get-JawsFoundryField $page @('has_more')) -eq $true){throw 'JAWS-RECON-106: Page has_more without known continuation.'}
+   return @($all)
+  }
+  $prefix="$ProjectEndpoint/agents/jaws-supervisor-dev/versions?"
+  if(-not ([string]$next).StartsWith($prefix,[System.StringComparison]::OrdinalIgnoreCase)){
+   throw 'JAWS-RECON-107: Unexpected continuation URL.'
+  }
+  $url=[string]$next
+ }
+ throw 'JAWS-RECON-108: Pagination limit exceeded.'
+}
+function Wait-JawsSupervisorCandidate {
+ [CmdletBinding()]
+ param([Parameter(Mandatory)][scriptblock]$ReadPage,[Parameter(Mandatory)][string]$ProjectEndpoint,
+ [Parameter(Mandatory)][string]$Image,[int]$MaxAttempts=12,[int]$DelaySeconds=10,
+ [scriptblock]$Sleep={param($seconds) Start-Sleep -Seconds $seconds})
+ if($MaxAttempts -lt 1 -or $DelaySeconds -lt 0){throw 'JAWS-RECON-109: Invalid polling parameters.'}
+ for($i=1;$i -le $MaxAttempts;$i++){
+  try{
+   $versions=@(Get-JawsSupervisorVersionInventory -ReadPage $ReadPage -ProjectEndpoint $ProjectEndpoint)
+   $candidate=Resolve-JawsSupervisorCandidate -Versions $versions -Image $Image
+   if($null -ne $candidate){
+    if($candidate.Status -match '^(failed|error|canceled|cancelled)
+){
+     return [pscustomobject]@{Status='FAILED';Version=$candidate.Version;ActiveVerified=$false;Attempts=$i;Reason=$candidate.Status}
+    }
+    if($candidate.Status -ceq 'active' -and $candidate.Draft -eq $true -and $candidate.Version -match '^draft-[0-9]+
+){
+     return [pscustomobject]@{Status='ACTIVE_VERIFIED';Version=$candidate.Version;ActiveVerified=$true;Attempts=$i;Reason=''}
+    }
+    if($candidate.Status -ceq 'active' -and $candidate.Draft -eq $false -and $candidate.Version -match '^[0-9]+
+){
+     return [pscustomobject]@{Status='ALREADY_RELEASED';Version=$candidate.Version;ActiveVerified=$true;Attempts=$i;Reason=''}
+    }
+   }
+  }catch{
+   # Schema ambiguity and unsafe pagination must never be swallowed.
+   if($_.Exception.Message -match '^JAWS-RECON-'){throw}
+   if($i -eq $MaxAttempts){throw}
+  }
+  if($i -lt $MaxAttempts){& $Sleep $DelaySeconds}
+ }
+ return [pscustomobject]@{Status='INDETERMINATE';Version='';ActiveVerified=$false;Attempts=$MaxAttempts;Reason='Candidate not uniquely active before timeout'}
+}
+
+Export-ModuleMember -Function Get-JawsFoundryAgentVersion,Compare-JawsFoundrySupervisorState,Resolve-JawsSupervisorCandidate,Get-JawsSupervisorVersionInventory,Wait-JawsSupervisorCandidate

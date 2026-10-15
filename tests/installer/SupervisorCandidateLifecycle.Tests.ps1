@@ -62,6 +62,28 @@ Describe 'Foundry Supervisor candidate lifecycle' {
   $fetch={param($url) [pscustomobject]@{data=@()}}
   (Wait-JawsSupervisorCandidate -ReadPage $fetch -ProjectEndpoint $script:url -Image $script:image -MaxAttempts 2 -DelaySeconds 0 -Sleep {param($seconds)}).Status | Should -Be 'INDETERMINATE'
  }
+ It 'retries a transient version-list 404 without deployment writes' {
+  $attempt=0
+  $fetch={
+   param($url)
+   $attempt++
+   if($attempt -eq 1){throw 'HTTP 404: Not Found'}
+   [pscustomobject]@{data=@($script:candidate)}
+  }.GetNewClosure()
+  $result=Wait-JawsSupervisorCandidate -ReadPage $fetch -ProjectEndpoint $script:url -Image $script:image -MaxAttempts 2 -DelaySeconds 0 -Sleep {param($seconds)}
+  $result.Status | Should -Be 'ACTIVE_VERIFIED'
+  $result.Attempts | Should -Be 2
+ }
+ It 'fails closed on a version listing without data or value properties' {
+  $fetch={param($url) [pscustomobject]@{items=@()}}
+  {Get-JawsSupervisorVersionInventory -ReadPage $fetch -ProjectEndpoint $script:url} | Should -Throw '*Unrecognized version-list response*'
+ }
+ It 'checks installer source for state-first reconciliation before deployment release' {
+  $deploy=Get-Content (Join-Path $PSScriptRoot '../../installer/modules/FoundrySupervisorDeployment.psm1') -Raw
+  $release=Get-Content (Join-Path $PSScriptRoot '../../installer/Release-JawsSupervisorCandidate.ps1') -Raw
+  $deploy | Should -Match 'Get-JawsSupervisorVersionInventory'
+  $release | Should -Match 'JAWS-SUP-CANDIDATE-012'
+ }
  It 'parses all lifecycle PowerShell files' {
   foreach($relative in @('../../installer/modules/FoundrySupervisorReconciliation.psm1','../../installer/Reconcile-JawsSupervisorCandidate.ps1','../../installer/Release-JawsSupervisorCandidate.ps1','../../installer/Install-JawsStepC.ps1')){
    $t=$null;$errors=$null

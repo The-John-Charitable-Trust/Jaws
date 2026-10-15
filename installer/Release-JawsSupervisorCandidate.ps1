@@ -34,11 +34,13 @@ if($v1.status -ne 'active' -or $v1.draft -ne $false){throw 'JAWS-SUP-CANDIDATE-0
 if([string]$v1.definition.container_configuration.image -ceq $image){
  throw 'JAWS-SUP-CANDIDATE-005: Refusing to release an image that is already Supervisor v1.'
 }
-$versions=Read-Foundry "$endpoint/agents/$agent/versions?api-version=v1"
-$matches=@($versions.data | Where-Object {
+# Same paginated, detail-hydrated inventory used before deployment. A single list page can omit
+# the active draft or return a summary without the container image.
+$versions=@(Get-JawsSupervisorVersionInventory -ReadPage { param($url) Read-Foundry $url } -ProjectEndpoint $endpoint)
+$matches=@($versions | Where-Object {
   $null -ne $_ -and
-  [string]$_.definition.container_configuration.image -ceq $image -and
-  [string]$_.definition.environment_variables.JAWS_INVESTIGATION_TOOLBOX_NAME -ceq 'jaws-investigation-a2a-tools'
+  [string](Get-JawsFoundryField $_ @('definition','container_configuration','image')) -ceq $image -and
+  [string](Get-JawsFoundryField $_ @('definition','environment_variables','JAWS_INVESTIGATION_TOOLBOX_NAME')) -ceq 'jaws-investigation-a2a-tools'
 })
 $released=@($matches | Where-Object { $_.draft -eq $false -and $_.status -eq 'active' })
 $dir=Join-Path $PSScriptRoot '.local'

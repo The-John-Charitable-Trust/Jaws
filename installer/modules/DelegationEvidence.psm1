@@ -16,7 +16,12 @@ function Get-JawsDelegationEvidence($Response) {
   $result=@($outputs | Where-Object { [string](Get-JawsField $_ 'call_id') -ceq $id })
   $raw=if($result.Count -eq 1){[string](Get-JawsField $result[0] 'output')}else{''}
   $resultStatus=if($result.Count -eq 1){[string](Get-JawsField $result[0] 'status')}else{''}
-  $failure=($raw -match '(?i)(function failed|tool.*failed|\berror\b|\bfailed\b|unauthorized|forbidden|exception)' -or $resultStatus -match '(?i)failed|error')
+  # A completed A2A task often repeats the caller's words ("failed", "error") inside the plan.
+  # Those words are not a tool failure. Protocol failures still fail the call.
+  $completedTask=($raw -match 'TASK_STATE_COMPLETED' -and $raw -notmatch 'TASK_STATE_FAILED|TASK_STATE_REJECTED|TASK_STATE_CANCELED')
+  $protocolFailure=($raw -match '(?i)(function failed|HOSTED_AGENT_NOT_SUPPORTED|McpProtocolException|\bunauthorized\b|\bforbidden\b|-32099)' -or $resultStatus -match '(?i)failed|error')
+  $textFailure=($raw -match '(?i)(function failed|tool.*failed|\berror\b|\bfailed\b|unauthorized|forbidden|exception)')
+  $failure=((-not $completedTask) -and ($textFailure -or $resultStatus -match '(?i)failed|error')) -or ($completedTask -and $protocolFailure)
   $records+= [pscustomobject]@{
    CallId=$id
    ToolName=$name

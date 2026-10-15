@@ -6,7 +6,8 @@ $ErrorActionPreference='Stop'
 $endpoint='https://jaws-foundry-dev.services.ai.azure.com/api/projects/jaws-dev'
 $name='jaws-investigation-a2a-tools'
 $connection='jaws-investigation-a2a-dev'
-$expectedTarget="$endpoint/agents/jaws-investigation-dev/endpoint/protocols/a2a"
+$historicalV1BaseUrl="$endpoint/agents/jaws-investigation-dev/endpoint/protocols/a2a"
+$expectedTarget="$endpoint/agents/jaws-investigation-planner-dev/endpoint/protocols/a2a"
 $local=Join-Path $PSScriptRoot '.local'
 if(-not (Test-Path $local)){$null=New-Item -ItemType Directory -Path $local -Force}
 function Read-Jaws([string]$url){
@@ -25,7 +26,7 @@ $v2=@($versions|Where-Object {[string]$_.version -ceq '2'})
 if($v1.Count -ne 1 -or @($v1[0].tools).Count -ne 1){throw 'JAWS-TOOLBOX-REPAIR-003: Expected toolbox v1 missing.'}
 $old=$v1[0].tools[0]
 if($old.type -cne 'a2a' -or $old.a2a_version -cne '1.0' -or
- $old.base_url -cne $expectedTarget -or $old.project_connection_id -cne [string]$cn.id){
+ $old.base_url -cne $historicalV1BaseUrl -or $old.project_connection_id -cne [string]$cn.id){
  throw 'JAWS-TOOLBOX-REPAIR-004: Existing toolbox v1 does not match expected invalid config.'
 }
 $desired=[ordered]@{description='JAWS Investigation A2A corrected connection-only v2, read-only planning.';tools=@([ordered]@{type='a2a';a2a_version='1.0';project_connection_id=[string]$cn.id})}

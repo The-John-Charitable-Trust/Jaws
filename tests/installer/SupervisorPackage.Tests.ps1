@@ -22,7 +22,8 @@ Describe 'B2.1 Supervisor local packaging safety' {
     }
     It 'uses only a local Docker build and no registry push or login commands' {
         $module=Get-Content (Join-Path $PSScriptRoot '../../installer/modules/SupervisorPackage.psm1') -Raw
-        $module | Should -Match '& docker build'
+        $module | Should -Match '& docker buildx build'
+        $module | Should -Match "'--load'"
         $module | Should -Not -Match '& docker push'
         $module | Should -Not -Match '& az '
         $module | Should -Not -Match '& azd '

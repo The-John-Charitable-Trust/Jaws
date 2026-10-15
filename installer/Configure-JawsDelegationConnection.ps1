@@ -2,7 +2,7 @@
 # Existing Supervisor v1 and Investigation v1 remain unchanged. No credentials persisted.
 [CmdletBinding()]
 param(
- [ValidateSet('Plan','Install','Verify')][string]$Mode='Plan',
+ [ValidateSet('Plan','Install','Verify','Retarget')][string]$Mode='Plan',
  [string]$ApprovedPlanSha256,
  [switch]$AcknowledgeA2AConnection,
  [string]$StateFile=(Join-Path $PSScriptRoot 'config/jaws-installation-state.dev.json')
@@ -15,7 +15,10 @@ if($state.Platform -cne 'JAWS' -or $state.EnvironmentName -cne 'dev' -or
  $state.ResourceGroupName -cne 'rg-aiops-lab'){throw 'JAWS-DELEGATE-001: Unauthorized installation state.'}
 $foundry='jaws-foundry-dev'; $project='jaws-dev'; $name='jaws-investigation-a2a-dev'
 $endpoint="https://$foundry.services.ai.azure.com/api/projects/$project"
-$target="$endpoint/agents/jaws-investigation-dev/endpoint/protocols/a2a"
+# Foundry rejects A2A operations on hosted agents (HOSTED_AGENT_NOT_SUPPORTED / -32099).
+# The prompt planner is the A2A target. Hosted Investigation v1 stays in place.
+$hostedTarget="$endpoint/agents/jaws-investigation-dev/endpoint/protocols/a2a"
+$target="$endpoint/agents/jaws-investigation-planner-dev/endpoint/protocols/a2a"
 $id="/subscriptions/$($state.SubscriptionId)/resourceGroups/$($state.ResourceGroupName)/providers/Microsoft.CognitiveServices/accounts/$foundry/projects/$project/connections/$name"
 # Correct PowerShell interpolation: a question mark immediately after a variable needs $().
 $url="https://management.azure.com/$($id.TrimStart('/'))?api-version=2025-04-01-preview"
@@ -47,23 +50,73 @@ function Read-Connection {
  if($err -match '(?i)(404|ResourceNotFound)'){return $null}
  throw "JAWS-DELEGATE-002: Cannot read A2A connection (not assumed absent): $err"
 }
-function Assert-Connection($conn){
- if($null -eq $conn){throw 'JAWS-DELEGATE-003: Expected connection missing.'}
+function Test-ConnectionShape($conn,[string]$expectedTarget){
+ if($null -eq $conn){return $false}
  $p=$conn.properties
- if([string]$conn.id -ine $id -or [string]$p.target -cne $target -or
-   [string]$p.category -cne 'RemoteA2A' -or [string]$p.authType -cne 'AgenticIdentityToken' -or
-   [string]$p.audience -cne 'https://ai.azure.com'){
-  throw 'JAWS-DELEGATE-004: Existing connection differs; refusing to overwrite.'
+ return ([string]$conn.id -ieq $id -and [string]$p.target -ceq $expectedTarget -and
+   [string]$p.category -ceq 'RemoteA2A' -and [string]$p.authType -ceq 'AgenticIdentityToken' -and
+   [string]$p.audience -ceq 'https://ai.azure.com')
+}
+function Assert-Connection($conn){
+ if(-not (Test-ConnectionShape $conn $target)){
+  throw 'JAWS-DELEGATE-003: Expected prompt-agent connection missing or mismatched.'
  }
 }
 $current=Read-Connection
-if($null -ne $current){Assert-Connection $current}
 if($Mode -eq 'Plan'){
  Write-Host "RemoteA2A connection exists: $($null -ne $current)"
+ Write-Host "Targets prompt agent: $(Test-ConnectionShape $current $target)"
  Write-Host "Plan SHA-256: $sha"
  Write-Host "Plan: $planFile"
  Write-Host 'PLAN ONLY: No Azure changes. Role assignment, toolbox, hosted runtime and invocation are separate gates.'
  return
+}
+if($Mode -eq 'Retarget'){
+ if(-not $AcknowledgeA2AConnection -or $ApprovedPlanSha256 -cne $sha){
+  throw 'JAWS-DELEGATE-007: Exact plan approval and acknowledgment required to retarget.'
+ }
+ if(Test-ConnectionShape $current $target){
+  Write-Host 'Connection already targets the Investigation prompt agent.'
+ } elseif(Test-ConnectionShape $current $hostedTarget){
+  $p=$current.properties
+  $shared=@()
+  if($null -ne $p.sharedUserList){$shared=@($p.sharedUserList)}
+  $put=[ordered]@{
+   name=$name
+   properties=[ordered]@{
+    authType=[string]$p.authType
+    group=[string]$p.group
+    category=[string]$p.category
+    target=$target
+    isSharedToAll=[bool]$p.isSharedToAll
+    sharedUserList=$shared
+    audience=[string]$p.audience
+    Credentials=[ordered]@{}
+    metadata=[ordered]@{ApiType='Azure'}
+   }
+  }
+  $putJson=ConvertTo-Json -InputObject $put -Depth 12 -Compress
+  $tmp=[IO.Path]::GetTempFileName()
+  try{
+   [IO.File]::WriteAllText($tmp,$putJson,[Text.UTF8Encoding]::new($false))
+   $result=& az rest --method put --url $url --resource https://management.azure.com/ --headers 'Content-Type=application/json' --body "@$tmp" --output json --only-show-errors 2>&1
+   if($LASTEXITCODE -ne 0){throw "JAWS-DELEGATE-008: Connection retarget outcome uncertain; inspect live state: $($result | Out-String)"}
+  }finally{Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue}
+ } else {
+  throw 'JAWS-DELEGATE-009: Connection is not the hosted Investigation target; refusing to retarget.'
+ }
+ Assert-Connection (Read-Connection)
+ $receipt=Join-Path $dir 'jaws-step-c-delegation-connection-receipt.dev.generated.json'
+ [pscustomobject]@{Status='REMOTE_A2A_CONNECTION_VERIFIED';ResourceId=$id;Target=$target;AuthType='AgenticIdentityToken';PlanSha256=$sha;SupervisorDelegationVerified=$false;VerifiedAtUtc=[DateTime]::UtcNow.ToString('o')} |
+  ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $receipt -Encoding utf8
+ Write-Host "Retargeted RemoteA2A connection: $name; Receipt: $receipt"
+ return
+}
+if($null -ne $current -and -not (Test-ConnectionShape $current $target)){
+ if(Test-ConnectionShape $current $hostedTarget){
+  throw 'JAWS-DELEGATE-004: Connection still targets the hosted Investigation agent. Foundry rejects A2A operations on hosted agents. Run -Mode Retarget with the plan SHA.'
+ }
+ throw 'JAWS-DELEGATE-004: Existing connection differs; refusing to overwrite.'
 }
 if($Mode -eq 'Install' -and $null -eq $current){
  if(-not $AcknowledgeA2AConnection -or $ApprovedPlanSha256 -cne $sha){

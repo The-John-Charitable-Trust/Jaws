@@ -1,11 +1,13 @@
 using Microsoft.Agents.AI.Foundry.Hosting;
+using Microsoft.Extensions.AI;
 #pragma warning disable MAAI001
 
 namespace Jaws.Supervisor.Host;
 
 /// <summary>
 /// Patches toolbox tools after <see cref="FoundryToolboxService"/> has enumerated them.
-/// Registered after AddFoundryToolboxes so startup order runs this once the tool list exists.
+/// Tools created later, during a deferred per-request retry, are patched by
+/// <see cref="FoundryToolboxCallMetadata.ForwardBeforeInvocation"/> before that run.
 /// </summary>
 internal sealed class FoundryToolboxMetadataStartup : IHostedService
 {
@@ -35,6 +37,18 @@ internal sealed class FoundryToolboxMetadataStartup : IHostedService
             "Forwarded tools/list metadata onto {Patched} of {Total} Foundry toolbox tool(s).",
             patched,
             tools.Count);
+        foreach (var tool in tools)
+        {
+            if (tool is not AIFunction function)
+            {
+                continue;
+            }
+
+            var schema = function.JsonSchema.ValueKind == System.Text.Json.JsonValueKind.Undefined
+                ? ""
+                : function.JsonSchema.GetRawText();
+            _logger.LogInformation("Toolbox tool {Name} input schema: {Schema}", function.Name, schema);
+        }
         if (patched == 0)
         {
             _logger.LogWarning(

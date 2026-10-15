@@ -41,7 +41,8 @@ function Invoke-JawsSupervisorLocalBuild {
         if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
             throw 'JAWS-PACKAGE-005: Docker not available; published binaries remain local.'
         }
-        & docker build '--platform' 'linux/amd64' '--tag' $PackagePlan.DockerTag '--file' $PackagePlan.DockerfilePath $PackagePlan.BuildContext
+        # Buildx keeps the image as an OCI index with OCI layers, which Foundry can provision.
+        & docker buildx build '--platform' 'linux/amd64' '--tag' $PackagePlan.DockerTag '--file' $PackagePlan.DockerfilePath '--load' $PackagePlan.BuildContext
         if ($LASTEXITCODE -ne 0) { throw "JAWS-PACKAGE-006: Docker build failed ($LASTEXITCODE)." }
     }
     return [pscustomobject]@{

@@ -17,7 +17,7 @@ function Read-FoundryPage([string]$url) {
  return ($output|Out-String|ConvertFrom-Json -ErrorAction Stop)
 }
 if($Mode -eq 'Verify'){$MaxAttempts=1}
-$state=Wait-JawsSupervisorCandidate -ReadPage ${function:Read-FoundryPage} -ProjectEndpoint $endpoint -Image $image -MaxAttempts $MaxAttempts -DelaySeconds $DelaySeconds
+$state=Wait-JawsSupervisorCandidate -ReadPage { param($url) Read-FoundryPage $url } -ProjectEndpoint $endpoint -Image $image -MaxAttempts $MaxAttempts -DelaySeconds $DelaySeconds
 $report=[pscustomobject]@{
  SchemaVersion='1.0';AgentName='jaws-supervisor-dev';Status=$state.Status;ResolvedVersion=$state.Version
  ActiveVerified=$state.ActiveVerified;Attempts=$state.Attempts;Reason=$state.Reason

@@ -2,7 +2,7 @@
 [CmdletBinding()]
 param(
  [switch]$AcknowledgeInferenceCharges,
- [string]$ExpectedImage='jawsregistrydev001.azurecr.io/jaws/supervisor@sha256:5a9cd89cfc626df4bdd2266194db14cda8fd33f46de1bfbc9c1111cde1c8af54'
+ [string]$ExpectedImage='jawsregistrydev001.azurecr.io/jaws/supervisor@sha256:86c556fff7f54eb8ad81c84bc768093fd7bc083e941e9e16bbf1ea8bc0cfa289'
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
@@ -51,6 +51,9 @@ Import-Module (Join-Path $root 'modules/DelegationEvidence.psm1') -Force
 $evidence=Get-JawsDelegationEvidence -Response $response
 $outputTypes=@($response.output | ForEach-Object { if($_ -and $_.PSObject.Properties['type']){[string]$_.type}else{'<missing-type>'} })
 $status=if($evidence.ResponseCompleted -and $evidence.Classification -ceq 'TOOL_INVOKED_SUCCEEDED'){'PASS'}else{'FAIL'}
+$excerpt=((@($evidence.Calls | ForEach-Object { [string]$_.OutputExcerpt })) -join "`n")
+$taskState=if($excerpt -match 'TASK_STATE_[A-Z_]+'){$Matches[0]}else{''}
+$plannerResponseId=if($excerpt -match 'resp_[A-Za-z0-9]+'){$Matches[0]}else{''}
 $report=[pscustomobject]@{
  Status=$status
  Classification=$evidence.Classification
@@ -61,11 +64,13 @@ $report=[pscustomobject]@{
  A2ATargetLimitation='Foundry returns HOSTED_AGENT_NOT_SUPPORTED for A2A operations against a hosted agent. The RemoteA2A connection targets the prompt planner.'
  ResponseId=[string]$response.id
  ResponseStatus=[string]$response.status
+ TaskState=$taskState
+ PlannerResponseId=$plannerResponseId
  OutputItemTypes=$outputTypes
  ToolCalls=$evidence.Calls
  ToolCallCount=$evidence.AttemptCount
  SuccessfulInvestigationCalls=$evidence.InvestigationSuccessCount
- EvidenceLimitations='Tool-call output alone does not prove target agent execution; correlate with Foundry traces before final closure.'
+ EvidenceLimitations='store=false leaves this response unreadable on a later GET. TaskState and PlannerResponseId are captured from the tool output for that reason. Tool output still has to be correlated with Foundry traces before treating a new run as closure evidence.'
  RemediationRequested=$false
  AzureInfrastructureWrites=0
  InferencePerformed=$true

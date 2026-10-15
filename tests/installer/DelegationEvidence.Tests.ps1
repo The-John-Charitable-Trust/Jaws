@@ -38,6 +38,14 @@ Describe 'Step C delegation evidence classification' {
   $actual.Classification | Should -Be 'TOOL_INVOKED_SUCCEEDED'
   $actual.Calls[0].Failed | Should -BeFalse
  }
+ It 'accepts a completed plan that mentions authorization words' {
+  $plan='TASK_STATE_COMPLETED Collect logs. Do not treat an unauthorized reader as a failed tool call. No forbidden action was taken.'
+  $r=[pscustomobject]@{status='completed';output=@(
+    [pscustomobject]@{type='function_call';call_id='c';name='jaws-investigation-a2a-dev___SendMessage'},
+    [pscustomobject]@{type='function_call_output';call_id='c';output=$plan}
+   )}
+  (Get-JawsDelegationEvidence $r).Classification | Should -Be 'TOOL_INVOKED_SUCCEEDED'
+ }
  It 'rejects a completed wrapper that still carries a protocol failure' {
   $raw='TASK_STATE_COMPLETED Error: Function failed.'
   $r=[pscustomobject]@{status='completed';output=@(

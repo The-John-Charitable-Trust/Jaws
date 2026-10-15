@@ -1,6 +1,8 @@
 # Stage B2 — Independent QA Findings and Next Checkpoint
 Status: Previous Azure-aware read-only assessment CONDITIONALLY ACCEPTED; current configuration-evidence changes AWAIT INDEPENDENT TESTS.
-Assessment date: 2026-10-12 | Development branch: `codex/0.2-add-mcp-server`
+> **Historical review.** Assessment date: 2026-10-12. The branch named here is not the current Step C source. See `docs/installation/STEP-C-RUNBOOK.md`.
+
+Assessment date: 2026-10-12 | Development branch at the time of this review: `codex/0.2-add-mcp-server`
 
 ## Independent Codex QA baseline
 The previously submitted QA report records 36 Pester tests passed, zero failed/zero skipped when run in an isolated PowerShell process. Read-only live assessment discovered four externally owned JAWS resources: Foundry resource `jaws-foundry-dev`, project `jaws-dev`, model `gpt-5-mini` version `2025-08-07`, and Key Vault `kv-jaws-dev-001`. All were candidates for reuse, **not cleared for installation**. Twelve additional components had not been checked. The plan reported zero Azure writes and `CanExecute=false`.

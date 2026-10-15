@@ -1,7 +1,7 @@
 # Consolidated JAWS Step C installer. Preserves existing resources and approvals.
 [CmdletBinding()]
 param(
- [ValidateSet('Plan','Install','Verify','DelegationPlan','DelegationInstall','DelegationVerify','DelegationRbacPlan','DelegationRbacInstall','DelegationRbacVerify','SupervisorV2Build','SupervisorV2Plan','SupervisorV2Publish','SupervisorV2Deploy','SupervisorReleasePlan','SupervisorRelease','SupervisorCandidatePlan','SupervisorCandidateRelease','SupervisorV2Verify','ToolboxDiscovery','RuntimeToolDiscovery','ToolboxRepairPlan','ToolboxRepairCreate','ToolboxRepairVerify','ToolboxRepairPromote','ToolboxRepairRollback','RuntimeToolDiscoveryV2','A2AIdentityContext','SupervisorCandidateReconcile','SupervisorCandidateWait')][string]$Mode='Plan',
+ [ValidateSet('Plan','Install','Verify','DelegationPlan','DelegationInstall','DelegationVerify','DelegationRbacPlan','DelegationRbacInstall','DelegationRbacVerify','SupervisorV2Build','SupervisorV2Plan','SupervisorV2Publish','SupervisorV2Deploy','SupervisorReleasePlan','SupervisorRelease','SupervisorCandidatePlan','SupervisorCandidateRelease','SupervisorV2Verify','ToolboxDiscovery','RuntimeToolDiscovery','ToolboxRepairPlan','ToolboxRepairCreate','ToolboxRepairVerify','ToolboxRepairPromote','ToolboxRepairRollback','RuntimeToolDiscoveryV2','A2AIdentityContext','SupervisorCandidateReconcile','SupervisorCandidateWait','PlannerPlan','PlannerInstall','ThroughStepC','ThroughStepCInstall')][string]$Mode='Plan',
  [string]$ApprovedA2APlanSha256,
  [switch]$AcknowledgeAgentEndpointChange,
  [string]$ApprovedDelegationConnectionSha256,
@@ -13,6 +13,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $root=$PSScriptRoot
+if($Mode -in @('ThroughStepC','ThroughStepCInstall')){
+ $through=Join-Path $root 'Install-JawsThroughStepC.ps1'
+ if($Mode -eq 'ThroughStepC'){ & $through -Mode Validate; return }
+ & $through -Mode Install -AcknowledgeStepCInstall
+ return
+}
 if($Mode -in @('SupervisorCandidateReconcile','SupervisorCandidateWait')){
  $action=if($Mode -eq 'SupervisorCandidateWait'){'Wait'}else{'Verify'}
  & (Join-Path $root 'Reconcile-JawsSupervisorCandidate.ps1') -Mode $action
@@ -66,10 +72,10 @@ if($Mode -eq 'SupervisorV2Verify') {
  else{& $verify -AcknowledgeInferenceCharges -ExpectedImage $ExpectedImage}
  return
 }
-if($Mode -in @('SupervisorCandidatePlan','SupervisorCandidateRelease')) {
+if($Mode -in @('SupervisorReleasePlan','SupervisorRelease','SupervisorCandidatePlan','SupervisorCandidateRelease')) {
  $candidate=Join-Path $root 'Release-JawsSupervisorCandidate.ps1'
  & $candidate -Mode Plan
- if($Mode -eq 'SupervisorCandidatePlan'){return}
+ if($Mode -in @('SupervisorCandidatePlan','SupervisorReleasePlan')){return}
  & (Join-Path $root 'Reconcile-JawsSupervisorCandidate.ps1') -Mode Verify
  $planPath=Join-Path $root '.local/jaws-step-c-supervisor-candidate-release-plan.dev.generated.json'
  $plan=Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json
@@ -84,16 +90,14 @@ if($Mode -in @('SupervisorCandidatePlan','SupervisorCandidateRelease')) {
  & $candidate -Mode Release -ApprovedPlanSha256 $plan.PlanSha256 -AcknowledgeTrafficAndInferenceCharges
  return
 }
-if($Mode -in @('SupervisorReleasePlan','SupervisorRelease')) {
- $release=Join-Path $root 'Release-JawsSupervisorDraft.ps1'
- & $release -Mode Plan
- if($Mode -eq 'SupervisorReleasePlan'){return}
- $planPath=Join-Path $root '.local/jaws-step-c-supervisor-release-plan.dev.generated.json'
+if($Mode -in @('PlannerPlan','PlannerInstall')) {
+ $planner=Join-Path $root 'Configure-JawsInvestigationPlanner.ps1'
+ & $planner -Mode Plan
+ if($Mode -eq 'PlannerPlan'){return}
+ $planPath=Join-Path $root '.local/jaws-step-c-planner-plan.dev.generated.json'
+ if(-not (Test-Path -LiteralPath $planPath)){throw 'JAWS-STEP-C-PLANNER-001: Planner plan missing. Run PlannerPlan first.'}
  $plan=Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json
- Write-Host 'WARNING: This non-draft release may change latest-agent routing. Version 1 remains available.'
- $answer=Read-Host 'Approve release and potential hosting/inference charges? [y/N]'
- if($answer.Trim() -ine 'y'){throw 'JAWS-STEP-C-RELEASE-001: Release declined.'}
- & $release -Mode Release -ApprovedPlanSha256 $plan.PlanSha256 -AcknowledgeTrafficAndInferenceCharges
+ & $planner -Mode Install -ApprovedPlanSha256 $plan.PlanSha256 -AcknowledgePlannerCreate
  return
 }
 if($Mode -in @('SupervisorV2Publish','SupervisorV2Deploy')) {

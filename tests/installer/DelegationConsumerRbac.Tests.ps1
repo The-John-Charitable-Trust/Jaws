@@ -12,7 +12,9 @@ Describe 'Step C Supervisor delegation RBAC gate' {
     It 'targets the released Supervisor instance identity' {
         $rbac | Should -Match "instance_identity"
         $rbac | Should -Match "principal_id"
+        $rbac | Should -Match 'versions\.latest'
         $rbac | Should -Match 'versions/\$\(\$version\)'
+        $rbac | Should -Not -Match '\$version\s*=\s*''2'''
     }
 
     It 'uses the least-privilege Foundry Agent Consumer role at project scope' {

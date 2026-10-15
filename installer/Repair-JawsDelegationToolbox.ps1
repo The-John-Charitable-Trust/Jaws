@@ -1,6 +1,10 @@
 # Repair the invalid JAWS Investigation A2A toolbox v1 without replacing it.
 [CmdletBinding()]
-param([ValidateSet('Plan','Create','Promote','Verify','Rollback')][string]$Mode='Plan')
+param(
+ [ValidateSet('Plan','Create','Promote','Verify','Rollback')][string]$Mode='Plan',
+ [string]$ApprovedPlanSha256,
+ [switch]$AcknowledgeToolboxRepair
+)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $endpoint='https://jaws-foundry-dev.services.ai.azure.com/api/projects/jaws-dev'
@@ -37,6 +41,10 @@ $path=Join-Path $local 'jaws-step-c-toolbox-repair-plan.dev.generated.json'
 function Confirm-Operator([string]$message){
  Write-Host "Plan SHA-256: $sha"
  Write-Host "Target: $name; connection: $connection"
+ if($AcknowledgeToolboxRepair){
+  if($ApprovedPlanSha256 -cne $sha){throw 'JAWS-TOOLBOX-REPAIR-016: Exact toolbox repair plan approval required.'}
+  return
+ }
  $answer=Read-Host "$message [y/N]"
  if($answer.Trim() -ine 'y'){throw 'JAWS-TOOLBOX-REPAIR-005: User declined.'}
 }

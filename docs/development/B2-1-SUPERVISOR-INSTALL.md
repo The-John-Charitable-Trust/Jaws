@@ -1,5 +1,7 @@
 # Stage B2.1 — First Supervisor Installation Checkpoint
 
+> **Historical checkpoint.** Later Step C work published and released Supervisor versions. Supervisor v1 is preserved. The current install path does not post another Supervisor version; it validates the routed release. See `docs/installation/STEP-C-RUNBOOK.md`.
+
 **Status:** Deployment preparation implemented; deployment NOT executed, not approved and not yet enabled. No Azure resources modified.
 
 ## What exists
@@ -24,7 +26,7 @@ Microsoft's current hosted-agent documentation describes a Linux/amd64 container
 7. Run independent mocked tests first and live testing only after explicit authorization.
 
 ## Next QA steps
-- Synchronize branch `codex/0.2-add-mcp-server`.
+- Use the current Step C branch of `The-John-Charitable-Trust/Jaws`. The old `codex/0.2-add-mcp-server` branch is not the installer source.
 - In PowerShell 7, run `Import-Module Pester -RequiredVersion 5.9.1 -Force; Invoke-Pester .\tests\installer\ -Output Detailed`. Previous accepted baseline 38; with seven added tests expect 45 discovered. These seven have NOT been independently executed at commit time.
 - Verify no `-Mode Install` and no Azure writes. Test name/image constraints and proposal fingerprint.
 - Do not use a fabricated digest as if it were a built image. Do not run the sample proposal against Azure until a real image is approved.

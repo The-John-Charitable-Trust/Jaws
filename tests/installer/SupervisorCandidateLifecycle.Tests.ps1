@@ -1,0 +1,56 @@
+BeforeAll {
+ Import-Module (Join-Path $PSScriptRoot '../../installer/modules/FoundrySupervisorReconciliation.psm1') -Force
+ $script:url='https://jaws-foundry-dev.services.ai.azure.com/api/projects/jaws-dev'
+ $script:image='jawsregistrydev001.azurecr.io/jaws/supervisor@sha256:'+('a'*64)
+ $script:candidate=[pscustomobject]@{
+  version='draft-100';status='active';draft=$true
+  definition=[pscustomobject]@{
+   container_configuration=[pscustomobject]@{image=$script:image}
+   environment_variables=[pscustomobject]@{JAWS_INVESTIGATION_TOOLBOX_NAME='jaws-investigation-a2a-tools'}
+  }
+ }
+}
+Describe 'Foundry Supervisor candidate lifecycle' {
+ It 'reconciles one active draft by immutable image and toolbox' {
+  $v=Resolve-JawsSupervisorCandidate -Versions @($script:candidate) -Image $script:image
+  $v.Version | Should -Be 'draft-100'
+ }
+ It 'refuses ambiguous matching images' {
+  {Resolve-JawsSupervisorCandidate -Versions @($script:candidate,$script:candidate) -Image $script:image} | Should -Throw '*Ambiguous*'
+ }
+ It 'requires complete pagination and follows the returned continuation' {
+  $start="$($script:url)/agents/jaws-supervisor-dev/versions?api-version=v1"
+  $next="$($script:url)/agents/jaws-supervisor-dev/versions?api-version=v1&continuation=abc"
+  $fetch={param($url) if($url -eq $start){return [pscustomobject]@{data=@();nextLink=$next}};return [pscustomobject]@{data=@($script:candidate);has_more=$false}}.GetNewClosure()
+  $all=@(Get-JawsSupervisorVersionInventory -ReadPage $fetch -ProjectEndpoint $script:url)
+  $all.Count | Should -Be 1
+ }
+ It 'rejects unsafe pagination host changes' {
+  $fetch={param($u) [pscustomobject]@{data=@();nextLink='https://other.example/agent'}} 
+  {Get-JawsSupervisorVersionInventory -ReadPage $fetch -ProjectEndpoint $script:url} | Should -Throw '*Unexpected continuation*'
+ }
+ It 'tolerates transient absent drafts without writing' {
+  $counter=0
+  $fetch={param($url) $counter++; if($counter -eq 1){return [pscustomobject]@{data=@()}};return [pscustomobject]@{data=@($script:candidate)}}.GetNewClosure()
+  $result=Wait-JawsSupervisorCandidate -ReadPage $fetch -ProjectEndpoint $script:url -Image $script:image -MaxAttempts 3 -DelaySeconds 0 -Sleep {param($seconds)}
+  $result.Status | Should -Be 'ACTIVE_VERIFIED'
+  $result.Attempts | Should -Be 2
+ }
+ It 'blocks release on a terminal failure' {
+  $broken=($script:candidate|ConvertTo-Json -Depth 10|ConvertFrom-Json)
+  $broken.status='failed'
+  $fetch={param($url) [pscustomobject]@{data=@($broken)}}.GetNewClosure()
+  (Wait-JawsSupervisorCandidate -ReadPage $fetch -ProjectEndpoint $script:url -Image $script:image -MaxAttempts 1).Status | Should -Be 'FAILED'
+ }
+ It 'times out without creating a deployment' {
+  $fetch={param($url) [pscustomobject]@{data=@()}}
+  (Wait-JawsSupervisorCandidate -ReadPage $fetch -ProjectEndpoint $script:url -Image $script:image -MaxAttempts 2 -DelaySeconds 0 -Sleep {param($seconds)}).Status | Should -Be 'INDETERMINATE'
+ }
+ It 'parses all lifecycle PowerShell files' {
+  foreach($relative in @('../../installer/modules/FoundrySupervisorReconciliation.psm1','../../installer/Reconcile-JawsSupervisorCandidate.ps1','../../installer/Release-JawsSupervisorCandidate.ps1','../../installer/Install-JawsStepC.ps1')){
+   $t=$null;$errors=$null
+   [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot $relative),[ref]$t,[ref]$errors)|Out-Null
+   @($errors).Count|Should -Be 0
+  }
+ }
+}

@@ -78,7 +78,7 @@ function Compare-JawsFoundrySupervisorState {
 # Step C candidate state reconciliation. Azure transport is injected for mock testing.
 function Resolve-JawsSupervisorCandidate {
  [CmdletBinding()]
- param([Parameter(Mandatory)][object[]]$Versions,[Parameter(Mandatory)][string]$Image,[string]$Toolbox='jaws-investigation-a2a-tools')
+ param([AllowEmptyCollection()][Parameter(Mandatory)][object[]]$Versions,[Parameter(Mandatory)][string]$Image,[string]$Toolbox='jaws-investigation-a2a-tools')
  $matches=@($Versions | Where-Object {
   [string](Get-JawsFoundryField $_ @('definition','container_configuration','image')) -ceq $Image -and
   [string](Get-JawsFoundryField $_ @('definition','environment_variables','JAWS_INVESTIGATION_TOOLBOX_NAME')) -ceq $Toolbox
@@ -105,7 +105,9 @@ function Get-JawsSupervisorVersionInventory {
   $dataProp=if($null -ne $page){$page.PSObject.Properties['data']}else{$null}
   if($null -eq $dataProp -and $null -ne $page){$dataProp=$page.PSObject.Properties['value']}
   if($null -eq $dataProp){throw 'JAWS-RECON-105: Unrecognized version-list response.'}
-  foreach($entryOriginal in @($dataProp.Value)){
+  $entries=@()
+  if($null -ne $dataProp.Value){$entries=@($dataProp.Value)}
+  foreach($entryOriginal in $entries){
    if($null -eq $entryOriginal){throw 'JAWS-RECON-110: Null version entry.'}
    $entry=$entryOriginal
    $version=[string](Get-JawsFoundryField $entry @('version'))

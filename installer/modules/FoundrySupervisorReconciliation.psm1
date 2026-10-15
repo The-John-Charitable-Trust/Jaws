@@ -157,7 +157,7 @@ function Wait-JawsSupervisorCandidate {
  return [pscustomobject]@{Status='INDETERMINATE';Version='';ActiveVerified=$false;Attempts=$MaxAttempts;Reason='Candidate not uniquely active before timeout'}
 }
 
-Export-ModuleMember -Function Get-JawsFoundryAgentVersion,Compare-JawsFoundrySupervisorState,Resolve-JawsSupervisorCandidate,Get-JawsSupervisorVersionInventory,Wait-JawsSupervisorCandidate
+Export-ModuleMember -Function Get-JawsFoundryField,Get-JawsFoundryAgentVersion,Compare-JawsFoundrySupervisorState,Resolve-JawsSupervisorCandidate,Get-JawsSupervisorVersionInventory,Wait-JawsSupervisorCandidate
 ){throw 'JAWS-RECON-111: Invalid version identifier in inventory.'}
    if($null -eq (Get-JawsFoundryField $entry @('definition'))){
     # Foundry may list summaries; inspect immutable version detail before matching images.

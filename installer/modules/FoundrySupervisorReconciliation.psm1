@@ -102,10 +102,11 @@ function Get-JawsSupervisorVersionInventory {
   if($seen.ContainsKey($url)){throw 'JAWS-RECON-104: Pagination cycle.'}
   $seen[$url]=$true
   $page=& $ReadPage $url
-  $data=Get-JawsFoundryField $page @('data')
-  if($null -eq $data){$data=Get-JawsFoundryField $page @('value')}
-  if($null -eq $data){throw 'JAWS-RECON-105: Unrecognized version-list response.'}
-  foreach($entry in @($data)){
+  $dataProp=if($null -ne $page){$page.PSObject.Properties['data']}else{$null}
+  if($null -eq $dataProp -and $null -ne $page){$dataProp=$page.PSObject.Properties['value']}
+  if($null -eq $dataProp){throw 'JAWS-RECON-105: Unrecognized version-list response.'}
+  $data=@($dataProp.Value)
+  foreach($entry in $data){
    if($null -eq $entry){throw 'JAWS-RECON-110: Null version entry.'}
    $version=[string](Get-JawsFoundryField $entry @('version'))
    if($version -notmatch '^(draft-[0-9]+|[0-9]+)

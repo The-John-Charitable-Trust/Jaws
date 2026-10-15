@@ -32,7 +32,7 @@ The overall Step C milestone is incomplete until Supervisor v2 has been built/de
 
 `SupervisorV2Verify` can show a completed response, a real `jaws-investigation-a2a-dev__SendMessage` call, and tool output `Error: Function failed.` Connection, toolbox v2, and Foundry Agent Consumer checks can all pass before that. The hosting package lists the toolbox tool, then calls it without the `_meta` block from `tools/list` (including `tool_configuration`). The Foundry toolbox proxy rejects that call. The agent framework hides the proxy error when detailed function errors are off, so the acceptance report only contains `Error: Function failed.`
 
-`FoundryToolboxMetadataStartup` forwards that listed metadata onto the hosted MCP tool after `AddFoundryToolboxes` enumerates it. The image currently pinned for Supervisor v2 does not contain this change. Supervisor v1 stays unchanged. From the repository root in PowerShell 7:
+`FoundryToolboxMetadataStartup` forwards that listed metadata onto the hosted MCP tool after `AddFoundryToolboxes` enumerates it. Candidate release uses the same paginated version inventory as deployment, so a summary page or a later continuation cannot hide the active draft. Supervisor v1 stays unchanged. From the repository root in PowerShell 7:
 
 ```powershell
 .\installer\Install-JawsStepC.ps1 -Mode SupervisorV2Build

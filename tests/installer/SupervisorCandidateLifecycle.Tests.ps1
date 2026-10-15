@@ -21,7 +21,8 @@ Describe 'Foundry Supervisor candidate lifecycle' {
  It 'requires complete pagination and follows the returned continuation' {
   $start="$($script:url)/agents/jaws-supervisor-dev/versions?api-version=v1"
   $next="$($script:url)/agents/jaws-supervisor-dev/versions?api-version=v1&continuation=abc"
-  $fetch={param($url) if($url -eq $start){return [pscustomobject]@{data=@();nextLink=$next}};return [pscustomobject]@{data=@($script:candidate);has_more=$false}}.GetNewClosure()
+  $candidate=$script:candidate
+  $fetch={param($url) if($url -eq $start){return [pscustomobject]@{data=@();nextLink=$next}};return [pscustomobject]@{data=@($candidate);has_more=$false}}.GetNewClosure()
   $all=@(Get-JawsSupervisorVersionInventory -ReadPage $fetch -ProjectEndpoint $script:url)
   $all.Count | Should -Be 1
  }
@@ -47,7 +48,8 @@ Describe 'Foundry Supervisor candidate lifecycle' {
  }
  It 'tolerates transient absent drafts without writing' {
   $counter=[pscustomobject]@{Value=0}
-  $fetch={param($url) $counter.Value++; if($counter.Value -eq 1){return [pscustomobject]@{data=@()}};return [pscustomobject]@{data=@($script:candidate)}}.GetNewClosure()
+  $candidate=$script:candidate
+  $fetch={param($url) $counter.Value++; if($counter.Value -eq 1){return [pscustomobject]@{data=@()}};return [pscustomobject]@{data=@($candidate)}}.GetNewClosure()
   $result=Wait-JawsSupervisorCandidate -ReadPage $fetch -ProjectEndpoint $script:url -Image $script:image -MaxAttempts 3 -DelaySeconds 0 -Sleep {param($seconds)}
   $result.Status | Should -Be 'ACTIVE_VERIFIED'
   $result.Attempts | Should -Be 2
@@ -64,11 +66,12 @@ Describe 'Foundry Supervisor candidate lifecycle' {
  }
  It 'retries a transient version-list 404 without deployment writes' {
   $attempt=[pscustomobject]@{Value=0}
+  $candidate=$script:candidate
   $fetch={
    param($url)
    $attempt.Value++
    if($attempt.Value -eq 1){throw 'HTTP 404: Not Found'}
-   [pscustomobject]@{data=@($script:candidate)}
+   [pscustomobject]@{data=@($candidate)}
   }.GetNewClosure()
   $result=Wait-JawsSupervisorCandidate -ReadPage $fetch -ProjectEndpoint $script:url -Image $script:image -MaxAttempts 2 -DelaySeconds 0 -Sleep {param($seconds)}
   $result.Status | Should -Be 'ACTIVE_VERIFIED'
@@ -82,6 +85,7 @@ Describe 'Foundry Supervisor candidate lifecycle' {
   $deploy=Get-Content (Join-Path $PSScriptRoot '../../installer/modules/FoundrySupervisorDeployment.psm1') -Raw
   $release=Get-Content (Join-Path $PSScriptRoot '../../installer/Release-JawsSupervisorCandidate.ps1') -Raw
   $deploy | Should -Match 'Get-JawsSupervisorVersionInventory'
+  $release | Should -Match 'Get-JawsSupervisorVersionInventory'
   $release | Should -Match 'JAWS-SUP-CANDIDATE-012'
  }
  It 'parses all lifecycle PowerShell files' {

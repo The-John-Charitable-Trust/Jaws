@@ -46,8 +46,8 @@ Describe 'Foundry Supervisor candidate lifecycle' {
   {Get-JawsSupervisorVersionInventory -ReadPage $fetch -ProjectEndpoint $script:url} | Should -Throw '*Unexpected continuation*'
  }
  It 'tolerates transient absent drafts without writing' {
-  $counter=0
-  $fetch={param($url) $counter++; if($counter -eq 1){return [pscustomobject]@{data=@()}};return [pscustomobject]@{data=@($script:candidate)}}.GetNewClosure()
+  $counter=[pscustomobject]@{Value=0}
+  $fetch={param($url) $counter.Value++; if($counter.Value -eq 1){return [pscustomobject]@{data=@()}};return [pscustomobject]@{data=@($script:candidate)}}.GetNewClosure()
   $result=Wait-JawsSupervisorCandidate -ReadPage $fetch -ProjectEndpoint $script:url -Image $script:image -MaxAttempts 3 -DelaySeconds 0 -Sleep {param($seconds)}
   $result.Status | Should -Be 'ACTIVE_VERIFIED'
   $result.Attempts | Should -Be 2
@@ -63,11 +63,11 @@ Describe 'Foundry Supervisor candidate lifecycle' {
   (Wait-JawsSupervisorCandidate -ReadPage $fetch -ProjectEndpoint $script:url -Image $script:image -MaxAttempts 2 -DelaySeconds 0 -Sleep {param($seconds)}).Status | Should -Be 'INDETERMINATE'
  }
  It 'retries a transient version-list 404 without deployment writes' {
-  $attempt=0
+  $attempt=[pscustomobject]@{Value=0}
   $fetch={
    param($url)
-   $attempt++
-   if($attempt -eq 1){throw 'HTTP 404: Not Found'}
+   $attempt.Value++
+   if($attempt.Value -eq 1){throw 'HTTP 404: Not Found'}
    [pscustomobject]@{data=@($script:candidate)}
   }.GetNewClosure()
   $result=Wait-JawsSupervisorCandidate -ReadPage $fetch -ProjectEndpoint $script:url -Image $script:image -MaxAttempts 2 -DelaySeconds 0 -Sleep {param($seconds)}

@@ -12,6 +12,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 Import-Module (Join-Path $PSScriptRoot 'modules/InstallationState.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'modules/FoundrySupervisorDeployment.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'modules/FoundrySupervisorReconciliation.psm1') -Force
 $state=Read-JawsInstallationState -Path $StateFile
 if($null -eq $state -or $state.Platform -cne 'JAWS' -or $state.EnvironmentName -cne 'dev'){
  throw 'JAWS-SUP-CANDIDATE-001: Authoritative JAWS dev state required.'
@@ -54,6 +55,18 @@ if($released.Count -gt 0){
 $drafts=@($matches | Where-Object { $_.draft -eq $true -and $_.status -eq 'active' })
 if($drafts.Count -ne 1){throw "JAWS-SUP-CANDIDATE-006: Expected one active draft for the published image, found $($drafts.Count)."}
 $draft=$drafts[0]
+# Independent, read-only gate: a direct Release invocation cannot bypass reconciliation.
+$verifiedPath=Join-Path $PSScriptRoot '.local/jaws-step-c-supervisor-deployment-verified.dev.generated.json'
+if(-not(Test-Path -LiteralPath $verifiedPath -PathType Leaf)){
+ throw 'JAWS-SUP-CANDIDATE-011: Reconciliation receipt missing; run SupervisorCandidateWait.'
+}
+$verified=Get-Content -LiteralPath $verifiedPath -Raw | ConvertFrom-Json
+if($verified.Status -cne 'ACTIVE_VERIFIED' -or $verified.ActiveVerified -ne $true -or
+ [string]$verified.ResolvedVersion -cne [string]$draft.version -or
+ [string]$verified.Image -cne $image){
+ throw 'JAWS-SUP-CANDIDATE-012: Candidate receipt does not match active draft/image. Release blocked.'
+}
+
 $definition=[ordered]@{
  kind='hosted'
  container_configuration=[ordered]@{image=$image}

@@ -1,13 +1,14 @@
 # Consolidated JAWS Step C installer. Preserves existing resources and approvals.
 [CmdletBinding()]
 param(
- [ValidateSet('Plan','Install','Verify','DelegationPlan','DelegationInstall','DelegationVerify','DelegationRbacPlan','DelegationRbacInstall','DelegationRbacVerify','SupervisorV2Build','SupervisorV2Plan','SupervisorV2Publish','SupervisorV2Deploy','SupervisorReleasePlan','SupervisorRelease','SupervisorV2Verify','ToolboxDiscovery','RuntimeToolDiscovery','ToolboxRepairPlan','ToolboxRepairCreate','ToolboxRepairVerify','ToolboxRepairPromote','ToolboxRepairRollback','RuntimeToolDiscoveryV2','A2AIdentityContext')][string]$Mode='Plan',
+ [ValidateSet('Plan','Install','Verify','DelegationPlan','DelegationInstall','DelegationVerify','DelegationRbacPlan','DelegationRbacInstall','DelegationRbacVerify','SupervisorV2Build','SupervisorV2Plan','SupervisorV2Publish','SupervisorV2Deploy','SupervisorReleasePlan','SupervisorRelease','SupervisorCandidatePlan','SupervisorCandidateRelease','SupervisorV2Verify','ToolboxDiscovery','RuntimeToolDiscovery','ToolboxRepairPlan','ToolboxRepairCreate','ToolboxRepairVerify','ToolboxRepairPromote','ToolboxRepairRollback','RuntimeToolDiscoveryV2','A2AIdentityContext')][string]$Mode='Plan',
  [string]$ApprovedA2APlanSha256,
  [switch]$AcknowledgeAgentEndpointChange,
  [string]$ApprovedDelegationConnectionSha256,
  [switch]$AcknowledgeA2AConnection,
  [string]$ApprovedDelegationToolboxSha256,
- [switch]$AcknowledgeToolboxChargesAndAccess
+ [switch]$AcknowledgeToolboxChargesAndAccess,
+ [string]$ExpectedImage
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
@@ -55,7 +56,26 @@ if($Mode -like 'DelegationRbac*'){
 if($Mode -eq 'SupervisorV2Verify') {
  $answer=Read-Host 'Run billable authenticated Supervisor-to-Investigation acceptance test? [y/N]'
  if($answer.Trim() -ine 'y'){throw 'JAWS-STEP-C-ACCEPT-001: Test declined.'}
- & (Join-Path $root 'Test-JawsStepCDelegation.ps1') -AcknowledgeInferenceCharges
+ $verify=Join-Path $root 'Test-JawsStepCDelegation.ps1'
+ if([string]::IsNullOrWhiteSpace($ExpectedImage)){& $verify -AcknowledgeInferenceCharges}
+ else{& $verify -AcknowledgeInferenceCharges -ExpectedImage $ExpectedImage}
+ return
+}
+if($Mode -in @('SupervisorCandidatePlan','SupervisorCandidateRelease')) {
+ $candidate=Join-Path $root 'Release-JawsSupervisorCandidate.ps1'
+ & $candidate -Mode Plan
+ if($Mode -eq 'SupervisorCandidatePlan'){return}
+ $planPath=Join-Path $root '.local/jaws-step-c-supervisor-candidate-release-plan.dev.generated.json'
+ $plan=Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json
+ if([string]$plan.Operation -eq 'AlreadyPresent'){
+  Write-Host "Release $($plan.Version) already uses $($plan.Image)."
+  return
+ }
+ Write-Host 'WARNING: This non-draft release may change latest-agent routing. Version 1 remains available and is not modified.'
+ Write-Host "Image: $($plan.Image)"
+ $answer=Read-Host 'Approve release of this published Supervisor image? [y/N]'
+ if($answer.Trim() -ine 'y'){throw 'JAWS-STEP-C-CANDIDATE-001: Candidate release declined.'}
+ & $candidate -Mode Release -ApprovedPlanSha256 $plan.PlanSha256 -AcknowledgeTrafficAndInferenceCharges
  return
 }
 if($Mode -in @('SupervisorReleasePlan','SupervisorRelease')) {

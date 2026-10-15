@@ -1,5 +1,6 @@
 using Azure.AI.Projects;
 using Azure.Identity;
+using Jaws.Supervisor.Host;
 using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Foundry.Hosting;
 
@@ -51,6 +52,9 @@ builder.Services.AddFoundryResponses(supervisor);
 if (!string.IsNullOrWhiteSpace(toolboxName))
 {
     builder.Services.AddFoundryToolboxes(credential, toolboxName);
+    // AddFoundryToolboxes lists tools but does not echo tools/list _meta on tools/call.
+    // The Foundry proxy rejects that call. This startup pass forwards the listed metadata.
+    builder.Services.AddHostedService<FoundryToolboxMetadataStartup>();
 }
 var app = builder.Build();
 app.MapGet("/healthz", () => Results.Ok(new {

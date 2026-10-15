@@ -181,9 +181,26 @@ function Invoke-JawsFoundrySupervisorDeployment {
     if($LASTEXITCODE -ne 0){throw 'JAWS-FOUNDRY-022: Existing Supervisor v1 could not be verified.'}
     $v1=$v1Output | Out-String | ConvertFrom-Json
     if($v1.status -ne 'active'){throw 'JAWS-FOUNDRY-023: Supervisor v1 is not active.'}
-    $v2Output=& az rest --method get --url "$($p.ProjectEndpoint)/agents/jaws-supervisor-dev/versions/2?api-version=v1" --resource https://ai.azure.com --output json --only-show-errors 2>&1
-    if($LASTEXITCODE -eq 0){throw 'JAWS-FOUNDRY-024: Supervisor v2 already exists; do not overwrite.'}
-    if(($v2Output|Out-String) -notmatch '(?i)(404|not.?found)'){throw 'JAWS-FOUNDRY-025: Could not prove v2 is absent.'}
+    # v1 and any already released version stay in place. A new image is a new version.
+    $listOutput=& az rest --method get --url "$($p.ProjectEndpoint)/agents/jaws-supervisor-dev/versions?api-version=v1" --resource https://ai.azure.com --output json --only-show-errors 2>&1
+    if($LASTEXITCODE -ne 0){throw "JAWS-FOUNDRY-024: Cannot list Supervisor versions: $($listOutput | Out-String)"}
+    $listed=$listOutput | Out-String | ConvertFrom-Json
+    $sameImage=@($listed.data | Where-Object {
+        $null -ne $_ -and
+        $_.PSObject.Properties['definition'] -and
+        [string]$_.definition.container_configuration.image -ceq [string]$p.Image -and
+        [string]$_.definition.environment_variables.JAWS_INVESTIGATION_TOOLBOX_NAME -ceq 'jaws-investigation-a2a-tools'
+    })
+    if($sameImage.Count -gt 0){
+        $present=$sameImage[0]
+        return [pscustomobject]@{
+            Status='ALREADY_PRESENT';AgentName=[string]$p.AgentName;Version=[string]$present.version
+            Image=[string]$p.Image;ProjectEndpoint=[string]$p.ProjectEndpoint
+            AgentVersionUri="$($p.ProjectEndpoint)/agents/$($p.AgentName)/versions/$($present.version)"
+            PlanSha256=[string]$DeploymentPlan.PlanSha256;FoundryDeploymentPerformed=$false
+            AzureWrites=0;ActiveVerified=$false;InvocationVerified=$false
+        }
+    }
     $body=ConvertTo-Json -InputObject $p.Request -Depth 20 -Compress
     $bodyFile=[System.IO.Path]::GetTempFileName()
     try {

@@ -1,12 +1,17 @@
 # Step C final acceptance: authenticated Responses invocation and evidence-based A2A verification.
 [CmdletBinding()]
-param([switch]$AcknowledgeInferenceCharges)
+param(
+ [switch]$AcknowledgeInferenceCharges,
+ [string]$ExpectedImage='jawsregistrydev001.azurecr.io/jaws/supervisor@sha256:5a9cd89cfc626df4bdd2266194db14cda8fd33f46de1bfbc9c1111cde1c8af54'
+)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $root=$PSScriptRoot
 $endpoint='https://jaws-foundry-dev.services.ai.azure.com/api/projects/jaws-dev'
 $agent='jaws-supervisor-dev'
-$expectedImage='jawsregistrydev001.azurecr.io/jaws/supervisor@sha256:5a9cd89cfc626df4bdd2266194db14cda8fd33f46de1bfbc9c1111cde1c8af54'
+if($ExpectedImage -cnotmatch '^jawsregistrydev001\.azurecr\.io/jaws/supervisor@sha256:[a-f0-9]{64}$'){
+ throw 'JAWS-C-ACCEPT-009: Expected Supervisor image must be an immutable jaws/supervisor digest.'
+}
 if(-not $AcknowledgeInferenceCharges){throw 'JAWS-C-ACCEPT-001: Explicit inference charge acknowledgment required.'}
 & (Join-Path $root 'Install-JawsStepC.ps1') -Mode DelegationVerify
 if(-not $?){throw 'JAWS-C-ACCEPT-002: Delegation prerequisites not verified.'}
@@ -20,17 +25,19 @@ function Get-Jaws([string]$url){
  return ($out|Out-String|ConvertFrom-Json -ErrorAction Stop)
 }
 $v1=Get-Jaws "$endpoint/agents/$agent/versions/1?api-version=v1"
-$v2=Get-Jaws "$endpoint/agents/$agent/versions/2?api-version=v1"
 $summary=Get-Jaws "$endpoint/agents/$($agent)?api-version=v1"
-if($v1.status -ne 'active' -or $v2.status -ne 'active' -or $v2.draft -ne $false -or
- $v2.definition.container_configuration.image -cne $expectedImage -or
- $v2.definition.environment_variables.JAWS_INVESTIGATION_TOOLBOX_NAME -cne 'jaws-investigation-a2a-tools'){
- throw 'JAWS-C-ACCEPT-004: Live Supervisor v1/v2 release state mismatch.'
+$latestValue=$summary.versions.latest
+$latest=if($latestValue -is [string] -or $latestValue -is [ValueType]){[string]$latestValue}
+ elseif($latestValue.PSObject.Properties['version']){[string]$latestValue.version}
+ else{''}
+if($latest -notmatch '^[0-9]+$' -or $latest -eq '1'){
+ throw 'JAWS-C-ACCEPT-005: Latest routing is not a released Supervisor version after v1; no invocation attempted.'
 }
-# The unversioned Responses endpoint must route to release v2. Do not test v1 inadvertently.
-$latest=[string]$summary.versions.latest
-if($latest -ne '2' -and [string]$summary.versions.latest.version -ne '2'){
- throw 'JAWS-C-ACCEPT-005: Latest routing not confirmed as v2; no invocation attempted.'
+$routed=Get-Jaws "$endpoint/agents/$agent/versions/${latest}?api-version=v1"
+if($v1.status -ne 'active' -or $routed.status -ne 'active' -or $routed.draft -ne $false -or
+ $routed.definition.container_configuration.image -cne $ExpectedImage -or
+ $routed.definition.environment_variables.JAWS_INVESTIGATION_TOOLBOX_NAME -cne 'jaws-investigation-a2a-tools'){
+ throw 'JAWS-C-ACCEPT-004: Live Supervisor release state does not match the expected image.'
 }
 $body=@{model='gpt-5-mini';input='Use the Investigation A2A toolbox for a read-only investigation planning request. Identify three diagnostic checks for an unhealthy Azure VM. Do not perform any remediation. Report what the Investigation agent actually returned.';stream=$false;store=$false}|ConvertTo-Json -Depth 8 -Compress
 $tmp=[IO.Path]::GetTempFileName()
@@ -48,7 +55,7 @@ $report=[pscustomobject]@{
  Status=$status
  Classification=$evidence.Classification
  SupervisorAgent=$agent
- SupervisorVersion='2'
+ SupervisorVersion=$latest
  InvestigationAgent='jaws-investigation-dev'
  ResponseId=[string]$response.id
  ResponseStatus=[string]$response.status

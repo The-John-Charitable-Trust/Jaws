@@ -27,3 +27,19 @@ From PowerShell 7 in repository root:
 Do not use `DelegationInstall` until the read-only discovery succeeds and approves the exact plan hash. The toolbox planning stage depends on a verified connection receipt.
 
 The overall Step C milestone is incomplete until Supervisor v2 has been built/deployed and a real delegated investigation succeeds.
+
+## JAWS-C-ACCEPT-007 / TOOL_INVOKED_FAILED
+
+`SupervisorV2Verify` can show a completed response, a real `jaws-investigation-a2a-dev__SendMessage` call, and tool output `Error: Function failed.` Connection, toolbox v2, and Foundry Agent Consumer checks can all pass before that. The hosting package lists the toolbox tool, then calls it without the `_meta` block from `tools/list` (including `tool_configuration`). The Foundry toolbox proxy rejects that call. The agent framework hides the proxy error when detailed function errors are off, so the acceptance report only contains `Error: Function failed.`
+
+`FoundryToolboxMetadataStartup` forwards that listed metadata onto the hosted MCP tool after `AddFoundryToolboxes` enumerates it. The image currently pinned for Supervisor v2 does not contain this change. Supervisor v1 stays unchanged. From the repository root in PowerShell 7:
+
+```powershell
+.\installer\Install-JawsStepC.ps1 -Mode SupervisorV2Build
+.\installer\Install-JawsStepC.ps1 -Mode SupervisorV2Publish
+.\installer\Install-JawsStepC.ps1 -Mode SupervisorV2Deploy
+.\installer\Install-JawsStepC.ps1 -Mode SupervisorCandidateRelease
+.\installer\Install-JawsStepC.ps1 -Mode SupervisorV2Verify -ExpectedImage 'jawsregistrydev001.azurecr.io/jaws/supervisor@sha256:<new-digest>'
+```
+
+`SupervisorV2Deploy` creates a draft for the published digest and does not patch an existing version. `SupervisorCandidateRelease` creates the next non-draft version from that draft. Acceptance invokes whichever released version Foundry routes as latest, and it rejects the call unless that version's image is the digest you pass.

@@ -3,7 +3,7 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 COPY Jaws.Supervisor.Host.csproj ./
 RUN dotnet restore ./Jaws.Supervisor.Host.csproj
-COPY Program.cs ./
+COPY *.cs ./
 RUN dotnet publish ./Jaws.Supervisor.Host.csproj -c Release -o /app/out --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0

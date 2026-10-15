@@ -28,6 +28,24 @@ Describe 'Step C delegation evidence classification' {
   $r=[pscustomobject]@{status='completed';output=@([pscustomobject]@{type='function_call';call_id='c';name='jaws-investigation-a2a-dev'})}
   (Get-JawsDelegationEvidence $r).Classification | Should -Be 'INDETERMINATE'
  }
+ It 'accepts a completed A2A task whose plan text says failed' {
+  $plan='{"content":[{"type":"text","text":"{ \"status\": { \"state\": \"TASK_STATE_COMPLETED\" }, \"artifacts\": [{ \"parts\": [{ \"text\": \"The VM failed to start. Read-only check: collect boot diagnostics. No error was retrieved from a provider.\" }] }] }"}]}'
+  $r=[pscustomobject]@{status='completed';output=@(
+    [pscustomobject]@{type='function_call';call_id='c';name='jaws-investigation-a2a-dev___SendMessage'},
+    [pscustomobject]@{type='function_call_output';call_id='c';output=$plan}
+   )}
+  $actual=Get-JawsDelegationEvidence $r
+  $actual.Classification | Should -Be 'TOOL_INVOKED_SUCCEEDED'
+  $actual.Calls[0].Failed | Should -BeFalse
+ }
+ It 'rejects a completed wrapper that still carries a protocol failure' {
+  $raw='TASK_STATE_COMPLETED Error: Function failed.'
+  $r=[pscustomobject]@{status='completed';output=@(
+    [pscustomobject]@{type='function_call';call_id='c';name='jaws-investigation-a2a-dev'},
+    [pscustomobject]@{type='function_call_output';call_id='c';output=$raw}
+   )}
+  (Get-JawsDelegationEvidence $r).Classification | Should -Be 'TOOL_INVOKED_FAILED'
+ }
  It 'rejects failed unrelated calls even with an investigation answer' {
   $r=[pscustomobject]@{status='completed';output=@(
     [pscustomobject]@{type='function_call';call_id='a';name='jaws-investigation-a2a-dev'},

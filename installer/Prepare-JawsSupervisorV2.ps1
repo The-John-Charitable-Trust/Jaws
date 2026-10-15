@@ -19,7 +19,9 @@ if($Mode -eq 'Verify'){
 if($Mode -eq 'Build'){
  & dotnet build $project -c Release
  if($LASTEXITCODE -ne 0){throw 'JAWS-SUP-V2-002: .NET build failed.'}
- & docker build --platform linux/amd64 --file $docker --tag jaws-supervisor:local (Split-Path -Parent $docker)
+ # Buildx emits an OCI index with OCI layers. The legacy builder's docker layer
+ # media type failed Foundry provisioning for this registry.
+ & docker buildx build --platform linux/amd64 --file $docker --tag jaws-supervisor:local --load (Split-Path -Parent $docker)
  if($LASTEXITCODE -ne 0){throw 'JAWS-SUP-V2-003: Container build failed.'}
  $arch=(& docker image inspect jaws-supervisor:local --format '{{.Os}}/{{.Architecture}}' | Out-String).Trim()
  if($arch -ne 'linux/amd64'){throw "JAWS-SUP-V2-004: Expected linux/amd64, got $arch"}

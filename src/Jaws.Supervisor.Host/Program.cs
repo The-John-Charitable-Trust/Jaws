@@ -44,6 +44,15 @@ AIAgent supervisor = new AIProjectClient(endpoint, credential)
         name: "jaws-supervisor",
         description: "JAWS Supervisor hosted runtime: read-only initial deployment.");
 
+// Only a toolbox-enabled candidate wraps the agent. Supervisor v1 leaves this unset.
+if (!string.IsNullOrWhiteSpace(toolboxName))
+{
+    FoundryToolboxCallMetadata.EnableDetailedFunctionErrors(supervisor);
+    supervisor = supervisor.AsBuilder().Use(
+        FoundryToolboxCallMetadata.ForwardBeforeRun,
+        FoundryToolboxCallMetadata.ForwardBeforeStreamingRun).Build();
+}
+
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddFoundryResponses(supervisor);
 // Supported Foundry hosted-toolbox integration (Microsoft Agent Framework).

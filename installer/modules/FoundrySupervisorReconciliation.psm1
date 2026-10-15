@@ -17,6 +17,22 @@ function Get-JawsFoundryField {
     }
     return $current
 }
+function Set-JawsSupervisorDraftListing {
+    param([Parameter(Mandatory)][string]$Url)
+    # Foundry omits drafts unless include_drafts=true. Keep that flag on the first page and
+    # on every continuation so a later page cannot hide the candidate.
+    $parts=$Url -split '\?',2
+    $pairs=New-Object System.Collections.Generic.List[string]
+    if($parts.Count -eq 2 -and -not [string]::IsNullOrEmpty($parts[1])){
+        foreach($pair in ($parts[1] -split '&')){
+            if([string]::IsNullOrEmpty($pair)){ continue }
+            if($pair -match '^(?i)include_drafts='){ continue }
+            $pairs.Add($pair)
+        }
+    }
+    $pairs.Add('include_drafts=true')
+    return ($parts[0] + '?' + ($pairs -join '&'))
+}
 function Get-JawsFoundryAgentVersion {
     [CmdletBinding()]
     param([Parameter(Mandatory)]$Agent)
@@ -96,7 +112,7 @@ function Get-JawsSupervisorVersionInventory {
  [CmdletBinding()]
  param([Parameter(Mandatory)][scriptblock]$ReadPage,[Parameter(Mandatory)][string]$ProjectEndpoint,[int]$MaxPages=20)
  if($MaxPages -lt 1){throw 'JAWS-RECON-103: Invalid page limit.'}
- $url="$ProjectEndpoint/agents/jaws-supervisor-dev/versions?api-version=v1"
+ $url=Set-JawsSupervisorDraftListing "$ProjectEndpoint/agents/jaws-supervisor-dev/versions?api-version=v1"
  $seen=@{};$all=@()
  for($n=0;$n -lt $MaxPages;$n++){
   if($seen.ContainsKey($url)){throw 'JAWS-RECON-104: Pagination cycle.'}
@@ -132,16 +148,18 @@ function Get-JawsSupervisorVersionInventory {
   }
   $prefix="$ProjectEndpoint/agents/jaws-supervisor-dev/versions?"
   if(-not ([string]$next).StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)){throw 'JAWS-RECON-107: Unexpected continuation URL.'}
-  $url=[string]$next
+  $url=Set-JawsSupervisorDraftListing ([string]$next)
  }
  throw 'JAWS-RECON-108: Pagination limit exceeded.'
 }
 function Wait-JawsSupervisorCandidate {
  [CmdletBinding()]
  param([Parameter(Mandatory)][scriptblock]$ReadPage,[Parameter(Mandatory)][string]$ProjectEndpoint,
- [Parameter(Mandatory)][string]$Image,[int]$MaxAttempts=12,[int]$DelaySeconds=10,
+ [Parameter(Mandatory)][string]$Image,[int]$MaxAttempts=12,[int]$DelaySeconds=10,[int]$StableReads=1,
  [scriptblock]$Sleep={param($seconds) Start-Sleep -Seconds $seconds})
- if($MaxAttempts -lt 1 -or $DelaySeconds -lt 0){throw 'JAWS-RECON-109: Invalid polling parameters.'}
+ if($MaxAttempts -lt 1 -or $DelaySeconds -lt 0 -or $StableReads -lt 1){throw 'JAWS-RECON-109: Invalid polling parameters.'}
+ $stable=0
+ $stableVersion=''
  for($i=1;$i -le $MaxAttempts;$i++){
   try{
    $versions=@(Get-JawsSupervisorVersionInventory -ReadPage $ReadPage -ProjectEndpoint $ProjectEndpoint)
@@ -150,16 +168,21 @@ function Wait-JawsSupervisorCandidate {
     if($candidate.Status -match '^(failed|error|canceled|cancelled)$'){
      return [pscustomobject]@{Status='FAILED';Version=$candidate.Version;ActiveVerified=$false;Attempts=$i;Reason=$candidate.Status}
     }
-    if($candidate.Status -ceq 'active' -and $candidate.Draft -eq $true -and $candidate.Version -match '^draft-[0-9]+$'){
-     return [pscustomobject]@{Status='ACTIVE_VERIFIED';Version=$candidate.Version;ActiveVerified=$true;Attempts=$i;Reason=''}
-    }
-    if($candidate.Status -ceq 'active' -and $candidate.Draft -eq $false -and $candidate.Version -match '^[0-9]+$'){
-     return [pscustomobject]@{Status='ALREADY_RELEASED';Version=$candidate.Version;ActiveVerified=$true;Attempts=$i;Reason=''}
-    }
-   }
+    $activeDraft=$candidate.Status -ceq 'active' -and $candidate.Draft -eq $true -and $candidate.Version -match '^draft-[0-9]+$'
+    $activeRelease=$candidate.Status -ceq 'active' -and $candidate.Draft -eq $false -and $candidate.Version -match '^[0-9]+$'
+    if($activeDraft -or $activeRelease){
+     if($stableVersion -cne $candidate.Version){$stable=0;$stableVersion=$candidate.Version}
+     $stable++
+     if($stable -ge $StableReads){
+      $status=if($activeDraft){'ACTIVE_VERIFIED'}else{'ALREADY_RELEASED'}
+      return [pscustomobject]@{Status=$status;Version=$candidate.Version;ActiveVerified=$true;Attempts=$i;Reason=''}
+     }
+    }else{$stable=0;$stableVersion=''}
+   }else{$stable=0;$stableVersion=''}
   }catch{
    if($_.Exception.Message -match '^JAWS-RECON-'){throw}
    if($i -eq $MaxAttempts){throw}
+   $stable=0;$stableVersion=''
   }
   if($i -lt $MaxAttempts){& $Sleep $DelaySeconds}
  }

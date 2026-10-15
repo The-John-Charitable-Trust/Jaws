@@ -19,12 +19,15 @@ Describe 'Foundry Supervisor candidate lifecycle' {
   {Resolve-JawsSupervisorCandidate -Versions @($script:candidate,$script:candidate) -Image $script:image} | Should -Throw '*Ambiguous*'
  }
  It 'requires complete pagination and follows the returned continuation' {
-  $start="$($script:url)/agents/jaws-supervisor-dev/versions?api-version=v1"
+  $start="$($script:url)/agents/jaws-supervisor-dev/versions?api-version=v1&include_drafts=true"
   $next="$($script:url)/agents/jaws-supervisor-dev/versions?api-version=v1&continuation=abc"
+  $continued="$($script:url)/agents/jaws-supervisor-dev/versions?api-version=v1&continuation=abc&include_drafts=true"
   $candidate=$script:candidate
-  $fetch={param($url) if($url -eq $start){return [pscustomobject]@{data=@();nextLink=$next}};return [pscustomobject]@{data=@($candidate);has_more=$false}}.GetNewClosure()
+  $seen=[System.Collections.Generic.List[string]]::new()
+  $fetch={param($url) $seen.Add($url); if($url -eq $start){return [pscustomobject]@{data=@();nextLink=$next}};return [pscustomobject]@{data=@($candidate);has_more=$false}}.GetNewClosure()
   $all=@(Get-JawsSupervisorVersionInventory -ReadPage $fetch -ProjectEndpoint $script:url)
   $all.Count | Should -Be 1
+  $seen | Should -Be @($start,$continued)
  }
  It 'hydrates version-list summaries from version detail' {
   $fetch={
@@ -87,6 +90,38 @@ Describe 'Foundry Supervisor candidate lifecycle' {
   $deploy | Should -Match 'Get-JawsSupervisorVersionInventory'
   $release | Should -Match 'Get-JawsSupervisorVersionInventory'
   $release | Should -Match 'JAWS-SUP-CANDIDATE-012'
+ }
+ It 'does not accept an active draft that disappears on the next read' {
+  $reads=[pscustomobject]@{Value=0}
+  $candidate=$script:candidate
+  $fetch={
+   param($url)
+   $reads.Value++
+   if($reads.Value -eq 2){return [pscustomobject]@{data=@()}}
+   return [pscustomobject]@{data=@($candidate)}
+  }.GetNewClosure()
+  $result=Wait-JawsSupervisorCandidate -ReadPage $fetch -ProjectEndpoint $script:url -Image $script:image -MaxAttempts 6 -DelaySeconds 0 -StableReads 3 -Sleep {param($seconds)}
+  $result.Status | Should -Be 'ACTIVE_VERIFIED'
+  $result.Attempts | Should -Be 5
+ }
+ It 'keeps Wait-JawsSupervisorCandidate visible after the reconcile script imports' {
+  $path=Join-Path $PSScriptRoot '../../installer/Reconcile-JawsSupervisorCandidate.ps1'
+  $tokens=$null;$errors=$null
+  $ast=[System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path),[ref]$tokens,[ref]$errors)
+  $imports=@($ast.FindAll({param($node) $node -is [System.Management.Automation.Language.CommandAst] -and $node.GetCommandName() -eq 'Import-Module'}, $true))
+  $imports.Count | Should -Be 2
+  $root=(Resolve-Path (Join-Path $PSScriptRoot '../../installer')).Path
+  $ps=[powershell]::Create()
+  try {
+   foreach($import in $imports){
+    $text=$import.Extent.Text -replace '\$PSScriptRoot',"'$root'"
+    $ps.AddScript($text).AddStatement() | Out-Null
+   }
+   $ps.AddScript('Get-Command Wait-JawsSupervisorCandidate -ErrorAction Stop | Select-Object -ExpandProperty Name') | Out-Null
+   $visible=@($ps.Invoke())
+   $ps.HadErrors | Should -BeFalse
+   $visible | Should -Be 'Wait-JawsSupervisorCandidate'
+  } finally { $ps.Dispose() }
  }
  It 'parses all lifecycle PowerShell files' {
   foreach($relative in @('../../installer/modules/FoundrySupervisorReconciliation.psm1','../../installer/Reconcile-JawsSupervisorCandidate.ps1','../../installer/Release-JawsSupervisorCandidate.ps1','../../installer/Install-JawsStepC.ps1')){

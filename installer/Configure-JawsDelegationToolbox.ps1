@@ -22,7 +22,7 @@ $conn=Get-Api -Url $connectionUrl
 if($null -eq $conn -or -not $conn.id -or $conn.name -cne $connName) {
  throw 'JAWS-TOOLBOX-002: Authenticated Investigation RemoteA2A project connection not verified.'
 }
-$target="https://jaws-foundry-dev.services.ai.azure.com/api/projects/jaws-dev/agents/jaws-investigation-dev/endpoint/protocols/a2a"
+$target="https://jaws-foundry-dev.services.ai.azure.com/api/projects/jaws-dev/agents/jaws-investigation-planner-dev/endpoint/protocols/a2a"
 $directTarget=if($conn.PSObject.Properties['target']){[string]$conn.target}else{''}
 $nestedTarget=if($conn.PSObject.Properties['properties'] -and $conn.properties -and $conn.properties.PSObject.Properties['target']){[string]$conn.properties.target}else{''}
 if($directTarget -cne $target -and $nestedTarget -cne $target) {

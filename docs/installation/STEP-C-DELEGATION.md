@@ -26,13 +26,22 @@ From PowerShell 7 in repository root:
 
 Do not use `DelegationInstall` until the read-only discovery succeeds and approves the exact plan hash. The toolbox planning stage depends on a verified connection receipt.
 
-The overall Step C milestone is incomplete until Supervisor v2 has been built/deployed and a real delegated investigation succeeds.
+Live acceptance on 2026-10-15 passed against released Supervisor version 5, image `jawsregistrydev001.azurecr.io/jaws/supervisor@sha256:86c556fff7f54eb8ad81c84bc768093fd7bc083e941e9e16bbf1ea8bc0cfa289`. Supervisor v1 is still active on `sha256:d1e03b6c0cf5a1f6f8b531da3af6a63aef6a038d7892cdaec43b456ec4cb7062` and has no toolbox. The call was `jaws-investigation-a2a-dev___SendMessage`, classification `TOOL_INVOKED_SUCCEEDED`, response `caresp_040f45cfb362e093003JXExmmqYApTAgvNgPTx8QNzbrBTDlbx`. The tool result was an A2A task in `TASK_STATE_COMPLETED` whose artifact is a read-only VM investigation plan. Report: `installer/.local/jaws-step-c-final-acceptance.dev.generated.json` (local only). Hosted Investigation v1 remains the Responses runtime and is not the A2A callee.
 
 ## JAWS-C-ACCEPT-007 / TOOL_INVOKED_FAILED
 
-`SupervisorV2Verify` can show a completed response, a real `jaws-investigation-a2a-dev__SendMessage` call, and tool output `Error: Function failed.` Connection, toolbox v2, and Foundry Agent Consumer checks can all pass before that. The hosting package lists the toolbox tool, then calls it without the `_meta` block from `tools/list` (including `tool_configuration`). The Foundry toolbox proxy rejects that call. The agent framework hides the proxy error when detailed function errors are off, so the acceptance report only contains `Error: Function failed.`
+`SupervisorV2Verify` can show a completed response, a real `jaws-investigation-a2a-dev__SendMessage` call, and tool output `Error: Function failed.` Connection, toolbox v2, and Foundry Agent Consumer checks can all pass before that. Two separate causes have shown up behind that text.
 
-`FoundryToolboxMetadataStartup` forwards that listed metadata onto the hosted MCP tool after `AddFoundryToolboxes` enumerates it. Candidate release uses the same paginated version inventory as deployment, so a summary page or a later continuation cannot hide the active draft. Supervisor v1 stays unchanged. From the repository root in PowerShell 7:
+The hosting package lists the toolbox tool, then calls it without the `_meta` block from `tools/list` (including `tool_configuration`). The Foundry toolbox proxy rejects that call. The agent framework hides the proxy error when detailed function errors are off, so the acceptance report only contains `Error: Function failed.`
+
+After that metadata is forwarded, Foundry still returns A2A JSON-RPC `-32099` with reason `HOSTED_AGENT_NOT_SUPPORTED` when the RemoteA2A target is hosted `jaws-investigation-dev`. Direct `SendMessage` against that endpoint returns the same error and tells the caller to use a prompt agent. Hosted Investigation v1 stays active and unchanged. The connection target for `jaws-investigation-a2a-dev` is prompt agent `jaws-investigation-planner-dev`, which accepts A2A 1.0 `SendMessage` and returns a read-only plan. Retarget the existing connection only from the hosted URL, with the plan SHA:
+
+```powershell
+.\installer\Configure-JawsDelegationConnection.ps1 -Mode Plan
+.\installer\Configure-JawsDelegationConnection.ps1 -Mode Retarget -ApprovedPlanSha256 '<plan-sha>' -AcknowledgeA2AConnection
+```
+
+`FoundryToolboxMetadataStartup` forwards that listed metadata onto toolbox tools enumerated at startup. Foundry can also create those wrappers later, on the request, after a deferred toolbox retry. `ForwardBeforeInvocation` forwards the same metadata onto the tools for that run before the agent invokes them, and it leaves non-MCP tools in the list unchanged. Candidate release uses the same paginated version inventory as deployment, and every page requests drafts. Supervisor v1 stays unchanged. From the repository root in PowerShell 7:
 
 ```powershell
 .\installer\Install-JawsStepC.ps1 -Mode SupervisorV2Build
@@ -56,7 +65,7 @@ This is read-only and produces `installer/.local/jaws-step-c-supervisor-deployme
 ```powershell
 .\installer\Install-JawsStepC.ps1 -Mode SupervisorCandidateWait
 ```
-The bounded monitor locates versions by the verified ACR image digest and toolbox configuration. It follows recognized pagination links and inspects version details when list responses contain summaries. A 404 on a version detail is treated as temporary inventory inconsistency, not permission to create another draft.
+The bounded monitor locates versions by the verified ACR image digest and toolbox configuration. Foundry's version list omits drafts unless `include_drafts=true`, so every inventory page, including a continuation, requests that flag. A candidate that is active on one read can still fail provisioning, so the wait requires the same version to stay active across repeated reads before release. The monitor also inspects version details when list responses contain summaries. A 404 on a version detail is treated as temporary inventory inconsistency, not permission to create another draft. Build the Supervisor image with Buildx. The legacy builder pushed docker layer media types, and Foundry provisioning failed for that image.
 
 A new approved `SupervisorV2Deploy` operation also runs reconciliation automatically after submitting the draft. Success means an active and unique matching draft. If reconciliation fails or times out, the installer records an indeterminate/failed receipt and **must not automatically create another draft**.
 

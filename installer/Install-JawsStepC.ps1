@@ -139,6 +139,8 @@ if($Mode -like 'Delegation*'){
    } else { & $toolbox -Mode Plan }
   }
   'DelegationVerify' {
+   & (Join-Path $root 'Test-JawsInvestigationPlanner.ps1')
+   if(-not $?){throw 'JAWS-STEP-C-DELEGATION-006: Investigation prompt planner is not ready.'}
    & $connection -Mode Verify
    if(-not $?){throw 'JAWS-STEP-C-DELEGATION-005: Connection verification failed.'}
    & $toolbox -Mode Verify

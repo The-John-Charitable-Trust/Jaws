@@ -1,10 +1,12 @@
 # State-first read-only reconciliation of published Supervisor candidate.
 [CmdletBinding()]
-param([ValidateSet('Verify','Wait')][string]$Mode='Wait',[int]$MaxAttempts=12,[int]$DelaySeconds=10)
+param([ValidateSet('Verify','Wait')][string]$Mode='Wait',[int]$MaxAttempts=20,[int]$DelaySeconds=15,[int]$StableReads=6)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
-Import-Module (Join-Path $PSScriptRoot 'modules/FoundrySupervisorReconciliation.psm1') -Force
+# Deployment imports reconciliation into its own scope and removes it from the caller.
+# Import reconciliation afterward so Wait-JawsSupervisorCandidate stays visible here.
 Import-Module (Join-Path $PSScriptRoot 'modules/FoundrySupervisorDeployment.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'modules/FoundrySupervisorReconciliation.psm1') -Force
 $local=Join-Path $PSScriptRoot '.local'
 $publishPath=Join-Path $local 'jaws-supervisor-publish-receipt.dev.generated.json'
 if(-not(Test-Path -LiteralPath $publishPath)){throw 'JAWS-RECON-201: Verified publish receipt missing.'}
@@ -16,8 +18,8 @@ function Read-FoundryPage([string]$url) {
  if($LASTEXITCODE -ne 0){throw "JAWS-RECON-202: Foundry read failed. $($output|Out-String)"}
  return ($output|Out-String|ConvertFrom-Json -ErrorAction Stop)
 }
-if($Mode -eq 'Verify'){$MaxAttempts=1}
-$state=Wait-JawsSupervisorCandidate -ReadPage { param($url) Read-FoundryPage $url } -ProjectEndpoint $endpoint -Image $image -MaxAttempts $MaxAttempts -DelaySeconds $DelaySeconds
+if($Mode -eq 'Verify'){$MaxAttempts=1; $StableReads=1}
+$state=Wait-JawsSupervisorCandidate -ReadPage { param($url) Read-FoundryPage $url } -ProjectEndpoint $endpoint -Image $image -MaxAttempts $MaxAttempts -DelaySeconds $DelaySeconds -StableReads $StableReads
 $report=[pscustomobject]@{
  SchemaVersion='1.0';AgentName='jaws-supervisor-dev';Status=$state.Status;ResolvedVersion=$state.Version
  ActiveVerified=$state.ActiveVerified;Attempts=$state.Attempts;Reason=$state.Reason

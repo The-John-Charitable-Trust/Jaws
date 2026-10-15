@@ -1,6 +1,8 @@
 using System.Reflection;
 using System.Text.Json.Nodes;
 using Jaws.Supervisor.Host;
+using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using ModelContextProtocol.Client;
@@ -16,6 +18,7 @@ if (args.Contains("--mcp-meta-server"))
 var failures = 0;
 failures += await CheckForwardedCallSucceedsAsync();
 failures += CheckUnpatchableToolFailsClosed();
+failures += CheckEmptyMcpHolderFailsClosed();
 if (failures != 0)
 {
     Console.Error.WriteLine($"FAIL {failures}");
@@ -73,6 +76,50 @@ static async Task<int> CheckForwardedCallSucceedsAsync()
         return 1;
     }
 
+    var plain = AIFunctionFactory.Create(() => "plain", name: "plain_tool");
+    var callable = new List<AITool> { plain, tool };
+    var callablePatched = FoundryToolboxCallMetadata.ApplyCallable(callable);
+    if (callablePatched != 1 || !ReferenceEquals(callable[0], plain))
+    {
+        Console.Error.WriteLine("Mixed tool list was not patched without disturbing the non-MCP tool.");
+        return 1;
+    }
+
+    var throughList = await ((McpClientTool)callable[1]).CallAsync(new Dictionary<string, object?>());
+    if (Text(throughList) != "FORWARDED")
+    {
+        Console.Error.WriteLine($"Per-call tool list returned '{Text(throughList)}'.");
+        return 1;
+    }
+
+    var options = new ChatClientAgentRunOptions(new ChatOptions
+    {
+        Tools = new List<AITool> { tool }
+    });
+    var invoked = false;
+    await FoundryToolboxCallMetadata.ForwardBeforeInvocation(
+        [],
+        session: null,
+        options,
+        (_, _, _, _) =>
+        {
+            invoked = true;
+            return Task.CompletedTask;
+        },
+        CancellationToken.None);
+    if (!invoked || options.ChatOptions?.Tools is not { Count: 1 })
+    {
+        Console.Error.WriteLine("Per-call forwarding did not reach the agent invocation.");
+        return 1;
+    }
+
+    var throughRun = await ((McpClientTool)options.ChatOptions.Tools[0]).CallAsync(new Dictionary<string, object?>());
+    if (Text(throughRun) != "FORWARDED")
+    {
+        Console.Error.WriteLine($"Run-option tool returned '{Text(throughRun)}'.");
+        return 1;
+    }
+
     return 0;
 }
 
@@ -88,6 +135,21 @@ static int CheckUnpatchableToolFailsClosed()
     }
 
     Console.Error.WriteLine("A tool with no MCP client field was not rejected.");
+    return 1;
+}
+
+static int CheckEmptyMcpHolderFailsClosed()
+{
+    try
+    {
+        FoundryToolboxCallMetadata.Apply([new EmptyMcpHolder()]);
+    }
+    catch (InvalidOperationException ex) when (ex.Message.Contains("JAWS-TOOLBOX-META-001", StringComparison.Ordinal))
+    {
+        return 0;
+    }
+
+    Console.Error.WriteLine("A wrapper with an empty MCP field was not rejected.");
     return 1;
 }
 
@@ -152,4 +214,12 @@ internal sealed class ToolWrapper
     public ToolWrapper(McpClientTool inner) => _inner = inner;
 
     public McpClientTool Inner => _inner;
+}
+
+internal sealed class EmptyMcpHolder
+{
+    // Reflection reads this field. It stays null so patching must fail closed.
+#pragma warning disable CS0169
+    private readonly McpClientTool? _inner;
+#pragma warning restore CS0169
 }

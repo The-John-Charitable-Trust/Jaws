@@ -14,7 +14,7 @@ $publish=Resolve-JawsSupervisorPublishReceipt -ReceiptContent (Get-Content -Lite
 $image=[string]$publish.Image
 $endpoint='https://jaws-foundry-dev.services.ai.azure.com/api/projects/jaws-dev'
 function Read-FoundryPage([string]$url) {
- $output=& az rest --method get --url $url --resource https://ai.azure.com --output json --only-show-errors 2>&1
+ $output=Invoke-JawsAzRestGet -Url $url -Resource 'https://ai.azure.com' 2>&1
  if($LASTEXITCODE -ne 0){throw "JAWS-RECON-202: Foundry read failed. $($output|Out-String)"}
  return ($output|Out-String|ConvertFrom-Json -ErrorAction Stop)
 }

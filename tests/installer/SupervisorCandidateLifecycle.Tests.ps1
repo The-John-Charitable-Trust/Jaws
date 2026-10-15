@@ -138,6 +138,30 @@ Describe 'Foundry Supervisor candidate lifecycle' {
    $visible | Should -Be 'Wait-JawsSupervisorCandidate'
   } finally { $ps.Dispose() }
  }
+ It 'sends include_drafts through a quoted Windows command instead of the raw url' {
+  $previous=$env:OS
+  try {
+   $env:OS='Windows_NT'
+   $plan=Get-JawsAzRestGetCommand -Url 'https://example.test/agents/jaws-supervisor-dev/versions?api-version=v1&include_drafts=true' -Resource 'https://ai.azure.com'
+   $plan.Runner | Should -Be 'cmd'
+   $plan.UrlFromEnvironment | Should -BeTrue
+   $plan.Command | Should -Be 'az rest --method get --url "%JAWS_AZ_URL%" --resource https://ai.azure.com --output json --only-show-errors'
+   $plan.Command | Should -Not -Match 'include_drafts'
+  } finally {
+   if($null -eq $previous){ Remove-Item Env:OS -ErrorAction SilentlyContinue } else { $env:OS=$previous }
+  }
+ }
+ It 'leaves urls without an ampersand on the direct az command' {
+  $previous=$env:OS
+  try {
+   $env:OS='Windows_NT'
+   $plan=Get-JawsAzRestGetCommand -Url 'https://example.test/agents/jaws-supervisor-dev/versions/5?api-version=v1' -Resource 'https://ai.azure.com'
+   $plan.Runner | Should -Be 'az'
+   $plan.Url | Should -Be 'https://example.test/agents/jaws-supervisor-dev/versions/5?api-version=v1'
+  } finally {
+   if($null -eq $previous){ Remove-Item Env:OS -ErrorAction SilentlyContinue } else { $env:OS=$previous }
+  }
+ }
  It 'parses all lifecycle PowerShell files' {
   foreach($relative in @('../../installer/modules/FoundrySupervisorReconciliation.psm1','../../installer/Reconcile-JawsSupervisorCandidate.ps1','../../installer/Release-JawsSupervisorCandidate.ps1','../../installer/Install-JawsStepC.ps1')){
    $t=$null;$errors=$null

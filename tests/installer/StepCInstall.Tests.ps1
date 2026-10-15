@@ -53,6 +53,7 @@ Describe 'Step C install orchestrator safety' {
   $orchestrator | Should -Not -Match 'az role assignment create'
   $orchestrator | Should -Not -Match 'az rest --method (put|patch|post|delete)'
   $orchestrator | Should -Match 'SupervisorVersionPosted=\$false'
+  $orchestrator | Should -Match 'Invoke-JawsAzRestGet'
   $orchestrator | Should -Match '\$script:gates\.ToArray\(\)'
  }
  It 'keeps acceptance behind an explicit inference acknowledgement' {

@@ -25,7 +25,7 @@ $image=[string]$receipt.Image
 $endpoint='https://jaws-foundry-dev.services.ai.azure.com/api/projects/jaws-dev'
 $agent='jaws-supervisor-dev'
 function Read-Foundry([string]$url){
- $out=& az rest --method get --url $url --resource https://ai.azure.com --output json --only-show-errors 2>&1
+ $out=Invoke-JawsAzRestGet -Url $url -Resource 'https://ai.azure.com' 2>&1
  if($LASTEXITCODE -ne 0){throw "JAWS-SUP-CANDIDATE-003: Azure state read failed: $($out|Out-String)"}
  return ($out|Out-String|ConvertFrom-Json -ErrorAction Stop)
 }

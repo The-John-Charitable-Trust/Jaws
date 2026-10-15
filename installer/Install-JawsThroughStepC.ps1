@@ -13,6 +13,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $root=$PSScriptRoot
 Import-Module (Join-Path $root 'modules/StepCInstall.psm1') -Force
+Import-Module (Join-Path $root 'modules/FoundrySupervisorReconciliation.psm1') -Force
 if($ExpectedImage -cnotmatch '^jawsregistrydev001\.azurecr\.io/jaws/supervisor@sha256:[a-f0-9]{64}$'){
  throw 'JAWS-INSTALL-C-013: Expected Supervisor image must be an immutable jaws/supervisor digest.'
 }
@@ -126,12 +127,11 @@ function Invoke-RequiredGate([string]$Name,[scriptblock]$Action){
  }
 }
 function Read-Foundry([string]$Url){
- $out=& az rest --method get --url $Url --resource https://ai.azure.com --output json --only-show-errors 2>&1
+ $out=Invoke-JawsAzRestGet -Url $Url -Resource 'https://ai.azure.com' 2>&1
  if($LASTEXITCODE -ne 0){ throw "JAWS-INSTALL-C-003: Foundry read failed: $($out | Out-String)" }
  return ($out | Out-String | ConvertFrom-Json -ErrorAction Stop)
 }
 function Assert-SupervisorRoute {
- Import-Module (Join-Path $root 'modules/FoundrySupervisorReconciliation.psm1') -Force
  $summary=Read-Foundry "$endpoint/agents/jaws-supervisor-dev?api-version=v1"
  $v1=Read-Foundry "$endpoint/agents/jaws-supervisor-dev/versions/1?api-version=v1"
  if($v1.status -ne 'active' -or $v1.draft -ne $false){

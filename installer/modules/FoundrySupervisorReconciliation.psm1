@@ -17,6 +17,31 @@ function Get-JawsFoundryField {
     }
     return $current
 }
+function Get-JawsAzRestGetCommand {
+    param([Parameter(Mandatory)][string]$Url,[Parameter(Mandatory)][string]$Resource)
+    # az on Windows is az.cmd. cmd.exe splits an unquoted & into a second command,
+    # which is why include_drafts was reported as an unknown program.
+    if($env:OS -eq 'Windows_NT' -and $Url.Contains('&')){
+        $command="az rest --method get --url `"%JAWS_AZ_URL%`" --resource $Resource --output json --only-show-errors"
+        return [pscustomobject]@{Runner='cmd';Command=$command;UrlFromEnvironment=$true}
+    }
+    return [pscustomobject]@{Runner='az';Command='';UrlFromEnvironment=$false;Url=$Url;Resource=$Resource}
+}
+function Invoke-JawsAzRestGet {
+    param([Parameter(Mandatory)][string]$Url,[Parameter(Mandatory)][string]$Resource)
+    $plan=Get-JawsAzRestGetCommand -Url $Url -Resource $Resource
+    if($plan.Runner -eq 'cmd'){
+        $previous=[Environment]::GetEnvironmentVariable('JAWS_AZ_URL','Process')
+        try {
+            [Environment]::SetEnvironmentVariable('JAWS_AZ_URL',$Url,'Process')
+            & cmd.exe /d /c $plan.Command
+        } finally {
+            [Environment]::SetEnvironmentVariable('JAWS_AZ_URL',$previous,'Process')
+        }
+        return
+    }
+    & az rest --method get --url $plan.Url --resource $plan.Resource --output json --only-show-errors
+}
 function Set-JawsSupervisorDraftListing {
     param([Parameter(Mandatory)][string]$Url)
     # Foundry omits drafts unless include_drafts=true. Keep that flag on the first page and
@@ -196,4 +221,4 @@ function Wait-JawsSupervisorCandidate {
  }
  return [pscustomobject]@{Status='INDETERMINATE';Version='';ActiveVerified=$false;Attempts=$MaxAttempts;Reason='No unique active version before timeout'}
 }
-Export-ModuleMember -Function Get-JawsFoundryField,Get-JawsFoundryAgentVersion,Compare-JawsFoundrySupervisorState,Resolve-JawsSupervisorCandidate,Get-JawsSupervisorVersionInventory,Wait-JawsSupervisorCandidate
+Export-ModuleMember -Function Get-JawsFoundryField,Get-JawsFoundryAgentVersion,Compare-JawsFoundrySupervisorState,Resolve-JawsSupervisorCandidate,Get-JawsSupervisorVersionInventory,Wait-JawsSupervisorCandidate,Get-JawsAzRestGetCommand,Invoke-JawsAzRestGet

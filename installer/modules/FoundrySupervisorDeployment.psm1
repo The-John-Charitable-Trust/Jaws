@@ -185,7 +185,7 @@ function Invoke-JawsFoundrySupervisorDeployment {
     # v1 and any already released version stay in place. A new image is a new version.
     $fetchVersions={
       param($url)
-      $out=& az rest --method get --url $url --resource https://ai.azure.com --output json --only-show-errors 2>&1
+      $out=Invoke-JawsAzRestGet -Url $url -Resource 'https://ai.azure.com' 2>&1
       if($LASTEXITCODE -ne 0){throw "JAWS-FOUNDRY-024: Cannot read existing version state: $($out|Out-String)"}
       return ($out|Out-String|ConvertFrom-Json -ErrorAction Stop)
     }

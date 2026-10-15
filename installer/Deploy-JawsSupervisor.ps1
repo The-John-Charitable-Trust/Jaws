@@ -44,4 +44,17 @@ $receiptPath=Join-Path $outDir "jaws-foundry-supervisor-deploy-receipt.$($state.
 $result | ConvertTo-Json -Depth 15 | Set-Content -LiteralPath $receiptPath -Encoding utf8
 Write-Host "Deployment: $($result.Status) | Agent: $($result.AgentName) | Version: $($result.Version)"
 Write-Host "Receipt: $receiptPath"
-Write-Host 'Deployment initiated only. Version must become active and pass authenticated invocation before acceptance.'
+# Automatically reconcile the submitted image by immutable digest.
+# Read-only reconciliation never retries the deployment POST.
+if($ToolboxName -eq 'jaws-investigation-a2a-tools'){
+ & (Join-Path $PSScriptRoot 'Reconcile-JawsSupervisorCandidate.ps1') -Mode Wait
+ if(-not $?){throw 'JAWS-FOUNDRY-025: Candidate reconciliation failed; no second deployment should be attempted.'}
+ $verified=Get-Content (Join-Path $outDir 'jaws-step-c-supervisor-deployment-verified.dev.generated.json') -Raw|ConvertFrom-Json
+ $result.Status=[string]$verified.Status
+ $result.Version=[string]$verified.ResolvedVersion
+ $result.ActiveVerified=[bool]$verified.ActiveVerified
+ $result | ConvertTo-Json -Depth 15 | Set-Content -LiteralPath $receiptPath -Encoding utf8
+ Write-Host "Deployment reconciled: $($result.Status); version $($result.Version)"
+}else{
+ Write-Host 'Deployment initiated only. Version must become active and pass authenticated invocation before acceptance.'
+}

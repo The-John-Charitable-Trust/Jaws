@@ -138,15 +138,15 @@ Describe 'Foundry Supervisor candidate lifecycle' {
    $visible | Should -Be 'Wait-JawsSupervisorCandidate'
   } finally { $ps.Dispose() }
  }
- It 'sends include_drafts through a quoted Windows command instead of the raw url' {
+ It 'escapes include_drafts for cmd.exe inside a batch file' {
   $previous=$env:OS
   try {
    $env:OS='Windows_NT'
-   $plan=Get-JawsAzRestGetCommand -Url 'https://example.test/agents/jaws-supervisor-dev/versions?api-version=v1&include_drafts=true' -Resource 'https://ai.azure.com'
+   $plan=Get-JawsAzRestGetCommand -Url 'https://example.test/agents/jaws-supervisor-dev/versions?api-version=v1&continuation=abc&include_drafts=true' -Resource 'https://ai.azure.com'
    $plan.Runner | Should -Be 'cmd'
-   $plan.UrlFromEnvironment | Should -BeTrue
-   $plan.Command | Should -Be 'az rest --method get --url "%JAWS_AZ_URL%" --resource https://ai.azure.com --output json --only-show-errors'
-   $plan.Command | Should -Not -Match 'include_drafts'
+   $plan.Batch | Should -Match 'setlocal DisableDelayedExpansion'
+   $plan.Batch | Should -Match 'call az rest --method get --url https://example\.test/agents/jaws-supervisor-dev/versions\?api-version=v1\^&continuation=abc\^&include_drafts=true --resource https://ai\.azure\.com'
+   $plan.Batch | Should -Not -Match 'api-version=v1&'
   } finally {
    if($null -eq $previous){ Remove-Item Env:OS -ErrorAction SilentlyContinue } else { $env:OS=$previous }
   }

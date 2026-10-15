@@ -19,24 +19,28 @@ function Get-JawsFoundryField {
 }
 function Get-JawsAzRestGetCommand {
     param([Parameter(Mandatory)][string]$Url,[Parameter(Mandatory)][string]$Resource)
-    # az on Windows is az.cmd. cmd.exe splits an unquoted & into a second command,
-    # which is why include_drafts was reported as an unknown program.
+    # az on Windows is az.cmd. PowerShell launches it through cmd.exe, and cmd.exe
+    # treats an unquoted & as a second command. Quotes added from PowerShell are
+    # stripped before cmd sees them, so include_drafts was executed as a program.
+    # A batch file lets cmd itself interpret ^& as a literal ampersand.
     if($env:OS -eq 'Windows_NT' -and $Url.Contains('&')){
-        $command="az rest --method get --url `"%JAWS_AZ_URL%`" --resource $Resource --output json --only-show-errors"
-        return [pscustomobject]@{Runner='cmd';Command=$command;UrlFromEnvironment=$true}
+        if($Url -match '["!\r\n\s]' -or $Resource -match '[&"!\r\n\s%]'){ throw 'JAWS-AZ-001: Foundry URL cannot be passed through cmd.exe safely.' }
+        $escaped=$Url.Replace('%','%%').Replace('&','^&')
+        $batch="@echo off`r`nsetlocal DisableDelayedExpansion`r`ncall az rest --method get --url $escaped --resource $Resource --output json --only-show-errors`r`nexit /b %ERRORLEVEL%`r`n"
+        return [pscustomobject]@{Runner='cmd';Batch=$batch;Url=$Url;Resource=$Resource}
     }
-    return [pscustomobject]@{Runner='az';Command='';UrlFromEnvironment=$false;Url=$Url;Resource=$Resource}
+    return [pscustomobject]@{Runner='az';Batch='';Url=$Url;Resource=$Resource}
 }
 function Invoke-JawsAzRestGet {
     param([Parameter(Mandatory)][string]$Url,[Parameter(Mandatory)][string]$Resource)
     $plan=Get-JawsAzRestGetCommand -Url $Url -Resource $Resource
     if($plan.Runner -eq 'cmd'){
-        $previous=[Environment]::GetEnvironmentVariable('JAWS_AZ_URL','Process')
+        $bat=Join-Path ([IO.Path]::GetTempPath()) ("jaws-az-rest-{0}.cmd" -f [guid]::NewGuid().ToString('n'))
         try {
-            [Environment]::SetEnvironmentVariable('JAWS_AZ_URL',$Url,'Process')
-            & cmd.exe /d /c $plan.Command
+            [IO.File]::WriteAllText($bat,$plan.Batch,[Text.Encoding]::ASCII)
+            & cmd.exe /d /c $bat
         } finally {
-            [Environment]::SetEnvironmentVariable('JAWS_AZ_URL',$previous,'Process')
+            Remove-Item -LiteralPath $bat -Force -ErrorAction SilentlyContinue
         }
         return
     }

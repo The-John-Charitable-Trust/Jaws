@@ -3,11 +3,14 @@
 The operator entry point is `installer/Install-JawsThroughStepC.ps1`. Validate is read-only. Install repairs only the known gaps in the runbook and then re-checks them. Supervisor v1 is not modified, and this installer does not post a Supervisor version. The RemoteA2A target is prompt agent `jaws-investigation-planner-dev`. Hosted `jaws-investigation-dev` stays in place and is not the A2A target: Foundry returns `HOSTED_AGENT_NOT_SUPPORTED` for A2A operations on a hosted agent. See `docs/installation/STEP-C-RUNBOOK.md`.
 
 ## Microsoft-supported pattern
-1. Create/verify an AgenticIdentityToken RemoteA2A connection targeting the prompt planner's A2A endpoint.
-2. Create an A2A toolbox using the generally available `a2a` tool with `a2a_version=1.0` and the verified connection ID.
-3. Extend the **hosted Supervisor runtime code** to register a Foundry toolbox with `AddFoundryToolboxes`, build a *new immutable Supervisor image*, and create **Supervisor v2** with explicit approval. Do not edit Supervisor v1.
-4. Validate agentic identity/least-privilege consumer RBAC and invoke Supervisor v2, verifying a genuine delegation tool call and Investigation response. Fail closed on authorization errors.
-5. Record live operation evidence and receipts, then update the Standard and Developer/Tester guides.
+
+The closed dev-project implementation follows the Foundry A2A and hosted-toolbox articles:
+
+1. RemoteA2A connection `jaws-investigation-a2a-dev` uses `AgenticIdentityToken`, audience `https://ai.azure.com`, and targets the prompt planner A2A endpoint.
+2. Toolbox `jaws-investigation-a2a-tools` default version 2 carries one generally available `a2a` tool, `a2a_version=1.0`, and the verified `project_connection_id` only.
+3. The hosted Supervisor registers that toolbox with `AddFoundryToolboxes`. The routed image is Supervisor v5. Supervisor v1 stays active, has no toolbox, and is not modified.
+4. The Supervisor instance identity has one Foundry Agent Consumer assignment at project scope. Acceptance invokes that routed Supervisor and requires `TASK_STATE_COMPLETED` from the prompt planner. Hosted Investigation is not the callee.
+5. Live evidence and receipts are recorded in the closure section below. The operator commands are in [STEP-C-RUNBOOK.md](STEP-C-RUNBOOK.md).
 
 Official references:
 - https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/tools/agent-to-agent

@@ -15,4 +15,4 @@ Clone JAWS:
 - [Architecture and Development Tutorial](docs/tutorial/)
 - [Manual Verification Guide (HTML)](docs/verification/index.html)
 
-**Release status:** `Install-Jaws.ps1` supports Discover, Plan, and Package. It does not provision a new cloud installation. The dev-project install through Step C is `installer/Install-JawsThroughStepC.ps1` (`-Mode Validate` reads Azure and writes nothing; `-Mode Install -AcknowledgeStepCInstall` repairs only known gaps). See `docs/installation/STEP-C-RUNBOOK.md`.
+**Release status:** `Install-Jaws.ps1` supports Discover, Plan, and Package. It does not provision a new cloud installation. The dev-project path through Step C is `installer/Install-JawsThroughStepC.ps1`. `-Mode Validate` reads Azure and writes nothing. Adding `-AcknowledgeInferenceCharges` runs the billable delegation test. `-Mode Install -AcknowledgeStepCInstall` repairs only known gaps. See `docs/installation/STEP-C-RUNBOOK.md`.

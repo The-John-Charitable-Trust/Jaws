@@ -58,6 +58,7 @@ Describe 'Step C install orchestrator safety' {
  }
  It 'keeps acceptance behind an explicit inference acknowledgement' {
   $orchestrator | Should -Match 'if\(-not \$AcknowledgeInferenceCharges\)\{ return ''Skipped'' \}'
+  $orchestrator | Should -Match 'Install-JawsThroughStepC\.ps1 -Mode Validate -AcknowledgeInferenceCharges'
   $acceptance | Should -Match '86c556fff7f54eb8ad81c84bc768093fd7bc083e941e9e16bbf1ea8bc0cfa289'
   $acceptance | Should -Not -Match '5a9cd89cfc626df4bdd2266194db14cda8fd33f46de1bfbc9c1111cde1c8af54'
   $acceptance | Should -Match 'store=\$false'

@@ -17,13 +17,23 @@ From the repository root in PowerShell 7, with Azure CLI already signed in to th
 .\installer\Install-JawsThroughStepC.ps1 -Mode Validate
 ```
 
-Validate reads the dev project and writes no Azure changes. The receipt is `installer/.local/jaws-step-c-install.dev.generated.json`. That directory is gitignored. A clean result is `VALIDATED`: every non-billable gate passed. Re-run the same command with the inference acknowledgement to make the billable Supervisor call and reach `CLOSED`:
+Validate reads the dev project and writes no Azure changes. The receipt is `installer/.local/jaws-step-c-install.dev.generated.json`. That directory is gitignored. A clean result is `VALIDATED`: every non-billable gate passed.
+
+The functional test of the closed delegation stays in Validate. It spends model usage and writes no Azure configuration:
+
+```powershell
+.\installer\Install-JawsThroughStepC.ps1 -Mode Validate -AcknowledgeInferenceCharges
+```
+
+A pass ends `CLOSED`, with Acceptance `Passed` and `TASK_STATE_COMPLETED` in the tool output. The acceptance report is `installer/.local/jaws-step-c-final-acceptance.dev.generated.json`. Acceptance keeps `store=false`, so the response cannot be read back later. The report records `TaskState` and `PlannerResponseId` from the tool output.
+
+`-Mode Install` is the repair path, used only when Validate is `BLOCKED` on a gate this installer is allowed to correct. It requires `-AcknowledgeStepCInstall`. Add `-AcknowledgeInferenceCharges` when that same run should also make the billable call:
 
 ```powershell
 .\installer\Install-JawsThroughStepC.ps1 -Mode Install -AcknowledgeStepCInstall -AcknowledgeInferenceCharges
 ```
 
-`-Mode Install` without `-AcknowledgeStepCInstall` stops with `JAWS-INSTALL-C-001` before any Azure call. Install on an already-correct project performs no correction. Acceptance keeps `store=false`, so the response cannot be read back later. The acceptance report records `TaskState` and `PlannerResponseId` from the tool output.
+`-Mode Install` without `-AcknowledgeStepCInstall` stops with `JAWS-INSTALL-C-001` before any Azure call. Install on an already-correct project performs no correction.
 
 `Install-JawsStepC.ps1 -Mode ThroughStepC` and `-Mode ThroughStepCInstall` call the same script. The install mode from that dispatcher does not run the billable acceptance call.
 

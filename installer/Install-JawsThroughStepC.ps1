@@ -213,6 +213,6 @@ foreach($gate in $script:gates.ToArray()){ Write-Host ("  {0,-20} {1}" -f $gate.
 if($script:corrections.Count -gt 0){ Write-Host ("Corrections: {0}" -f ($script:corrections.ToArray() -join ', ')) }
 Write-Host "Receipt: $receiptPath"
 if($status -eq 'VALIDATED'){
- Write-Host 'Non-billable Step C gates passed. Re-run with -AcknowledgeInferenceCharges to run the Supervisor acceptance call.'
+ Write-Host 'Non-billable Step C gates passed. Re-run .\installer\Install-JawsThroughStepC.ps1 -Mode Validate -AcknowledgeInferenceCharges to run the Supervisor acceptance call.'
 }
 if($failed){ throw $failed.Exception.Message }

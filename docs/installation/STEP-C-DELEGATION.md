@@ -43,3 +43,27 @@ The overall Step C milestone is incomplete until Supervisor v2 has been built/de
 ```
 
 `SupervisorV2Deploy` creates a draft for the published digest and does not patch an existing version. `SupervisorCandidateRelease` creates the next non-draft version from that draft. Acceptance invokes whichever released version Foundry routes as latest, and it rejects the call unless that version's image is the digest you pass.
+
+## Supervisor candidate deployment reconciliation (October 2026)
+
+The Step C installer now reconciles the *published immutable image* against Foundry agent versions. Do not manually GET a draft identifier from a submission response or blindly repeat `SupervisorV2Deploy` after HTTP 404.
+
+Use:
+```powershell
+.\installer\Install-JawsStepC.ps1 -Mode SupervisorCandidateReconcile
+```
+This is read-only and produces `installer/.local/jaws-step-c-supervisor-deployment-verified.dev.generated.json`. If the candidate is still being indexed or provisioning:
+```powershell
+.\installer\Install-JawsStepC.ps1 -Mode SupervisorCandidateWait
+```
+The bounded monitor locates versions by the verified ACR image digest and toolbox configuration. It follows recognized pagination links and inspects version details when list responses contain summaries. A 404 on a version detail is treated as temporary inventory inconsistency, not permission to create another draft.
+
+A new approved `SupervisorV2Deploy` operation also runs reconciliation automatically after submitting the draft. Success means an active and unique matching draft. If reconciliation fails or times out, the installer records an indeterminate/failed receipt and **must not automatically create another draft**.
+
+`SupervisorCandidateRelease` requires the active candidate's verified local receipt, matching released image and resolved draft version. Release has its own approval because it can change latest-version traffic. Final `SupervisorV2Verify` still requires successful authenticated Investigation invocation. The installer never treats a completed Supervisor response with failed function output as acceptance.
+
+Regression suite (requires PowerShell 7 and Pester 5):
+```powershell
+Invoke-Pester .\tests\installer\SupervisorCandidateLifecycle.Tests.ps1 -Output Detailed
+```
+The mocked suite covers empty inventories, delayed visibility, version detail hydration, ambiguity, pagination, terminal errors, and timeout. These tests do not replace live read-only reconciliation.

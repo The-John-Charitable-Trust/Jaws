@@ -39,6 +39,23 @@ if (-not $AcknowledgeHostingAndInferenceCharges -or
     $ApprovedPlanSha256 -cne $plan.PlanSha256) {
     throw 'JAWS-FOUNDRY-APPROVAL-001: Exact plan digest and explicit hosting/inference cost acknowledgment required.'
 }
+# If an earlier POST submitted this exact image, reconcile its recorded state.
+# A missing/inconsistent version list does not authorize a duplicate create.
+$receiptPath=Join-Path $outDir "jaws-foundry-supervisor-deploy-receipt.$($state.EnvironmentName).generated.json"
+if($ToolboxName -eq 'jaws-investigation-a2a-tools' -and (Test-Path -LiteralPath $receiptPath -PathType Leaf)){
+ $prior=Get-Content -LiteralPath $receiptPath -Raw|ConvertFrom-Json
+ if([string]$prior.Image -ceq [string]$plan.Plan.Image){
+  Write-Host 'Matching previous deployment receipt found. Reconciling without new POST.'
+  & (Join-Path $PSScriptRoot 'Reconcile-JawsSupervisorCandidate.ps1') -Mode Wait
+  $verified=Get-Content (Join-Path $outDir 'jaws-step-c-supervisor-deployment-verified.dev.generated.json') -Raw|ConvertFrom-Json
+  $prior.Status=[string]$verified.Status
+  $prior.Version=[string]$verified.ResolvedVersion
+  $prior.ActiveVerified=[bool]$verified.ActiveVerified
+  $prior|ConvertTo-Json -Depth 15|Set-Content -LiteralPath $receiptPath -Encoding utf8
+  Write-Host "Recovered deployment: $($prior.Status); version $($prior.Version)"
+  return
+ }
+}
 $result=Invoke-JawsFoundrySupervisorDeployment -DeploymentPlan $plan
 $receiptPath=Join-Path $outDir "jaws-foundry-supervisor-deploy-receipt.$($state.EnvironmentName).generated.json"
 $result | ConvertTo-Json -Depth 15 | Set-Content -LiteralPath $receiptPath -Encoding utf8

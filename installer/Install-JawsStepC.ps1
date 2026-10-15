@@ -1,7 +1,7 @@
 # Consolidated JAWS Step C installer. Preserves existing resources and approvals.
 [CmdletBinding()]
 param(
- [ValidateSet('Plan','Install','Verify','DelegationPlan','DelegationInstall','DelegationVerify','DelegationRbacPlan','DelegationRbacInstall','DelegationRbacVerify','SupervisorV2Build','SupervisorV2Plan','SupervisorV2Publish','SupervisorV2Deploy','SupervisorReleasePlan','SupervisorRelease','SupervisorCandidatePlan','SupervisorCandidateRelease','SupervisorV2Verify','ToolboxDiscovery','RuntimeToolDiscovery','ToolboxRepairPlan','ToolboxRepairCreate','ToolboxRepairVerify','ToolboxRepairPromote','ToolboxRepairRollback','RuntimeToolDiscoveryV2','A2AIdentityContext')][string]$Mode='Plan',
+ [ValidateSet('Plan','Install','Verify','DelegationPlan','DelegationInstall','DelegationVerify','DelegationRbacPlan','DelegationRbacInstall','DelegationRbacVerify','SupervisorV2Build','SupervisorV2Plan','SupervisorV2Publish','SupervisorV2Deploy','SupervisorReleasePlan','SupervisorRelease','SupervisorCandidatePlan','SupervisorCandidateRelease','SupervisorV2Verify','ToolboxDiscovery','RuntimeToolDiscovery','ToolboxRepairPlan','ToolboxRepairCreate','ToolboxRepairVerify','ToolboxRepairPromote','ToolboxRepairRollback','RuntimeToolDiscoveryV2','A2AIdentityContext','SupervisorCandidateReconcile','SupervisorCandidateWait')][string]$Mode='Plan',
  [string]$ApprovedA2APlanSha256,
  [switch]$AcknowledgeAgentEndpointChange,
  [string]$ApprovedDelegationConnectionSha256,
@@ -13,6 +13,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $root=$PSScriptRoot
+if($Mode -in @('SupervisorCandidateReconcile','SupervisorCandidateWait')){
+ $action=if($Mode -eq 'SupervisorCandidateWait'){'Wait'}else{'Verify'}
+ & (Join-Path $root 'Reconcile-JawsSupervisorCandidate.ps1') -Mode $action
+ return
+}
 if($Mode -eq 'A2AIdentityContext') {
  & (Join-Path $root 'Test-JawsA2AIdentityContext.ps1')
  return
@@ -65,6 +70,7 @@ if($Mode -in @('SupervisorCandidatePlan','SupervisorCandidateRelease')) {
  $candidate=Join-Path $root 'Release-JawsSupervisorCandidate.ps1'
  & $candidate -Mode Plan
  if($Mode -eq 'SupervisorCandidatePlan'){return}
+ & (Join-Path $root 'Reconcile-JawsSupervisorCandidate.ps1') -Mode Verify
  $planPath=Join-Path $root '.local/jaws-step-c-supervisor-candidate-release-plan.dev.generated.json'
  $plan=Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json
  if([string]$plan.Operation -eq 'AlreadyPresent'){

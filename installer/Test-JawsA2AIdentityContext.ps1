@@ -25,7 +25,15 @@ function Get-OptionalProperty($obj,[string]$key){
     if($null -ne $property){return $property.Value}
     return $null
 }
-$supervisor=Read-Json "$project/agents/jaws-supervisor-dev/versions/2?api-version=v1" 'https://ai.azure.com'
+$summary=Read-Json "$project/agents/jaws-supervisor-dev?api-version=v1" 'https://ai.azure.com'
+$latestValue=Get-OptionalProperty (Get-OptionalProperty $summary 'versions') 'latest'
+$routedVersion=if($latestValue -is [string] -or $latestValue -is [ValueType]){[string]$latestValue}
+ elseif($null -ne $latestValue -and $latestValue.PSObject.Properties['version']){[string]$latestValue.version}
+ else{''}
+if($routedVersion -notmatch '^[0-9]+$' -or $routedVersion -eq '1'){
+ throw 'JAWS-A2A-IDENTITY-003: Latest routing is not a released Supervisor version after v1.'
+}
+$supervisor=Read-Json "$project/agents/jaws-supervisor-dev/versions/$($routedVersion)?api-version=v1" 'https://ai.azure.com'
 $connection=Read-Json $armUrl 'https://management.azure.com/'
 $props=Get-OptionalProperty $connection 'properties'
 $identity=Get-OptionalProperty $supervisor 'instance_identity'

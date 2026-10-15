@@ -1,9 +1,9 @@
 # Step C delegated A2A installer boundaries
 
-The existing Investigation v1 has an active hosted Responses endpoint and an authenticated A2A card. Supervisor v1 MUST remain unchanged.
+The operator entry point is `installer/Install-JawsThroughStepC.ps1`. Validate is read-only. Install repairs only the known gaps in the runbook and then re-checks them. Supervisor v1 is not modified, and this installer does not post a Supervisor version. The RemoteA2A target is prompt agent `jaws-investigation-planner-dev`. Hosted `jaws-investigation-dev` stays in place and is not the A2A target: Foundry returns `HOSTED_AGENT_NOT_SUPPORTED` for A2A operations on a hosted agent. See `docs/installation/STEP-C-RUNBOOK.md`.
 
 ## Microsoft-supported pattern
-1. Create/verify an AgenticIdentityToken RemoteA2A connection targeting Investigation's A2A endpoint.
+1. Create/verify an AgenticIdentityToken RemoteA2A connection targeting the prompt planner's A2A endpoint.
 2. Create an A2A toolbox using the generally available `a2a` tool with `a2a_version=1.0` and the verified connection ID.
 3. Extend the **hosted Supervisor runtime code** to register a Foundry toolbox with `AddFoundryToolboxes`, build a *new immutable Supervisor image*, and create **Supervisor v2** with explicit approval. Do not edit Supervisor v1.
 4. Validate agentic identity/least-privilege consumer RBAC and invoke Supervisor v2, verifying a genuine delegation tool call and Investigation response. Fail closed on authorization errors.
@@ -63,7 +63,7 @@ The planner's own response list stores A2A work with `agent_reference.name` `jaw
 
 Earlier acceptance response `caresp_040f45cfb362e093003JXExmmqYApTAgvNgPTx8QNzbrBTDlbx` used `store=false` and is no longer readable. The stored response above is the closure evidence.
 
-Regression on this closure: installer Pester 168 passed; Step C offline tests 15 passed; toolbox metadata probe passed; first-agent checks 26 passed.
+Regression on this closure, plus the install-path tests: installer Pester 180 passed; Step C offline tests 15 passed; toolbox metadata probe passed; first-agent checks 26 passed. The operator command is `installer/Install-JawsThroughStepC.ps1 -Mode Validate`.
 
 Hosted Investigation v1 stays active for later read-only execution work. This closure does not require that container to run the planning call.
 

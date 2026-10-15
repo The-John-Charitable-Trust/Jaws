@@ -97,4 +97,4 @@ $match=@($actualItems | Where-Object {
 })
 if($match.Count -ne 1){throw 'JAWS-TOOLBOX-008: Existing toolbox version configuration mismatch. No writes.'}
 Write-Host "Toolbox default version $defaultVersion verified: $name"
-Write-Host 'Supervisor v1 unchanged. Hosted runtime toolbox registration and live delegation are not yet verified.'
+Write-Host 'Supervisor v1 unchanged. Hosted delegation acceptance remains the Step C inference gate.'

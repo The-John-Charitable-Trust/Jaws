@@ -128,14 +128,22 @@ function Get-JawsSupervisorVersionInventory {
    $entry=$entryOriginal
    $version=[string](Get-JawsFoundryField $entry @('version'))
    if($version -notmatch '^(draft-[0-9]+|[0-9]+)$'){throw 'JAWS-RECON-111: Invalid version identifier.'}
-   if($null -eq (Get-JawsFoundryField $entry @('definition'))){
-    $detailUrl="$ProjectEndpoint/agents/jaws-supervisor-dev/versions/$($version)?api-version=v1"
-    try{$entry=& $ReadPage $detailUrl}catch{
+   $detailUrl="$ProjectEndpoint/agents/jaws-supervisor-dev/versions/$($version)?api-version=v1"
+   $needsDetail=$null -eq (Get-JawsFoundryField $entry @('definition'))
+   # A list row can keep status=active after the version detail has failed.
+   $confirmActive=[string](Get-JawsFoundryField $entry @('status')) -eq 'active' -and -not $needsDetail
+   if($needsDetail -or $confirmActive){
+    try{$detail=& $ReadPage $detailUrl}catch{
      if($_.Exception.Message -match '(?i)(404|not.found)'){continue}
      throw
     }
-    if([string](Get-JawsFoundryField $entry @('version')) -cne $version){
+    $detailVersion=[string](Get-JawsFoundryField $detail @('version'))
+    if([string]::IsNullOrEmpty($detailVersion)){
+     if($needsDetail){throw 'JAWS-RECON-112: Version detail mismatch.'}
+    }elseif($detailVersion -cne $version){
      throw 'JAWS-RECON-112: Version detail mismatch.'
+    }else{
+     $entry=$detail
     }
    }
    $all+=@($entry)

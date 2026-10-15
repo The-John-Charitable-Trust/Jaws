@@ -27,7 +27,8 @@ Describe 'Foundry Supervisor candidate lifecycle' {
   $fetch={param($url) $seen.Add($url); if($url -eq $start){return [pscustomobject]@{data=@();nextLink=$next}};return [pscustomobject]@{data=@($candidate);has_more=$false}}.GetNewClosure()
   $all=@(Get-JawsSupervisorVersionInventory -ReadPage $fetch -ProjectEndpoint $script:url)
   $all.Count | Should -Be 1
-  $seen | Should -Be @($start,$continued)
+  $detail="$($script:url)/agents/jaws-supervisor-dev/versions/draft-100?api-version=v1"
+  $seen | Should -Be @($start,$continued,$detail)
  }
  It 'hydrates version-list summaries from version detail' {
   $fetch={
@@ -96,6 +97,7 @@ Describe 'Foundry Supervisor candidate lifecycle' {
   $candidate=$script:candidate
   $fetch={
    param($url)
+   if($url -match '/versions/draft-100\?'){return $candidate}
    $reads.Value++
    if($reads.Value -eq 2){return [pscustomobject]@{data=@()}}
    return [pscustomobject]@{data=@($candidate)}
@@ -103,6 +105,19 @@ Describe 'Foundry Supervisor candidate lifecycle' {
   $result=Wait-JawsSupervisorCandidate -ReadPage $fetch -ProjectEndpoint $script:url -Image $script:image -MaxAttempts 6 -DelaySeconds 0 -StableReads 3 -Sleep {param($seconds)}
   $result.Status | Should -Be 'ACTIVE_VERIFIED'
   $result.Attempts | Should -Be 5
+ }
+ It 'uses version detail when a list row still says active' {
+  $listed=($script:candidate|ConvertTo-Json -Depth 10|ConvertFrom-Json)
+  $listed.status='active'
+  $failed=($script:candidate|ConvertTo-Json -Depth 10|ConvertFrom-Json)
+  $failed.status='failed'
+  $fetch={
+   param($url)
+   if($url -match '/versions/draft-100\?'){return $failed}
+   return [pscustomobject]@{data=@($listed)}
+  }.GetNewClosure()
+  $all=@(Get-JawsSupervisorVersionInventory -ReadPage $fetch -ProjectEndpoint $script:url)
+  $all[0].status | Should -Be 'failed'
  }
  It 'keeps Wait-JawsSupervisorCandidate visible after the reconcile script imports' {
   $path=Join-Path $PSScriptRoot '../../installer/Reconcile-JawsSupervisorCandidate.ps1'

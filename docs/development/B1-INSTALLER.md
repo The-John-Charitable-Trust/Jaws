@@ -1,4 +1,7 @@
 # JAWS Stage B1 — Installer-Only Provisioning Contract
+
+> **Historical proposal.** The customer `-Mode Install` described here is not implemented. `Install-Jaws.ps1` is still Discover, Plan, and Package. The executable dev-project path through Step C is `installer/Install-JawsThroughStepC.ps1`. See `docs/installation/STEP-C-RUNBOOK.md`.
+
 Status: PROPOSED FOR REVIEW | No installer source changes in B1
 
 ## 1. Baseline

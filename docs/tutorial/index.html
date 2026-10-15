@@ -433,6 +433,7 @@
         <h1 id="introduction">Introduction</h1>
 
         <p class="lead">JAWS is a step-by-step reference implementation for building a governed, full-stack agentic operations platform with the Microsoft Agent Framework.</p>
+        <p>This page is the local Agent Framework course. The hosted Step C installer for the dev project is documented in <a href="../installation/STEP-C-DELEGATION.md">Step C delegation</a> and the <a href="../installation/STEP-C-RUNBOOK.md">Step C runbook</a>.</p>
 
         <p>Modern operations teams are being asked to manage increasingly complex cloud environments while also responding faster, proving compliance, reducing manual toil, and coordinating work across multiple enterprise systems. The challenge is not simply adding AI to operations. The harder problem is building a full-stack agentic platform that can reason over live cloud context, call approved tools, respect security boundaries, preserve operational evidence, and guide users through real workflows such as creating observability coverage, validating webhook delivery, and opening an IT service management incident.</p>
 
@@ -446,7 +447,7 @@
 
         <div class="callout">
           <strong>Source code and releases</strong>
-          The full step-by-step source code is available on GitHub at <a href="https://github.com/cezjah/jaws">https://github.com/cezjah/jaws</a>. Each release is aligned to a tutorial phase, making it possible to inspect the code, run the tests, and compare each implementation phase against the documented Microsoft Agent Framework concepts.
+          The full step-by-step source code is available on GitHub at <a href="https://github.com/The-John-Charitable-Trust/Jaws">https://github.com/The-John-Charitable-Trust/Jaws</a>. Each release is aligned to a tutorial phase, making it possible to inspect the code, run the tests, and compare each implementation phase against the documented Microsoft Agent Framework concepts.
         </div>
 
                 <h2 id="jaws-platform-overview">JAWS Platform Overview</h2>
@@ -467,7 +468,7 @@
         <p>Work from a local copy of the JAWS GitHub repository. Clone the repository once, open the repository root in Visual Studio Code, then move through the tutorial by checking out the release tag for each phase. Each release is a working snapshot with its own source code, configuration expectations, tests, and expected results.</p>
         <div class="code-block">
           <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
-          <pre><code><span class="token-command">git</span> clone https://github.com/cezjah/jaws.git
+          <pre><code><span class="token-command">git</span> clone https://github.com/The-John-Charitable-Trust/Jaws.git
 <span class="token-command">cd</span> jaws
 <span class="token-command">code</span> .
 
@@ -475,7 +476,7 @@
 <span class="token-command">git</span> checkout v0.1</code></pre>
         </div>
         <p>Open the folder that contains <code>Jaws.slnx</code>, <code>src</code>, <code>tests</code>, and <code>docs</code>. Do not open only <code>src/Jaws.Api</code> or an individual project folder, because the tutorial commands assume they are run from the repository root.</p>
-        <p>For each published release, follow the same rhythm: check out the release tag, configure only the values required for that section, build the solution, run the tests, run any local API validation described in the section, compare the output with the expected results, then continue to the next published release tag. If a tag is not listed on <a href="https://github.com/cezjah/jaws/releases">GitHub releases</a>, that release is not available yet.</p>
+        <p>For each published release, follow the same rhythm: check out the release tag, configure only the values required for that section, build the solution, run the tests, run any local API validation described in the section, compare the output with the expected results, then continue to the next published release tag. If a tag is not listed on <a href="https://github.com/The-John-Charitable-Trust/Jaws/releases">GitHub releases</a>, that release is not available yet.</p>
         <div class="code-block">
           <div class="code-header"><span>PowerShell</span><button class="copy-button" type="button">Copy</button></div>
           <pre><code><span class="token-command">git</span> fetch <span class="token-param">--tags</span>
@@ -488,7 +489,7 @@
 <span class="token-command">git</span> checkout v0.4
 <span class="token-command">git</span> checkout v0.5</code></pre>
         </div>
-        <p>Readers who do not want to use Git tags can download the matching release ZIP from <a href="https://github.com/cezjah/jaws/releases">GitHub releases</a> for each phase. The tutorial commands still assume the extracted repository root is the working directory. Release <code>1.0</code> is the complete codebase for the full JAWS platform scenario; earlier releases are smaller snapshots for learning and validation.</p>
+        <p>Readers who do not want to use Git tags can download the matching release ZIP from <a href="https://github.com/The-John-Charitable-Trust/Jaws/releases">GitHub releases</a> for each phase. The tutorial commands still assume the extracted repository root is the working directory. Release <code>1.0</code> is the complete codebase for the full JAWS platform scenario; earlier releases are smaller snapshots for learning and validation.</p>
         <table>
           <thead>
             <tr><th>Area</th><th>Path</th><th>What the reader edits or inspects</th></tr>

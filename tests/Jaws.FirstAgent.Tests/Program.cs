@@ -10,6 +10,7 @@ var tests = new List<(string Name, Action Test)>
     ("First agent options validate required fields", FirstAgentOptionsValidateRequiredFields),
     ("First agent options accept valid configuration", FirstAgentOptionsAcceptValidConfiguration),
     ("Role agent catalog includes workflow agents", RoleAgentCatalogIncludesWorkflowAgents),
+    ("Specialist catalog is one agent per specialization", SpecialistCatalogIsOneAgentPerSpecialization),
     ("Deploy agent requires approval", DeployAgentRequiresApproval),
     ("Naming policy generates expected resource names", NamingPolicyGeneratesExpectedNames),
     ("MCP registry exposes foundation tools", McpRegistryExposesReadOnlyTools),
@@ -84,6 +85,34 @@ static void FirstAgentOptionsAcceptValidConfiguration()
 
     AssertTrue(options.IsConfigured, "valid options should be configured");
     AssertEqual(0, options.Validate().Count, "valid options error count");
+}
+
+static void SpecialistCatalogIsOneAgentPerSpecialization()
+{
+    var names = SpecialistCatalog.All.Select(specialist => specialist.Name).ToArray();
+
+    AssertEqual(4, names.Length, "specialist count");
+    AssertEqual(names.Length, names.Distinct(StringComparer.Ordinal).Count(), "specialist names are unique");
+    AssertEqual(3, SpecialistCatalog.Phases.Distinct().Count(), "phase count");
+    AssertTrue(SpecialistCatalog.Phases.Contains(SpecialistPhase.Investigate), "investigate phase");
+    AssertTrue(SpecialistCatalog.Phases.Contains(SpecialistPhase.Deliberate), "deliberate phase");
+    AssertTrue(SpecialistCatalog.Phases.Contains(SpecialistPhase.Remediate), "remediate phase");
+    AssertTrue(!names.Any(name => name.Contains("Datadog", StringComparison.Ordinal)), "Datadog is a tool, not an agent");
+    AssertTrue(!names.Any(name => name.Contains("Deliberat", StringComparison.Ordinal) || name.Contains("Remediat", StringComparison.Ordinal)), "phases are not agents");
+
+    var observability = SpecialistCatalog.All.Single(specialist => specialist.Name == "Observability");
+    AssertEqual("Custom MCP", observability.ToolServer, "observability tool server");
+    AssertTrue(observability.Tools.Contains("Datadog"), "Datadog tool");
+    AssertTrue(observability.Tools.Contains("Azure Monitor"), "Azure Monitor tool");
+    AssertTrue(observability.Tools.Contains("Azure Sentinel"), "Azure Sentinel tool");
+    AssertTrue(observability.Tools.Contains("ServiceNow incident"), "ServiceNow incident tool");
+    AssertTrue(!observability.Tools.Any(tool => tool.Contains("fulfillment", StringComparison.OrdinalIgnoreCase)), "fulfillment is not an observability tool");
+    AssertTrue(SpecialistCatalog.LaterSpecializations.Contains("ServiceNow change and request fulfillment"), "later ServiceNow specialization");
+
+    var current = SpecialistCatalog.CurrentEndState.Select(specialist => specialist.Name).ToHashSet(StringComparer.Ordinal);
+    AssertTrue(current.SetEquals(["Virtual machine", "Observability"]), "current end state specialists");
+    AssertTrue(SpecialistCatalog.All.Any(specialist => specialist.Name == "Azure network" && specialist.Acceptance == SpecialistAcceptance.LaterSpecialization), "network specialist");
+    AssertTrue(SpecialistCatalog.All.Any(specialist => specialist.Name == "Azure storage" && specialist.Acceptance == SpecialistAcceptance.LaterSpecialization), "storage specialist");
 }
 
 static void RoleAgentCatalogIncludesWorkflowAgents()

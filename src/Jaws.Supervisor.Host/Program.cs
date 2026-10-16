@@ -7,6 +7,8 @@ using Microsoft.Agents.AI.Foundry.Hosting;
 // Hosted Supervisor. Toolbox delegation is explicitly enabled only in a future
 // approved Supervisor version; existing deployed Supervisor v1 stays unchanged.
 // The platform, not an arbitrary caller header, supplies user/session context.
+// Product specialists are declared in SpecialistCatalog: one agent per
+// specialization, not one agent per phase. This host does not call them yet.
 var endpointText = Environment.GetEnvironmentVariable("FOUNDRY_PROJECT_ENDPOINT");
 var model = Environment.GetEnvironmentVariable("AZURE_AI_MODEL_DEPLOYMENT_NAME");
 if (string.IsNullOrWhiteSpace(endpointText) ||

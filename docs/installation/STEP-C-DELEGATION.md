@@ -66,7 +66,7 @@ The planner's own response list stores A2A work with `agent_reference.name` `jaw
 
 Earlier acceptance response `caresp_040f45cfb362e093003JXExmmqYApTAgvNgPTx8QNzbrBTDlbx` used `store=false` and is no longer readable. The stored response above is the closure evidence.
 
-Regression on this closure, plus the install-path tests: installer Pester 184 passed; Step C offline tests 15 passed; toolbox metadata probe passed; first-agent checks 26 passed. The operator command is `installer/Install-JawsThroughStepC.ps1 -Mode Validate`.
+Regression on this closure, plus the install-path tests: installer Pester 184 passed; Step C offline tests 15 passed; toolbox metadata probe passed; first-agent checks 27 passed. The operator command is `installer/Install-JawsThroughStepC.ps1 -Mode Validate`.
 
 Hosted Investigation v1 stays active for later read-only execution work. This closure does not require that container to run the planning call.
 

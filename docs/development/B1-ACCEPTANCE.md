@@ -1,6 +1,8 @@
 # JAWS Stage B1 — Architecture Review and Acceptance Plan
 Status: PROPOSED FOR REVIEW | No cloud testing/deployment in B1
 
+> **Superseded for planning by the installation roadmap.** The product end state and the Steps D–I acceptance gates are in `docs/installation/IMPLEMENTATION_ROADMAP.md`. Section 6 below is the earlier Stage B bundle and is not the current definition of done.
+
 ## 1. B1 documentation acceptance
 | ID | Acceptance criterion | Evidence |
 |---|---|---|

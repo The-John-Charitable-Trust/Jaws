@@ -1,6 +1,8 @@
 # JAWS Stage B1 — Multi-Agent Architecture Specification
 Status: PROPOSED FOR REVIEW | No Azure changes | Baseline: Stage A Discover v0.4.6
 
+> **Superseded for planning by the installation roadmap.** The approved end state is one Supervisor, one worker, and one Datadog agent. The worker investigates, deliberates, and remediates virtual-machine security incidents in the one compute environment it owns, using Azure MCP. The Datadog agent uses that same environment through a custom MCP server. The operator talks to the Supervisor in Teams, actions stay within that operator's RBAC role, and one project has many conversations. See `docs/installation/IMPLEMENTATION_ROADMAP.md`. Separate specialist agents, separate sandboxes, and ServiceNow are not the current plan. The sections below are the earlier review draft.
+
 ## 1. Scope and evidence
 This is the target design, not proof of deployed components. The repository contains a local C#/.NET 10 Agent Framework tutorial agent, role-agent factory, demo MCP registry, local conversations, and an accepted read-only Stage A installer. Production Foundry hosted agents, worker sandboxes, Teams adapter, real Azure MCP integration, real Datadog MCP integration and durable conversation storage are NOT yet implemented or accepted. Preserve the original `docs/tutorial/index.html` unchanged.
 

@@ -34,7 +34,7 @@ Test-Path .\installer\Install-Jaws.ps1
 Open **PowerShell 7** in a terminal:
 
 ```powershell
-az login
+az login  # on a machine without a browser, use: az login --use-device-code
 az account list --query "[].{Name:name,SubscriptionId:id,State:state}" --output table
 az account set --subscription "<your-subscription-id>"
 az account show --query "{name:name,id:id,tenantId:tenantId}" --output table

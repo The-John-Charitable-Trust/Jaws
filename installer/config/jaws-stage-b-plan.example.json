@@ -1,0 +1,199 @@
+{
+  "SchemaVersion": "0.1",
+  "Platform": "JAWS",
+  "PlanKind": "StageBOfflineBlueprint",
+  "EnvironmentName": "tester",
+  "Scope": {
+    "SubscriptionId": "00000000-0000-0000-0000-000000000000",
+    "ResourceGroupName": "rg-jaws-test",
+    "Location": "eastus",
+    "TenantId": null
+  },
+  "Constraints": {
+    "AzureWritesAllowed": false,
+    "LiveInferenceAllowed": false,
+    "UserPermissionCeiling": true,
+    "HumanApprovalForWrites": true,
+    "ExternalOwnershipMustBePreserved": true,
+    "TeamsAdminConsentMayBeRequired": true,
+    "CostEstimatesVerified": false
+  },
+  "Components": [
+    {
+      "Id": "foundry",
+      "Name": "Microsoft Foundry resource",
+      "ResourceType": "Microsoft.CognitiveServices/accounts",
+      "DependsOn": [],
+      "Cost": "Unknown",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "project",
+      "Name": "Microsoft Foundry project",
+      "ResourceType": "Microsoft.CognitiveServices/accounts/projects",
+      "DependsOn": [
+        "foundry"
+      ],
+      "Cost": "Unknown",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "model",
+      "Name": "Model deployment",
+      "ResourceType": "Microsoft.CognitiveServices/accounts/deployments",
+      "DependsOn": [
+        "foundry",
+        "project"
+      ],
+      "Cost": "Potential inference usage",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "vault",
+      "Name": "Azure Key Vault",
+      "ResourceType": "Microsoft.KeyVault/vaults",
+      "DependsOn": [],
+      "Cost": "Potential operations charges",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "identity",
+      "Name": "Managed identities and scoped RBAC",
+      "ResourceType": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "DependsOn": [
+        "vault"
+      ],
+      "Cost": "Unknown",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "supervisor",
+      "Name": "Hosted Supervisor agent",
+      "ResourceType": "FoundryHostedAgent",
+      "DependsOn": [
+        "project",
+        "model",
+        "identity"
+      ],
+      "Cost": "Unknown",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "azure-mcp",
+      "Name": "Azure MCP integration",
+      "ResourceType": "McpIntegration",
+      "DependsOn": [
+        "supervisor",
+        "identity"
+      ],
+      "Cost": "Unknown",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "azure-worker",
+      "Name": "Azure VM Security and Compliance agent",
+      "ResourceType": "FoundryHostedAgent",
+      "DependsOn": [
+        "project",
+        "model",
+        "identity",
+        "azure-mcp"
+      ],
+      "Cost": "Unknown",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "datadog-mcp",
+      "Name": "Custom Datadog MCP service",
+      "ResourceType": "CustomMcpService",
+      "DependsOn": [
+        "vault",
+        "identity"
+      ],
+      "Cost": "Potential hosting charges",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "datadog-worker",
+      "Name": "Datadog Observability agent",
+      "ResourceType": "FoundryHostedAgent",
+      "DependsOn": [
+        "project",
+        "model",
+        "identity",
+        "datadog-mcp"
+      ],
+      "Cost": "Unknown",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "azure-sandbox",
+      "Name": "Isolated Azure worker compute",
+      "ResourceType": "ExecutionSandbox",
+      "DependsOn": [
+        "azure-worker",
+        "identity"
+      ],
+      "Cost": "Potential compute and idle charges",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "datadog-sandbox",
+      "Name": "Isolated Datadog worker compute",
+      "ResourceType": "ExecutionSandbox",
+      "DependsOn": [
+        "datadog-worker",
+        "identity"
+      ],
+      "Cost": "Potential compute and idle charges",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "authz",
+      "Name": "Delegated authorization and approval broker",
+      "ResourceType": "ApplicationService",
+      "DependsOn": [
+        "identity",
+        "azure-worker",
+        "datadog-worker"
+      ],
+      "Cost": "Unknown",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "sessions",
+      "Name": "Project-scoped durable conversations",
+      "ResourceType": "PersistentStateService",
+      "DependsOn": [
+        "vault",
+        "authz"
+      ],
+      "Cost": "Potential storage charges",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "teams",
+      "Name": "Teams integration and Supervisor routing",
+      "ResourceType": "TeamsIntegration",
+      "DependsOn": [
+        "supervisor",
+        "sessions",
+        "authz"
+      ],
+      "Cost": "Unknown",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "validation",
+      "Name": "End-to-end verification",
+      "ResourceType": "Validation",
+      "DependsOn": [
+        "teams",
+        "azure-sandbox",
+        "datadog-sandbox"
+      ],
+      "Cost": "Potential inference and execution charges",
+      "ApprovalRequired": true
+    }
+  ]
+}

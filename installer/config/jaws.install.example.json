@@ -1,0 +1,13 @@
+{
+  "Mode": "Discover",
+  "EnvironmentName": "tester",
+  "SubscriptionId": "<accessible-subscription-id>",
+  "ResourceGroupName": "<resource-group>",
+  "FoundryResourceName": "<foundry-resource>",
+  "FoundryProjectName": "<project-name>",
+  "ModelDeploymentName": "gpt-5-mini",
+  "KeyVaultName": "<key-vault>",
+  "ExpectedModelName": "gpt-5-mini",
+  "ExpectedModelVersion": "2025-08-07",
+  "TenantScan": "All enabled subscriptions visible to the signed-in identity in the selected subscription tenant"
+}

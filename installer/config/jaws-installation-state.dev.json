@@ -1,0 +1,58 @@
+{
+  "SchemaVersion": "1.1",
+  "Platform": "JAWS",
+  "InstallerVersion": "0.4.6",
+  "EnvironmentName": "dev",
+  "SubscriptionId": "c52f597b-7753-45b4-a764-67e290dcfd5e",
+  "ResourceGroupName": "rg-aiops-lab",
+  "StateAuthority": "OperatorManaged",
+  "StatePurpose": "Expected JAWS installation inventory; tenant discovery compares Azure observations to this file.",
+  "Resources": [
+    {
+      "Name": "jaws-foundry-dev",
+      "Type": "Microsoft.CognitiveServices/accounts",
+      "ResourceId": null,
+      "Ownership": "External",
+      "CreatedByInstaller": false,
+      "ExpectedConfiguration": {
+        "Kind": "AIServices",
+        "Location": "eastus"
+      }
+    },
+    {
+      "Name": "jaws-dev",
+      "Type": "Microsoft.CognitiveServices/accounts/projects",
+      "ResourceId": null,
+      "Ownership": "External",
+      "CreatedByInstaller": false,
+      "ExpectedConfiguration": {
+        "ParentResource": "jaws-foundry-dev"
+      }
+    },
+    {
+      "Name": "gpt-5-mini",
+      "Type": "Microsoft.CognitiveServices/accounts/deployments",
+      "ResourceId": null,
+      "Ownership": "External",
+      "CreatedByInstaller": false,
+      "ExpectedConfiguration": {
+        "ParentResource": "jaws-foundry-dev",
+        "ModelName": "gpt-5-mini",
+        "ModelVersion": "2025-08-07",
+        "ProvisioningState": "Succeeded"
+      }
+    },
+    {
+      "Name": "kv-jaws-dev-001",
+      "Type": "Microsoft.KeyVault/vaults",
+      "ResourceId": null,
+      "Ownership": "External",
+      "CreatedByInstaller": false,
+      "ExpectedConfiguration": {
+        "Location": "eastus",
+        "EnableRbacAuthorization": true,
+        "EnablePurgeProtection": true
+      }
+    }
+  ]
+}

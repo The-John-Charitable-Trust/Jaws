@@ -1,0 +1,190 @@
+# Consolidated JAWS Step C installer. Preserves existing resources and approvals.
+[CmdletBinding()]
+param(
+ [ValidateSet('Plan','Install','Verify','DelegationPlan','DelegationInstall','DelegationVerify','DelegationRbacPlan','DelegationRbacInstall','DelegationRbacVerify','SupervisorV2Build','SupervisorV2Plan','SupervisorV2Publish','SupervisorV2Deploy','SupervisorReleasePlan','SupervisorRelease','SupervisorCandidatePlan','SupervisorCandidateRelease','SupervisorV2Verify','ToolboxDiscovery','RuntimeToolDiscovery','ToolboxRepairPlan','ToolboxRepairCreate','ToolboxRepairVerify','ToolboxRepairPromote','ToolboxRepairRollback','RuntimeToolDiscoveryV2','A2AIdentityContext','SupervisorCandidateReconcile','SupervisorCandidateWait','PlannerPlan','PlannerInstall','ThroughStepC','ThroughStepCInstall')][string]$Mode='Plan',
+ [string]$ApprovedA2APlanSha256,
+ [switch]$AcknowledgeAgentEndpointChange,
+ [string]$ApprovedDelegationConnectionSha256,
+ [switch]$AcknowledgeA2AConnection,
+ [string]$ApprovedDelegationToolboxSha256,
+ [switch]$AcknowledgeToolboxChargesAndAccess,
+ [string]$ExpectedImage
+)
+Set-StrictMode -Version Latest
+$ErrorActionPreference='Stop'
+$root=$PSScriptRoot
+if($Mode -in @('ThroughStepC','ThroughStepCInstall')){
+ $through=Join-Path $root 'Install-JawsThroughStepC.ps1'
+ if($Mode -eq 'ThroughStepC'){ & $through -Mode Validate; return }
+ & $through -Mode Install -AcknowledgeStepCInstall
+ return
+}
+if($Mode -in @('SupervisorCandidateReconcile','SupervisorCandidateWait')){
+ $action=if($Mode -eq 'SupervisorCandidateWait'){'Wait'}else{'Verify'}
+ & (Join-Path $root 'Reconcile-JawsSupervisorCandidate.ps1') -Mode $action
+ return
+}
+if($Mode -eq 'A2AIdentityContext') {
+ & (Join-Path $root 'Test-JawsA2AIdentityContext.ps1')
+ return
+}
+if($Mode -like 'ToolboxRepair*') {
+ $action=switch($Mode){'ToolboxRepairPlan'{'Plan'}'ToolboxRepairCreate'{'Create'}'ToolboxRepairVerify'{'Verify'}'ToolboxRepairPromote'{'Promote'}'ToolboxRepairRollback'{'Rollback'}}
+ & (Join-Path $root 'Repair-JawsDelegationToolbox.ps1') -Mode $action
+ return
+}
+if($Mode -eq 'RuntimeToolDiscoveryV2'){
+ & (Join-Path $root 'Test-JawsRuntimeToolDiscovery.ps1') -ToolboxVersion '2'
+ return
+}
+if($Mode -eq 'RuntimeToolDiscovery') {
+ & (Join-Path $root 'Test-JawsRuntimeToolDiscovery.ps1')
+ return
+}
+if($Mode -eq 'ToolboxDiscovery') {
+ & (Join-Path $root 'Test-JawsToolboxDiscovery.ps1')
+ return
+}
+if($Mode -like 'DelegationRbac*'){
+ $rbac=Join-Path $root 'Configure-JawsDelegationConsumerRbac.ps1'
+ if($Mode -eq 'DelegationRbacPlan'){& $rbac -Mode Plan; return}
+ if($Mode -eq 'DelegationRbacVerify'){& $rbac -Mode Verify; return}
+ & $rbac -Mode Plan
+ $planPath=Join-Path $root '.local/jaws-step-c-delegation-consumer-rbac-plan.dev.generated.json'
+ $plan=Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json
+ if($plan.AssignmentExists -eq $true){
+  & $rbac -Mode Verify
+  return
+ }
+ Write-Host "Principal: $($plan.PrincipalId)"
+ Write-Host "Role definition: $($plan.RoleDefinitionId) (Foundry Agent Consumer)"
+ Write-Host "Scope: $($plan.Scope)"
+ $answer=Read-Host 'Approve this least-privilege security role assignment? [y/N]'
+ if($answer.Trim() -ine 'y'){throw 'JAWS-STEP-C-RBAC-001: Role assignment declined.'}
+ & $rbac -Mode Assign -ApprovedPlanSha256 $plan.PlanSha256 -AcknowledgeSecurityRoleAssignment
+ return
+}
+if($Mode -eq 'SupervisorV2Verify') {
+ $answer=Read-Host 'Run billable authenticated Supervisor-to-Investigation acceptance test? [y/N]'
+ if($answer.Trim() -ine 'y'){throw 'JAWS-STEP-C-ACCEPT-001: Test declined.'}
+ $verify=Join-Path $root 'Test-JawsStepCDelegation.ps1'
+ if([string]::IsNullOrWhiteSpace($ExpectedImage)){& $verify -AcknowledgeInferenceCharges}
+ else{& $verify -AcknowledgeInferenceCharges -ExpectedImage $ExpectedImage}
+ return
+}
+if($Mode -in @('SupervisorReleasePlan','SupervisorRelease','SupervisorCandidatePlan','SupervisorCandidateRelease')) {
+ $candidate=Join-Path $root 'Release-JawsSupervisorCandidate.ps1'
+ & $candidate -Mode Plan
+ if($Mode -in @('SupervisorCandidatePlan','SupervisorReleasePlan')){return}
+ & (Join-Path $root 'Reconcile-JawsSupervisorCandidate.ps1') -Mode Verify
+ $planPath=Join-Path $root '.local/jaws-step-c-supervisor-candidate-release-plan.dev.generated.json'
+ $plan=Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json
+ if([string]$plan.Operation -eq 'AlreadyPresent'){
+  Write-Host "Release $($plan.Version) already uses $($plan.Image)."
+  return
+ }
+ Write-Host 'WARNING: This non-draft release may change latest-agent routing. Version 1 remains available and is not modified.'
+ Write-Host "Image: $($plan.Image)"
+ $answer=Read-Host 'Approve release of this published Supervisor image? [y/N]'
+ if($answer.Trim() -ine 'y'){throw 'JAWS-STEP-C-CANDIDATE-001: Candidate release declined.'}
+ & $candidate -Mode Release -ApprovedPlanSha256 $plan.PlanSha256 -AcknowledgeTrafficAndInferenceCharges
+ return
+}
+if($Mode -in @('PlannerPlan','PlannerInstall')) {
+ $planner=Join-Path $root 'Configure-JawsInvestigationPlanner.ps1'
+ & $planner -Mode Plan
+ if($Mode -eq 'PlannerPlan'){return}
+ $planPath=Join-Path $root '.local/jaws-step-c-planner-plan.dev.generated.json'
+ if(-not (Test-Path -LiteralPath $planPath)){throw 'JAWS-STEP-C-PLANNER-001: Planner plan missing. Run PlannerPlan first.'}
+ $plan=Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json
+ & $planner -Mode Install -ApprovedPlanSha256 $plan.PlanSha256 -AcknowledgePlannerCreate
+ return
+}
+if($Mode -in @('SupervisorV2Publish','SupervisorV2Deploy')) {
+ $action=if($Mode -eq 'SupervisorV2Publish'){'Publish'}else{'Deploy'}
+ & (Join-Path $root 'Invoke-JawsSupervisorV2Approved.ps1') -Mode $action
+ if(-not $?){throw 'JAWS-STEP-C-V2-002: Approved candidate operation failed.'}
+ return
+}
+if($Mode -in @('SupervisorV2Build','SupervisorV2Plan')) {
+ $modeArg=if($Mode -eq 'SupervisorV2Build'){'Build'}else{'Plan'}
+ & (Join-Path $root 'Prepare-JawsSupervisorV2.ps1') -Mode $modeArg
+ if(-not $?){throw 'JAWS-STEP-C-V2-001: Supervisor candidate preparation failed.'}
+ return
+}
+if($Mode -like 'Delegation*'){
+ # A2A agent-card must be verified before any delegated connection actions.
+ $receiptPath=Join-Path $root '.local/jaws-step-c-a2a-receipt.dev.generated.json'
+ if(-not(Test-Path -LiteralPath $receiptPath -PathType Leaf)){
+  throw 'JAWS-STEP-C-DELEGATION-001: Verified Investigation incoming A2A receipt is missing.'
+ }
+ $receipt=Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+ if($receipt.Status -cne 'A2A_AGENT_CARD_VERIFIED' -or $receipt.AgentName -cne 'jaws-investigation-dev'){
+  throw 'JAWS-STEP-C-DELEGATION-002: Investigation A2A receipt does not match.'
+ }
+ $connection=Join-Path $root 'Configure-JawsDelegationConnection.ps1'
+ $toolbox=Join-Path $root 'Configure-JawsDelegationToolbox.ps1'
+ switch($Mode){
+  'DelegationPlan' {
+   & $connection -Mode Plan
+   $connectionReceipt=Join-Path $root '.local/jaws-step-c-delegation-connection-receipt.dev.generated.json'
+   if(Test-Path $connectionReceipt){ & $toolbox -Mode Plan }
+   else { Write-Host 'Toolbox planning waits for a verified RemoteA2A connection.' }
+  }
+  'DelegationInstall' {
+   if([string]::IsNullOrWhiteSpace($ApprovedDelegationConnectionSha256)){
+    throw 'JAWS-STEP-C-DELEGATION-003: Exact connection plan approval required.'
+   }
+   & $connection -Mode Install -ApprovedPlanSha256 $ApprovedDelegationConnectionSha256 -AcknowledgeA2AConnection:$AcknowledgeA2AConnection
+   if(-not $?){throw 'JAWS-STEP-C-DELEGATION-004: Connection installation failed.'}
+   # Toolbox install separately approved; never create it implicitly.
+   if($ApprovedDelegationToolboxSha256){
+    & $toolbox -Mode Install -ApprovedPlanSha256 $ApprovedDelegationToolboxSha256 -AcknowledgeToolboxChargesAndAccess:$AcknowledgeToolboxChargesAndAccess
+   } else { & $toolbox -Mode Plan }
+  }
+  'DelegationVerify' {
+   & (Join-Path $root 'Test-JawsInvestigationPlanner.ps1')
+   if(-not $?){throw 'JAWS-STEP-C-DELEGATION-006: Investigation prompt planner is not ready.'}
+   & $connection -Mode Verify
+   if(-not $?){throw 'JAWS-STEP-C-DELEGATION-005: Connection verification failed.'}
+   & $toolbox -Mode Verify
+  }
+ }
+ Write-Host 'Supervisor v1 unchanged. Runtime integration and invocation still require acceptance.'
+ return
+}
+$local=Join-Path $root '.local'
+$publish=Join-Path $local 'jaws-investigation-publish-receipt.dev.generated.json'
+$deploy=Join-Path $local 'jaws-foundry-investigation-deploy-receipt.dev.generated.json'
+if(-not (Test-Path -LiteralPath $publish -PathType Leaf) -or -not (Test-Path -LiteralPath $deploy -PathType Leaf)){
+ throw 'JAWS-STEP-C-001: Existing Investigation publish/deploy receipts required. Run existing approved modules for any missing resources.'
+}
+$pr=Get-Content -LiteralPath $publish -Raw | ConvertFrom-Json
+$dr=Get-Content -LiteralPath $deploy -Raw | ConvertFrom-Json
+if($pr.Status -ne 'PUBLISHED_AND_DIGEST_VERIFIED' -or
+   $pr.RegistryPushPerformed -ne $true -or
+   $dr.AgentName -cne 'jaws-investigation-dev' -or
+   [string]$dr.Image -cne [string]$pr.Image -or
+   [string]$dr.Version -cne '1'){
+ throw 'JAWS-STEP-C-002: Publishing/deployment receipts do not reconcile. No writes permitted.'
+}
+Write-Host 'JAWS Step C: existing published Investigation v1 receipts reconciled.'
+$prereq=Join-Path $root 'Test-JawsPrerequisites.ps1'
+# Preflight reports local state; no implicit installation.
+if($Mode -eq 'Plan'){
+ Write-Host 'Preflight: use Test-JawsPrerequisites.ps1 if workstation state changed.'
+}
+$a2a=Join-Path $root 'Configure-JawsInvestigationA2A.ps1'
+if($Mode -eq 'Install'){
+ if([string]::IsNullOrWhiteSpace($ApprovedA2APlanSha256) -or -not $AcknowledgeAgentEndpointChange){
+  throw 'JAWS-STEP-C-003: A2A approval hash and explicit endpoint acknowledgment required.'
+ }
+ & $a2a -Mode Install -ApprovedPlanSha256 $ApprovedA2APlanSha256 -AcknowledgeAgentEndpointChange
+}elseif($Mode -eq 'Verify'){
+ & $a2a -Mode Verify
+}else{
+ & $a2a -Mode Plan
+}
+if(-not $?){throw 'JAWS-STEP-C-004: A2A step failed.'}
+Write-Host 'Step C state: Investigation hosted v1 retained; Supervisor v1 unchanged.'
+Write-Host 'Supervisor-to-Investigation A2A connection/tool registration and end-to-end delegation remain separate acceptance gates.'

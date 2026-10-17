@@ -1,0 +1,116 @@
+{
+  "baseline": "2026-10-17",
+  "scope": "JAWS DEV only",
+  "sourceOfTruth": "docs/installation/IMPLEMENTATION_ROADMAP.md",
+  "acceptedArchitecture": "Supervisor to A2A Investigation Planner; VM specialist and observability specialist planned",
+  "steps": [
+    {
+      "id": "A",
+      "title": "Discovery & reconciliation",
+      "status": "accepted",
+      "capability": "State-first Azure inventory",
+      "value": "Read-only inventory reconciles the approved JAWS DEV resources without changing cloud state.",
+      "implementation": "installer/Install-Jaws.ps1",
+      "tests": "tests/installer/",
+      "microsoftUrl": "https://learn.microsoft.com/en-us/azure/governance/resource-graph/overview",
+      "microsoftTitle": "Azure Resource Graph",
+      "evidence": "Read-only discovery and state comparison accepted in DEV; live current rerun not supplied."
+    },
+    {
+      "id": "B",
+      "title": "Foundry foundation & packaging",
+      "status": "partial",
+      "capability": "Approved managed foundation",
+      "value": "Existing DEV Foundry project, hosted agents, container registry and immutable images support governed deployment.",
+      "implementation": "installer/Deploy-JawsSupervisor.ps1",
+      "tests": "tests/installer/",
+      "microsoftUrl": "https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/deploy-hosted-agent",
+      "microsoftTitle": "Foundry hosted agents",
+      "evidence": "DEV implementation evidenced; greenfield installation and cross-environment acceptance not established."
+    },
+    {
+      "id": "C",
+      "title": "Supervisor → Investigation Planner",
+      "status": "accepted",
+      "capability": "Authenticated agent-to-agent planning",
+      "value": "Supervisor v5 returns a completed, read-only VM diagnostic plan through an identity-protected A2A prompt planner.",
+      "implementation": "installer/Install-JawsThroughStepC.ps1",
+      "tests": "tests/installer/StepCInstall.Tests.ps1",
+      "microsoftUrl": "https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/tools/agent-to-agent",
+      "microsoftTitle": "Foundry agent-to-agent",
+      "evidence": "Closed DEV: Supervisor v5, planner v1, TASK_STATE_COMPLETED; hosted investigation runtime did not execute."
+    },
+    {
+      "id": "D",
+      "title": "Virtual-machine specialist & compute",
+      "status": "planned",
+      "capability": "Specialist runtime for VM work",
+      "value": "A single VM specialist owns its compute environment for authorized investigation and later execution.",
+      "implementation": "src/Jaws.AgentFramework/Agents/SpecialistCatalog.cs",
+      "tests": "",
+      "microsoftUrl": "https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/deploy-hosted-agent",
+      "microsoftTitle": "Hosted agent deployment",
+      "evidence": "Target capability; not implemented or accepted."
+    },
+    {
+      "id": "E",
+      "title": "Azure MCP investigation",
+      "status": "planned",
+      "capability": "Evidence-backed Azure diagnostics",
+      "value": "VM specialist retrieves relevant Azure Policy, Defender and infrastructure evidence without exceeding operator permissions.",
+      "implementation": "",
+      "tests": "",
+      "microsoftUrl": "https://learn.microsoft.com/en-us/azure/developer/azure-mcp-server/overview",
+      "microsoftTitle": "Azure MCP Server",
+      "evidence": "Target capability; not implemented or accepted."
+    },
+    {
+      "id": "F",
+      "title": "Deliberation & remediation",
+      "status": "planned",
+      "capability": "Governed operational action",
+      "value": "The same VM specialist evaluates alternatives and performs only authorized, approved changes with recorded results.",
+      "implementation": "",
+      "tests": "",
+      "microsoftUrl": "https://learn.microsoft.com/en-us/azure/role-based-access-control/overview",
+      "microsoftTitle": "Azure RBAC",
+      "evidence": "Target capability; not implemented or accepted."
+    },
+    {
+      "id": "G",
+      "title": "Observability specialist & custom MCP",
+      "status": "planned",
+      "capability": "Correlated observability workflow",
+      "value": "One observability specialist uses shared compute via custom MCP tools for Datadog, Azure Monitor, Sentinel and ServiceNow incident records.",
+      "implementation": "",
+      "tests": "",
+      "microsoftUrl": "https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/tools/model-context-protocol",
+      "microsoftTitle": "Foundry MCP tools",
+      "evidence": "Target capability; not implemented or accepted."
+    },
+    {
+      "id": "H",
+      "title": "Teams projects & conversations",
+      "status": "planned",
+      "capability": "Operator-centered experience",
+      "value": "Teams sessions keep conversations grouped by project, and specialist actions remain scoped to operator identity.",
+      "implementation": "",
+      "tests": "",
+      "microsoftUrl": "https://learn.microsoft.com/en-us/microsoftteams/platform/",
+      "microsoftTitle": "Microsoft Teams developer platform",
+      "evidence": "Target capability; not implemented or accepted."
+    },
+    {
+      "id": "I",
+      "title": "End-to-end operational acceptance",
+      "status": "planned",
+      "capability": "Auditable incident resolution",
+      "value": "A Teams-originated VM security incident is investigated, governed, and reported with correlated evidence across specialists.",
+      "implementation": "",
+      "tests": "",
+      "microsoftUrl": "https://learn.microsoft.com/en-us/azure/well-architected/",
+      "microsoftTitle": "Azure Well-Architected Framework",
+      "evidence": "Target capability; not implemented or accepted."
+    }
+  ]
+}

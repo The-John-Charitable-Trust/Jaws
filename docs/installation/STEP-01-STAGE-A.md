@@ -21,13 +21,13 @@ Install Git and PowerShell 7 from the official links in the [Quick Start](../sta
 
 ```powershell
 Set-Location "$HOME\Documents"
-git clone --branch feature/step-c-investigation-publishing https://github.com/The-John-Charitable-Trust/Jaws.git
+git clone https://github.com/The-John-Charitable-Trust/Jaws.git
 Set-Location .\Jaws
 git status
 Test-Path .\installer\Install-Jaws.ps1
 ```
 
-**Expected result:** The repository downloads, Git shows the selected branch, and `Test-Path` returns `True`. If already cloned, check for uncommitted work before pulling updates.
+**Expected result:** The repository downloads, `git status` shows `main`, and `Test-Path` returns `True`. If already cloned, check for uncommitted work before pulling updates.
 
 ### 2. Authenticate and verify your Azure scope
 

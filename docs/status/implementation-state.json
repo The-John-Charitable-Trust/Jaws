@@ -20,13 +20,13 @@
       "id": "B",
       "title": "Foundry foundation & packaging",
       "status": "partial",
-      "capability": "Approved managed foundation",
-      "value": "Existing DEV Foundry project, hosted agents, container registry and immutable images support governed deployment.",
-      "implementation": "installer/Deploy-JawsSupervisor.ps1",
-      "tests": "tests/installer/",
+      "capability": "Local plan capture and Supervisor package",
+      "value": "The installer records the signed-in subscription on a blocked offline plan and publishes the Supervisor host locally. Foundry, registry, and identity deployment remain unverified.",
+      "implementation": "installer/Install-Jaws.ps1",
+      "tests": "installer/Test-JawsStepB.ps1",
       "microsoftUrl": "https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/deploy-hosted-agent",
       "microsoftTitle": "Foundry hosted agents",
-      "evidence": "DEV implementation evidenced; greenfield installation and cross-environment acceptance not established."
+      "evidence": "Plan capture and local package are scorable. Foundry project, model, ACR, identity, and greenfield provisioning are not accepted."
     },
     {
       "id": "C",

@@ -2,7 +2,7 @@
 # This script does not call Azure, publish, or build a container.
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('Plan','Package')][string]$Mode,
+    [Parameter(Mandatory)][ValidateSet('Plan','Package','Install')][string]$Mode,
     [string]$ReportPath
 )
 Set-StrictMode -Version Latest
@@ -50,6 +50,35 @@ if ($Mode -eq 'Plan') {
     Write-Host 'Can execute: false'
     Write-Host 'Azure writes: 0'
     Write-Host 'Example blueprint: unchanged'
+    return
+}
+
+if ($Mode -eq 'Install') {
+    if (-not $ReportPath) {
+        $found = @(Get-ChildItem -LiteralPath (Join-Path $installerRoot '.local') -Filter 'jaws-step-b-install.*.generated.json' -ErrorAction SilentlyContinue)
+        if ($found.Count -ne 1) { throw "JAWS-STEP-B-006: Expected one Step B install receipt, found $($found.Count)." }
+        $ReportPath = $found[0].FullName
+    }
+    if (-not (Test-Path -LiteralPath $ReportPath -PathType Leaf)) { throw "JAWS-STEP-B-006: Step B install receipt not found: $ReportPath" }
+    $receipt = Get-Content -LiteralPath $ReportPath -Raw | ConvertFrom-Json
+    $dev = Get-Content -LiteralPath (Join-Path $installerRoot 'config/jaws-installation-state.dev.json') -Raw
+    $reasons = @()
+    if ([string]$receipt.Status -ne 'STEP_B_INSTALLED') { $reasons += 'status is not STEP_B_INSTALLED' }
+    if ([string]$receipt.AgentStatus -ne 'active' -or [string]$receipt.AgentVersion -ne '1') { $reasons += 'hosted agent is not active version 1' }
+    if ([string]$receipt.Image -notmatch '@sha256:[a-f0-9]{64}$') { $reasons += 'image is not digest-pinned' }
+    if ([string]$receipt.FoundryAccountName -eq 'jaws-foundry-dev' -or [string]$receipt.ResourceGroupName -eq 'rg-aiops-lab') { $reasons += 'receipt targets the accepted dev project' }
+    if ($dev -notmatch 'c52f597b-7753-45b4-a764-67e290dcfd5e') { $reasons += 'dev installation state changed' }
+    if (-not (Test-Path -LiteralPath ([string]$receipt.StatePath) -PathType Leaf)) { $reasons += 'generated installation state is missing' }
+    if ($reasons.Count -gt 0) { throw "JAWS-STEP-B-007: Step B install receipt is not a pass. $($reasons -join '; ')." }
+    Write-Host 'STEP-B INSTALL PASS'
+    Write-Host "Foundry account: $($receipt.FoundryAccountName)"
+    Write-Host "Project: $($receipt.ProjectName)"
+    Write-Host "Model: $($receipt.ModelName) $($receipt.ModelVersion)"
+    Write-Host "Image: $($receipt.Image)"
+    Write-Host "Agent: $($receipt.AgentName)"
+    Write-Host 'Agent version: 1'
+    Write-Host 'Agent status: active'
+    Write-Host "Azure writes: $($receipt.AzureWrites)"
     return
 }
 

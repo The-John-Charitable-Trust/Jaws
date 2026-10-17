@@ -20,13 +20,13 @@
       "id": "B",
       "title": "Foundry foundation & packaging",
       "status": "partial",
-      "capability": "Local plan capture and Supervisor package",
-      "value": "The installer records the signed-in subscription on a blocked offline plan and publishes the Supervisor host locally. Foundry, registry, and identity deployment remain unverified.",
+      "capability": "Approved Foundry foundation install",
+      "value": "An approved plan can create a Foundry account, project, model deployment, Key Vault, registry, project identity pull role, and a digest-pinned hosted Supervisor.",
       "implementation": "installer/Install-Jaws.ps1",
-      "tests": "installer/Test-JawsStepB.ps1",
+      "tests": "tests/installer/StepBInstall.Tests.ps1",
       "microsoftUrl": "https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/deploy-hosted-agent",
       "microsoftTitle": "Foundry hosted agents",
-      "evidence": "Plan capture and local package are scorable. Foundry project, model, ACR, identity, and greenfield provisioning are not accepted."
+      "evidence": "Installer and stubbed CLI test pass. No fresh-subscription receipt has been recorded, so Step B is not accepted."
     },
     {
       "id": "C",

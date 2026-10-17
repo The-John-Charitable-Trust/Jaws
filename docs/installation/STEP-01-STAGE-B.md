@@ -1,69 +1,77 @@
-# Step B — Subscription capture and local Supervisor package
+# Step B — Foundry foundation and packaging
 
-Step B records the Azure subscription already selected with `az account set`, then publishes the Supervisor host on the workstation. It does not create a resource group, a Foundry project, a model deployment, a registry image, or a managed identity.
+Step B creates the foundation for one environment in the subscription already selected with `az account set`:
 
-The example blueprint stays a template. Its subscription id remains `00000000-0000-0000-0000-000000000000`. The installer copies the signed-in subscription into the generated plan.
+- resource group
+- Foundry account and project, with a system-assigned project identity
+- model deployment
+- Key Vault with RBAC and purge protection
+- Basic registry with admin disabled
+- AcrPull for the project identity
+- hosted Supervisor version 1, pinned to the registry image digest
+
+The example blueprint stays a template. Its subscription id remains `00000000-0000-0000-0000-000000000000`. The installer copies the signed-in subscription into the plan. `dev` and `rg-aiops-lab` are refused so the accepted development project is left unchanged.
+
+These resources are billable. Install does nothing unless `-AcknowledgeStepBInstall` and the plan digest from the plan command are both present.
 
 ## Prerequisites
 
-- Step A completed through `az account set --subscription <your-subscription-id>`.
+- `az account set --subscription <your-subscription-id>` completed.
 - PowerShell 7 at the repository root.
-- .NET SDK 10 for the package command. Check with `dotnet --list-sdks`.
-- Docker is required only for the optional `-BuildContainer` command.
+- .NET SDK 10 and Docker for the install. Check with `dotnet --list-sdks` and `docker version`.
+- Contributor on the subscription or resource group, plus permission to assign AcrPull. Contributor alone cannot assign roles.
 
-## B1. Capture the subscription
+## B1. Plan
 
 ```powershell
-.\installer\Install-Jaws.ps1 -Mode Plan -NonInteractive
-.\installer\Test-JawsStepB.ps1 -Mode Plan
+.\installer\Install-Jaws.ps1 -Mode Plan -NonInteractive -EnvironmentName your-environment -ResourceGroupName rg-jaws-your-environment -Location eastus
+.\installer\Test-JawsStepB.ps1 -Mode Plan -ReportPath .\installer\.local\jaws-stage-b-plan.your-environment.offline.generated.json
 ```
 
-**Expected result.** Both commands print:
+**Expected result.** Both commands print `STEP-B PLAN PASS`, `Subscription source: AzureCli`, `Install authorized: false`, and `Plan SHA-256`. Azure writes stay 0. The report is `installer/.local/jaws-stage-b-plan.your-environment.offline.generated.json`.
 
-```text
-STEP-B PLAN PASS
-Subscription: <id from az account show>
-Subscription source: AzureCli
-Resource group: rg-jaws-test
-Location: eastus
-Status: BLOCKED_PENDING_AZURE_DISCOVERY_AND_APPROVAL
-Can execute: false
-Azure writes: 0
-Example blueprint: unchanged
-```
+## B2. Package
 
-The report is `installer/.local/jaws-stage-b-plan.tester.offline.generated.json`. `rg-jaws-test` is recorded from the blueprint and is not created. With no Azure CLI session, Plan stops at `JAWS-AUTH-001` or `JAWS-PLAN-011`.
-
-## B2. Publish the Supervisor host
-
-This is the package gate.
+Optional check that the Supervisor host publishes before the install spends money.
 
 ```powershell
 .\installer\Install-Jaws.ps1 -Mode Package
 .\installer\Test-JawsStepB.ps1 -Mode Package
 ```
 
+**Expected result.** `STEP-B PACKAGE PASS`, `Status: LOCAL_PACKAGE_CREATED`, `Azure writes: 0`, `Registry push: false`, `Foundry deployment: false`, `Container built: false`. `installer/.local/supervisor/publish/Jaws.Supervisor.Host.dll` exists.
+
+## B3. Install
+
+```powershell
+.\installer\Install-Jaws.ps1 -Mode Install -EnvironmentName your-environment -ResourceGroupName rg-jaws-your-environment -Location eastus -ApprovedPlanSha256 <plan-sha> -AcknowledgeStepBInstall
+.\installer\Test-JawsStepB.ps1 -Mode Install
+```
+
 **Expected result.** Both commands print:
 
 ```text
-STEP-B PACKAGE PASS
-Status: LOCAL_PACKAGE_CREATED
-Azure writes: 0
-Registry push: false
-Foundry deployment: false
-Container built: false
+STEP-B INSTALL PASS
+Foundry account: jaws-foundry-your-environment
+Project: jaws-your-environment
+Model: gpt-5-mini 2025-08-07
+Agent: jaws-supervisor-your-environment
+Agent version: 1
+Agent status: active
 ```
 
-`installer/.local/supervisor/publish/Jaws.Supervisor.Host.dll` exists. The report is `installer/.local/jaws-step-b-package.generated.json`.
+The image line ends in `@sha256:` and a 64-character digest. The receipt is `installer/.local/jaws-step-b-install.your-environment.generated.json`. The generated state file is `installer/.local/jaws-installation-state.your-environment.generated.json`. `installer/config/jaws-installation-state.dev.json` is unchanged.
 
 | Condition | Result |
 | --- | --- |
-| .NET SDK missing | `JAWS-PACKAGE-003` |
-| `dotnet publish` fails | `JAWS-PACKAGE-004` |
-| Optional `-BuildContainer` without Docker | `JAWS-PACKAGE-005` |
+| Approval switch omitted | `JAWS-STEP-B-010`, no Azure writes |
+| Plan digest differs | `JAWS-STEP-B-011`, no Azure writes |
+| Environment `dev` or resource group `rg-aiops-lab` | `JAWS-STEP-B-013` |
+| Existing resource without the installer tags | `JAWS-STEP-B-012`, no adoption |
+| Model quota or unsupported region | `JAWS-STEP-B-MODEL-001` or the provider error from Azure |
+| Docker missing | `JAWS-PACKAGE-005` before resources are created |
+| Second run | Same receipt, no second Foundry account or Supervisor |
 
-`-BuildContainer` is not part of the default gate. When Docker can build `linux/amd64`, that command instead prints `Container built: true` and `Container tag: jaws-supervisor:local`. Registry push and Foundry deployment stay false.
+## Acceptance
 
-## What this pass does not prove
-
-Foundry account and project, model deployment, container registry, image digest, managed identity, and RBAC are unchanged by B1 and B2. A later gate has to verify them before any deployment claim.
+A fresh-subscription receipt has not been archived from an independent Azure run. Until that receipt exists, Step B is implemented and not accepted. The local test uses a stand-in Azure CLI and does not count as that receipt.

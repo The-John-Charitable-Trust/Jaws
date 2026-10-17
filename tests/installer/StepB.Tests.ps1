@@ -34,8 +34,11 @@ Describe 'Step B subscription capture and local package' {
         $plan | Should -Match 'Subscription source:'
         $plan | Should -Match 'STEP-B PLAN PASS'
         $plan | Should -Match 'JAWS-PLAN-012'
-        $entry | Should -Match "ValidateSet\('Discover','Plan','Package'\)"
-        $entry | Should -Not -Match "ValidateSet\('Discover','Plan','Package','Install'\)"
+        $entry | Should -Match "ValidateSet\('Discover','Plan','Package','Install'\)"
+        $entry | Should -Match 'AcknowledgeStepBInstall'
+        $installModule = Get-Content (Join-Path $PSScriptRoot '../../installer/modules/StepBInstall.psm1') -Raw
+        $installModule | Should -Match 'JAWS-STEP-B-010'
+        $installModule | Should -Match 'JAWS-STEP-B-013'
     }
 
     It 'finds the Supervisor host and scores a local package without a registry push' {

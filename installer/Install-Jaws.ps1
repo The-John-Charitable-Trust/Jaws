@@ -1,7 +1,7 @@
-# JAWS Installer 0.4.7 - State-first discovery, subscription capture, and local packaging
+# JAWS Installer 0.4.8 - discovery, plan, local package, and approved Step B foundation install
 [CmdletBinding()]
 param(
-    [ValidateSet('Discover','Plan','Package')][string]$Mode='Discover',
+    [ValidateSet('Discover','Plan','Package','Install')][string]$Mode='Discover',
     [string]$PlanFile,
     [switch]$AzureAware,
     [switch]$BuildContainer,
@@ -11,6 +11,11 @@ param(
     [string]$SubscriptionId,
     [string]$ResourceGroupName,
     [string]$EnvironmentName='dev',
+    [string]$Location,
+    [string]$ModelName='gpt-5-mini',
+    [string]$ModelVersion='2025-08-07',
+    [switch]$AcknowledgeStepBInstall,
+    [string]$ApprovedPlanSha256,
     [string]$StateFile,
     [switch]$NonInteractive
 )
@@ -87,6 +92,15 @@ if ($Mode -eq 'Plan') {
     $offlinePlan = New-JawsOfflineDeploymentPlan @planArgs
     $exampleAfter = Get-Content -LiteralPath $examplePath -Raw
     if ($exampleAfter -ne $exampleBefore) { throw 'JAWS-PLAN-012: Plan mode rewrote the example blueprint.' }
+    if ($PSBoundParameters.ContainsKey('EnvironmentName') -and $PSBoundParameters.ContainsKey('ResourceGroupName') -and $PSBoundParameters.ContainsKey('Location')) {
+        Import-Module (Join-Path $PSScriptRoot 'modules/StepBInstall.psm1') -Force
+        $installScope = New-JawsStepBInstallScope -SubscriptionId $offlinePlan.SubscriptionId -ResourceGroupName $ResourceGroupName -Location $Location -EnvironmentName $EnvironmentName -ModelName $ModelName -ModelVersion $ModelVersion
+        $offlinePlan | Add-Member -NotePropertyName InstallScope -NotePropertyValue $installScope -Force
+        $offlinePlan | Add-Member -NotePropertyName PlanSha256 -NotePropertyValue $installScope.PlanSha256 -Force
+        $offlinePlan.ResourceGroupName = $installScope.ResourceGroupName
+        $offlinePlan.Location = $installScope.Location
+        $offlinePlan.EnvironmentName = $installScope.EnvironmentName
+    }
     $planResult = $offlinePlan
     if ($AzureAware) {
         Import-Module (Join-Path $PSScriptRoot 'modules/AzurePreflight.psm1') -Force
@@ -156,7 +170,45 @@ if ($Mode -eq 'Plan') {
         Write-Host 'Can execute: false'
         Write-Host 'Azure writes: 0'
         Write-Host 'Example blueprint: unchanged'
+        if ($planResult.PSObject.Properties['PlanSha256']) {
+            Write-Host "Plan SHA-256: $($planResult.PlanSha256)"
+            Write-Host "Foundry account: $($planResult.InstallScope.FoundryAccountName)"
+            Write-Host "Project: $($planResult.InstallScope.ProjectName)"
+            Write-Host "Model: $($planResult.InstallScope.ModelName) $($planResult.InstallScope.ModelVersion)"
+            Write-Host "Registry: $($planResult.InstallScope.RegistryName)"
+            Write-Host "Agent: $($planResult.InstallScope.AgentName)"
+            Write-Host 'Install authorized: false'
+        }
     }
+    return
+}
+if ($Mode -eq 'Install') {
+    if (-not $PSBoundParameters.ContainsKey('EnvironmentName') -or -not $PSBoundParameters.ContainsKey('ResourceGroupName') -or -not $PSBoundParameters.ContainsKey('Location')) {
+        throw 'JAWS-STEP-B-016: Install requires the same -EnvironmentName, -ResourceGroupName, and -Location used to create the plan.'
+    }
+    Import-Module (Join-Path $PSScriptRoot 'modules/StepBInstall.psm1') -Force
+    $planPath = Join-Path $PSScriptRoot ".local/jaws-stage-b-plan.$EnvironmentName.offline.generated.json"
+    if (-not (Test-Path -LiteralPath $planPath -PathType Leaf)) {
+        throw "JAWS-STEP-B-016: Approved plan not found at $planPath. Run -Mode Plan with the same environment, resource group, and location first."
+    }
+    $saved = Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json
+    if (-not $saved.PSObject.Properties['InstallScope']) {
+        throw 'JAWS-STEP-B-016: The saved plan has no install scope. Re-run Plan with -EnvironmentName, -ResourceGroupName, and -Location.'
+    }
+    $installed = Invoke-JawsStepBInstall -Scope $saved.InstallScope -ApprovedPlanSha256 $ApprovedPlanSha256 -InstallerRoot $PSScriptRoot -AcknowledgeStepBInstall:$AcknowledgeStepBInstall
+    $done = $installed.Receipt
+    Write-Host 'STEP-B INSTALL PASS'
+    Write-Host "Foundry account: $($done.FoundryAccountName)"
+    Write-Host "Project: $($done.ProjectName)"
+    Write-Host "Model: $($done.ModelName) $($done.ModelVersion)"
+    Write-Host "Registry: $($done.RegistryLoginServer)"
+    Write-Host "Image: $($done.Image)"
+    Write-Host "Agent: $($done.AgentName)"
+    Write-Host "Agent version: $($done.AgentVersion)"
+    Write-Host "Agent status: $($done.AgentStatus)"
+    Write-Host "Azure writes: $($done.AzureWrites)"
+    Write-Host "State: $($installed.StatePath)"
+    Write-Host "Receipt: $($installed.ReceiptPath)"
     return
 }
 Import-Module (Join-Path $PSScriptRoot 'modules/AzurePreflight.psm1') -Force
@@ -173,7 +225,7 @@ if ($SubscriptionId -and $SubscriptionId -ine $state.SubscriptionId) { throw 'JA
 if ($ResourceGroupName -and $ResourceGroupName -ine $state.ResourceGroupName) { throw 'JAWS-STATE-002: Resource group differs from the authoritative state.' }
 $SubscriptionId=[string]$state.SubscriptionId
 $ResourceGroupName=[string]$state.ResourceGroupName
-Write-Host "JAWS Installer v0.4.7 | $Mode | State-first verification" -ForegroundColor Cyan
+Write-Host "JAWS Installer v0.4.8 | $Mode | State-first verification" -ForegroundColor Cyan
 Write-Host "Authoritative state: $StateFile"
 Write-Host "Target: $SubscriptionId | $ResourceGroupName"
 $context=Get-JawsAuthorizedSubscriptions -NonInteractive:$NonInteractive

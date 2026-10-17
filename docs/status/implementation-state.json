@@ -8,13 +8,13 @@
       "id": "A",
       "title": "Discovery & reconciliation",
       "status": "accepted",
-      "capability": "State-first Azure inventory",
-      "value": "Read-only inventory reconciles the approved JAWS DEV resources without changing cloud state.",
+      "capability": "Read-only subscription inventory and optional state reconciliation",
+      "value": "An operator can inventory Foundry, Key Vault, and registry resources in a chosen subscription without a JAWS state file. Supplying a state file reconciles the named resources. Discover does not change Azure or the state file.",
       "implementation": "installer/Install-Jaws.ps1",
-      "tests": "tests/installer/",
+      "tests": "tests/installer/StepADiscovery.Tests.ps1",
       "microsoftUrl": "https://learn.microsoft.com/en-us/azure/governance/resource-graph/overview",
       "microsoftTitle": "Azure Resource Graph",
-      "evidence": "Read-only discovery and state comparison accepted in DEV; live current rerun not supplied."
+      "evidence": "Pester covers empty inventory, unclaimed rows, tenant mismatch, and state reconciliation. A live run in a new subscription was not executed with this change."
     },
     {
       "id": "B",

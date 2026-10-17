@@ -2,15 +2,21 @@
 # Read-only Azure management API calls, except optional interactive az login.
 Set-StrictMode -Version Latest
 
+function Test-JawsPreflightArguments {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string[]]$Arguments)
+    $joined = $Arguments -join ' '
+    $allowed = @('account show','account list','group list','group show','resource list','graph query')
+    return [bool](@($allowed | Where-Object { $joined.StartsWith($_ + ' ',[StringComparison]::OrdinalIgnoreCase) -or $joined -eq $_ }).Count)
+}
+
 function Invoke-JawsPreflightRead {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string[]]$Arguments,[Parameter(Mandatory)][string]$Operation)
     if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
         throw 'JAWS-PREREQ-001: Azure CLI is not installed or not on PATH.'
     }
-    $allowed = @('account show','account list','group list','group show','resource list')
-    $joined = $Arguments -join ' '
-    if (-not @($allowed | Where-Object { $joined.StartsWith($_ + ' ',[StringComparison]::OrdinalIgnoreCase) -or $joined -eq $_ }).Count) {
+    if (-not (Test-JawsPreflightArguments -Arguments $Arguments)) {
         throw "JAWS-SEC-001: Unsupported preflight operation: $Operation"
     }
     $raw = & az @Arguments 2>$null
@@ -171,4 +177,43 @@ function Get-JawsTenantInstallationScan {
     }
 }
 
-Export-ModuleMember -Function Invoke-JawsPreflightRead,Get-JawsAuthorizedSubscriptions,Select-JawsSubscription,Select-JawsResourceGroup,Get-JawsTenantInstallationScan
+function Get-JawsResourceGraphInventory {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$SubscriptionId)
+    $subscriptionGuid=[guid]::Empty
+    if (-not [guid]::TryParse($SubscriptionId,[ref]$subscriptionGuid)) {
+        throw 'JAWS-SCAN-004: Resource Graph inventory requires an Azure subscription GUID.'
+    }
+    $types=@(
+        'microsoft.cognitiveservices/accounts',
+        'microsoft.cognitiveservices/accounts/projects',
+        'microsoft.cognitiveservices/accounts/deployments',
+        'microsoft.keyvault/vaults',
+        'microsoft.containerregistry/registries'
+    )
+    $typeList=($types | ForEach-Object { "'$_'" }) -join ','
+    $query="Resources | where subscriptionId =~ '$SubscriptionId' | where type in~ ($typeList) | project id, name, type, resourceGroup, location, subscriptionId"
+    $rows=@()
+    $skip=$null
+    $seen=@{}
+    for ($page=0; $page -lt 20; $page++) {
+        $graphArguments=@('graph','query','--graph-query',$query,'--subscriptions',$SubscriptionId,'--first','1000','--output','json','--only-show-errors')
+        if ($skip) { $graphArguments += @('--skip-token',$skip) }
+        try {
+            $pageResult=Invoke-JawsPreflightRead -Arguments $graphArguments -Operation "resource graph inventory: $SubscriptionId"
+        } catch {
+            throw "JAWS-AUTH-010: Resource Graph read failed for subscription $SubscriptionId. Required action: Microsoft.ResourceGraph/resources/read, included in Reader, at subscription scope. $($_.Exception.Message)"
+        }
+        $data=@(Get-JawsOptionalProperty -InputObject $pageResult -PropertyName 'data')
+        foreach ($row in $data) { if ($null -ne $row) { $rows += $row } }
+        $next=[string](Get-JawsOptionalProperty -InputObject $pageResult -PropertyName 'skip_token')
+        if (-not $next) { $skip=$null; break }
+        if ($seen.ContainsKey($next)) { throw 'JAWS-SCAN-005: Resource Graph returned a repeated page token. Inventory was not accepted.' }
+        $seen[$next]=$true
+        $skip=$next
+    }
+    if ($skip) { throw 'JAWS-SCAN-005: Resource Graph inventory exceeded the read page limit. No installation state was written.' }
+    return @($rows)
+}
+
+Export-ModuleMember -Function Invoke-JawsPreflightRead,Get-JawsAuthorizedSubscriptions,Select-JawsSubscription,Select-JawsResourceGroup,Get-JawsTenantInstallationScan,Get-JawsResourceGraphInventory

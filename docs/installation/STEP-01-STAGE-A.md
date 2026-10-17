@@ -1,23 +1,39 @@
-# Step 1 — JAWS State-First Discovery (Stage A 0.4.6)
+# Step A — Read-only discovery
 
-JAWS installation state is the operator-managed **gold copy**. Discovery compares tenant and targeted resource inventory to the state file; it never rewrites that file. Legacy Tight Fang is ignored in JAWS reports.
+Step A inventories one Azure subscription. It does not create a resource group, adopt resources, or rewrite an installation state file.
 
-## Existing development environment
+Microsoft's [Azure Resource Graph](https://learn.microsoft.com/en-us/azure/governance/resource-graph/overview) is the inventory source. The installer runs that query through the [Azure CLI](https://learn.microsoft.com/en-us/azure/governance/resource-graph/first-query-azurecli). The signed-in identity needs `Microsoft.ResourceGraph/resources/read` on the selected subscription. The built-in [Reader](https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles#reader) role includes that action. A denied query reports the missing action, role, and subscription scope.
 
-`installer/config/jaws-installation-state.dev.json` already contains the expected four JAWS resource names, types, location and model version. The Azure resource IDs remain null until verified by the installer; no IDs were fabricated.
+## Acceptance criteria
 
-## Start discovery
+- Read-only discovery succeeds without a JAWS state file.
+- Resource Graph rows in the selected subscription stay **Unclaimed**. A matching name is not adoption.
+- When `-StateFile` is supplied, each named resource is compared with Azure. Identity drift stops the run before the manifest is rewritten.
+- Azure writes stay at 0, and Discover does not create or rewrite the state file.
 
-From the cloned JAWS repository root:
+A missing Resource Graph row does not prove a resource is absent. Targeted reads are authoritative when a state file names the resource.
+
+## Discover a subscription
+
+From the repository root, in PowerShell 7:
 
 ```powershell
-.\installer\Install-Jaws.ps1 -Mode Discover
+az login
+.\installer\Install-Jaws.ps1 -Mode Discover -SubscriptionId <your-subscription-id> -NonInteractive
 ```
 
-The installer loads state first and uses its subscription and resource group, checks Azure access, scans readable subscriptions, and compares observations against the expected state. It writes tenant and comparison **reports** under `installer/.local/`, not changes to the state file.
+Leave `-ResourceGroupName` unset to inventory the subscription. Pass an existing resource group to mark that group in scope. Discover does not create a resource group.
 
-## A new user's first run
+The report is `installer/.local/jaws-step-a-discovery.<environment>.generated.json`. Outcome `NoInstallationState` means no state file was supplied. Every inventory row has `Adoption` `Unclaimed` and `AzureWrites` is 0.
 
-There is no prepopulated state for an independent customer. The intended first-time action is `Install`, which will generate and populate the new installation state after successful deployment. **Stage A does not implement Install mode**; this document describes the developer/tester verification scenario only.
+Do not pass `installer/config/jaws-installation-state.dev.json` for a subscription other than the development project. That file is not loaded unless `-StateFile` points at it.
 
-Never copy the seeded development state to a different subscription. The installed source may contain a sample state file for tests, not a universal default installation.
+## Reconcile an existing state file
+
+```powershell
+.\installer\Install-Jaws.ps1 -Mode Discover -StateFile .\installer\config\jaws-installation-state.dev.json -NonInteractive
+```
+
+The state file selects the subscription and resource group. The installer compares its Foundry account, project, model deployment, and Key Vault with Azure, then queries Resource Graph for the same subscription. Outcome `Reconciled` means every named resource matched. Outcome `Drift` means a targeted read disagreed. `JAWS-STATE-008` means an identity mismatch; the state file and manifest are left unchanged.
+
+This command does not install JAWS. Provisioning remains a later step.

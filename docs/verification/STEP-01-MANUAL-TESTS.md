@@ -1,34 +1,25 @@
-# JAWS Step 1 — Stage A Manual Verification
+# JAWS Step A — Manual verification
 
-Independent tester: use a different authorized Azure subscription/resource group.
-Only run Azure interactions through `Install-Jaws.ps1`. Codex reports defects,
-does not modify source code or cloud resources.
+Run Azure only through `installer/Install-Jaws.ps1 -Mode Discover`. Use an identity with Reader on the subscription under test. Do not copy `installer/config/jaws-installation-state.dev.json` into another subscription.
 
 | ID | Procedure | Expected |
 |---|---|---|
-| A-001 | Interactive Discover with valid sign-in | Subscription and RG selectable, scan report created |
-| A-002 | Run with no existing Azure sign-in | Guided sign-in prompt or actionable failure |
-| A-003 | Noninteractive Discover without sign-in | Clear authentication failure; no resource writes |
-| A-004 | Select inaccessible subscription | Block with target-visibility error |
-| A-005 | Select target RG without read rights | Stop with authorization error; preserve old inventory |
-| A-006 | Two enabled visible subscriptions in selected tenant | Both attempted and separately reported |
-| A-007 | One visible subscription scan fails | Report incomplete scan; no refreshed resource manifest |
-| A-008 | Resources with name/tag indicating JAWS exist | Possible installation candidates in tenant scan report |
-| A-009 | No named candidates | No guarantee of absence; report describes heuristic limitation |
-| A-010 | Existing 4 JAWS Stage A resources | Correct IDs/status; external ownership |
-| A-011 | Run Discover twice | No duplicates or ownership reset; no Azure writes |
-| A-012 | Model version mismatches expected | Configuration drift detected |
-| A-013 | Reuse manifest for a different subscription | Fail without overwriting prior manifest |
-| A-014 | Pester suites | All tests pass (`StageA.Tests.ps1`, `AzurePreflight.Tests.ps1`) |
-| A-015 | Static review | No unapproved Azure changes, no secrets in generated JSON |
+| A-001 | `.\installer\Install-Jaws.ps1 -Mode Discover -SubscriptionId <id> -NonInteractive` | Resource Graph inventory for that subscription. Report `installer/.local/jaws-step-a-discovery.selected.generated.json`. Outcome `NoInstallationState`. |
+| A-002 | Discover with no Azure sign-in | `JAWS-AUTH-001`. No resource writes. |
+| A-003 | Same as A-002 with `-NonInteractive` | Authentication failure. No resource writes. |
+| A-004 | `-SubscriptionId` for a subscription the identity cannot see | `JAWS-AUTH-007`. |
+| A-005 | `-ResourceGroupName` for a group the identity cannot read | Authorization error. No state file created. |
+| A-006 | Subscription in a different Entra tenant than the signed-in account | `JAWS-AUTH-009`. Inventory is not accepted. |
+| A-007 | Resource Graph denies `Microsoft.ResourceGraph/resources/read` | `JAWS-AUTH-010` names that action and Reader. No state file created. |
+| A-008 | Subscription contains Foundry, Key Vault, or registry resources | Those rows are `Unclaimed`. A name containing "jaws" does not set adoption. |
+| A-009 | Resource Graph returns no rows | Outcome `NoInstallationState`. The disclaimer says an empty result is not proof of absence. |
+| A-010 | `-StateFile` naming four resources that targeted reads match | Outcome `Reconciled`. `AzureWrites` 0. State file bytes unchanged. |
+| A-011 | Run A-001 twice | A second report. No installation state file appears. No Azure writes. |
+| A-012 | State file model version differs from the targeted deployment read | Outcome `Drift`. State file unchanged. |
+| A-013 | Resource Graph id for a named resource differs from the targeted read | `JAWS-STATE-008`. Manifest not rewritten. |
+| A-014 | `Invoke-Pester .\tests\installer\StepADiscovery.Tests.ps1,.\tests\installer\AzurePreflight.Tests.ps1,.\tests\installer\StageA.Tests.ps1,.\tests\installer\InstallationState.Tests.ps1,.\tests\installer\StateGold.Tests.ps1` | All tests pass. These tests do not call Azure. |
+| A-015 | Review the generated report | No secrets, tokens, or tag values. `AzureWrites` is 0. `InstallationStateCreated` is false. |
 
-Record commit, tester account/tenant (sanitized), tested subscriptions,
-expected/actual results, PASS/FAIL, command output and reproduction steps.
+Record the commit, a sanitized subscription id, and PASS, FAIL, or BLOCKED. A test that was not run against Azure is BLOCKED, not passed.
 
-| A-011 | Subscriptions contain resources without tags or optional name metadata | No StrictMode property exceptions; one Scanned result per readable subscription |
-| A-012 | Subscription scan fails mid-processing | One Failed result, no Scanned duplicate, incomplete report, resource manifest not updated |
-
-
-## v0.4.5 JAWS-only installation state
-
-The tenant scan reports JAWS and legacy Tight-Fang matches separately. Legacy resources are informational and never copied into current JAWS installation state. After successful discovery, inspect `installer/.local/jaws-installation-state.<environment>.generated.json` for the resources explicitly selected for this JAWS installation. Rerun Discover to confirm it reuses existing state and does not create resources. Stage A does not yet implement an Install or overwrite option.
+Pester covers A-006, A-008, A-009, A-010, and A-013 without Azure. A-001 through A-005, A-007, A-011, and A-012 need an authorized subscription and are BLOCKED until that run is recorded.

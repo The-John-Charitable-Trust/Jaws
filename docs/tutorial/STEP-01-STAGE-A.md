@@ -15,4 +15,12 @@ az login
 
 Expected: Outcome `NoInstallationState`, `AzureWrites` 0, and a report under `installer/.local/`.
 
+Validate that report without calling Azure:
+
+```powershell
+.\installer\Test-JawsStepADiscovery.ps1 -ReportPath .\installer\.local\jaws-step-a-discovery.selected.generated.json
+```
+
+Expected: `STEP-A PASS`. A missing report is `JAWS-STEP-A-001` and is not a pass.
+
 The acceptance criteria and the state-file command are in `docs/installation/STEP-01-STAGE-A.md`. The manual checks are in `docs/verification/STEP-01-MANUAL-TESTS.md`.

@@ -126,6 +126,51 @@ Describe 'JAWS Step A read-only discovery' {
     }
 }
 
+Describe 'JAWS Step A report validation' {
+    It 'passes an empty subscription report' {
+        $report = New-JawsStepADiscoveryReport -Subscription $script:subscription -AccountTenantId $script:accountTenant -EnvironmentName 'selected' -GraphRows @() -State $null
+        $check = Test-JawsStepADiscoveryReport -Report $report
+        $check.Result | Should -Be 'PASS'
+    }
+    It 'fails when a row is adopted' {
+        $report = New-JawsStepADiscoveryReport -Subscription $script:subscription -AccountTenantId $script:accountTenant -EnvironmentName 'selected' -GraphRows @(
+            [pscustomobject]@{ name = 'jaws-foundry'; type = 'Microsoft.CognitiveServices/accounts'; id = $script:foundryId; resourceGroup = 'rg-jaws'; subscriptionId = $script:sub }
+        ) -State $null
+        $report.Inventory[0].Adoption = 'Installer'
+        $check = Test-JawsStepADiscoveryReport -Report $report
+        $check.Result | Should -Be 'FAIL'
+    }
+    It 'fails when the report records an Azure write' {
+        $report = New-JawsStepADiscoveryReport -Subscription $script:subscription -AccountTenantId $script:accountTenant -EnvironmentName 'selected' -GraphRows @() -State $null
+        $report.AzureWrites = 1
+        (Test-JawsStepADiscoveryReport -Report $report).Result | Should -Be 'FAIL'
+    }
+    It 'passes a reconciled state report and reports drift separately' {
+        $state = [pscustomobject]@{
+            SubscriptionId = $script:sub
+            ResourceGroupName = 'rg-jaws'
+            Resources = @([pscustomobject]@{ Name = 'jaws-foundry'; Type = 'Microsoft.CognitiveServices/accounts' })
+        }
+        $match = @([pscustomobject]@{ Name = 'jaws-foundry'; Type = 'Microsoft.CognitiveServices/accounts'; Status = 'Match'; ExpectedResourceId = $null; ObservedResourceId = $script:foundryId })
+        $rows = @([pscustomobject]@{ name = 'jaws-foundry'; type = 'Microsoft.CognitiveServices/accounts'; id = $script:foundryId; resourceGroup = 'rg-jaws'; subscriptionId = $script:sub })
+        $ok = New-JawsStepADiscoveryReport -Subscription $script:subscription -AccountTenantId $script:accountTenant -EnvironmentName 'dev' -GraphRows $rows -State $state -TargetComparison $match
+        (Test-JawsStepADiscoveryReport -Report $ok).Result | Should -Be 'PASS'
+        $drift = $ok.PSObject.Copy()
+        $drift.Outcome = 'Drift'
+        (Test-JawsStepADiscoveryReport -Report $drift).Result | Should -Be 'DRIFT'
+    }
+    It 'validates a saved report and rejects a missing file' {
+        $report = New-JawsStepADiscoveryReport -Subscription $script:subscription -AccountTenantId $script:accountTenant -EnvironmentName 'selected' -GraphRows @() -State $null
+        $path = Join-Path $TestDrive 'jaws-step-a-discovery.selected.generated.json'
+        $report | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $path -Encoding utf8
+        $scriptPath = Join-Path $PSScriptRoot '../../installer/Test-JawsStepADiscovery.ps1'
+        & $scriptPath -ReportPath $path
+        $body = Get-Content -LiteralPath $scriptPath -Raw
+        $body | Should -Not -Match '& az '
+        { & $scriptPath -ReportPath (Join-Path $TestDrive 'missing.json') } | Should -Throw '*JAWS-STEP-A-001*'
+    }
+}
+
 Describe 'JAWS Resource Graph inventory' {
     InModuleScope AzurePreflight {
         It 'allows a Resource Graph read and rejects resource creation' {

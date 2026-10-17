@@ -4,7 +4,7 @@ Run Azure only through `installer/Install-Jaws.ps1 -Mode Discover`. Use an ident
 
 | ID | Procedure | Expected |
 |---|---|---|
-| A-001 | `.\installer\Install-Jaws.ps1 -Mode Discover -SubscriptionId <id> -NonInteractive` | Resource Graph inventory for that subscription. Report `installer/.local/jaws-step-a-discovery.selected.generated.json`. Outcome `NoInstallationState`. |
+| A-001 | `.\installer\Install-Jaws.ps1 -Mode Discover -SubscriptionId <id> -NonInteractive`, then `.\installer\Test-JawsStepADiscovery.ps1 -ReportPath .\installer\.local\jaws-step-a-discovery.selected.generated.json` | `STEP-A PASS`, Outcome `NoInstallationState`, `Azure writes: 0`. |
 | A-002 | Discover with no Azure sign-in | `JAWS-AUTH-001`. No resource writes. |
 | A-003 | Same as A-002 with `-NonInteractive` | Authentication failure. No resource writes. |
 | A-004 | `-SubscriptionId` for a subscription the identity cannot see | `JAWS-AUTH-007`. |
@@ -17,8 +17,8 @@ Run Azure only through `installer/Install-Jaws.ps1 -Mode Discover`. Use an ident
 | A-011 | Run A-001 twice | A second report. No installation state file appears. No Azure writes. |
 | A-012 | State file model version differs from the targeted deployment read | Outcome `Drift`. State file unchanged. |
 | A-013 | Resource Graph id for a named resource differs from the targeted read | `JAWS-STATE-008`. Manifest not rewritten. |
-| A-014 | `Invoke-Pester .\tests\installer\StepADiscovery.Tests.ps1,.\tests\installer\AzurePreflight.Tests.ps1,.\tests\installer\StageA.Tests.ps1,.\tests\installer\InstallationState.Tests.ps1,.\tests\installer\StateGold.Tests.ps1` | All tests pass. These tests do not call Azure. |
-| A-015 | Review the generated report | No secrets, tokens, or tag values. `AzureWrites` is 0. `InstallationStateCreated` is false. |
+| A-014 | `Invoke-Pester .\tests\installer\StepADiscovery.Tests.ps1 -Output Detailed` | All tests pass. These tests do not call Azure. |
+| A-015 | `.\installer\Test-JawsStepADiscovery.ps1 -ReportPath .\installer\.local\jaws-step-a-discovery.selected.generated.json` | `STEP-A PASS`. The report has no secrets, tokens, or tag values. `AzureWrites` is 0. `InstallationStateCreated` is false. |
 
 Record the commit, a sanitized subscription id, and PASS, FAIL, or BLOCKED. A test that was not run against Azure is BLOCKED, not passed.
 

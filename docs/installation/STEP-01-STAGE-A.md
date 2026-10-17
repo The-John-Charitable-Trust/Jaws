@@ -26,6 +26,18 @@ Leave `-ResourceGroupName` unset to inventory the subscription. Pass an existing
 
 The report is `installer/.local/jaws-step-a-discovery.<environment>.generated.json`. Outcome `NoInstallationState` means no state file was supplied. Every inventory row has `Adoption` `Unclaimed` and `AzureWrites` is 0.
 
+## Validate the report
+
+This reads the report. It does not call Azure.
+
+```powershell
+.\installer\Test-JawsStepADiscovery.ps1 -ReportPath .\installer\.local\jaws-step-a-discovery.selected.generated.json
+```
+
+`STEP-A PASS` requires Outcome `NoInstallationState`, `AzureWrites` 0, `InstallationStateCreated` false, and every row `Unclaimed`. `JAWS-STEP-A-001` means the report is missing and is not a pass. `JAWS-STEP-A-002` means Outcome `Drift`. `JAWS-STEP-A-003` means a write, an adopted row, or another outcome that fails the criteria.
+
+The same checks are on the [manual verification page](../verification/index.html). A Discover command that has not been run against Azure is BLOCKED, not passed.
+
 Do not pass `installer/config/jaws-installation-state.dev.json` for a subscription other than the development project. That file is not loaded unless `-StateFile` points at it.
 
 ## Reconcile an existing state file

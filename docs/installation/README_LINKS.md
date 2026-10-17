@@ -7,4 +7,4 @@
 - [Developer / Tester Guide](docs/installation/developer/index.html)
 - [Manual Verification Guide](docs/verification/index.html)
 
-Stage A is read-only discovery; initial cloud provisioning is planned for Stage B.
+Step A is `Install-Jaws.ps1 -Mode Discover` followed by `Test-JawsStepADiscovery.ps1`. Provisioning is not implemented.

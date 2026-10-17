@@ -1,20 +1,20 @@
 {
   "baseline": "2026-10-17",
-  "scope": "JAWS DEV only",
+  "scope": "Step A is subscription-scoped and unit-tested. Steps B and C evidence is the development project. A live Step A Discover run is not attached.",
   "sourceOfTruth": "docs/installation/IMPLEMENTATION_ROADMAP.md",
   "acceptedArchitecture": "Supervisor to A2A Investigation Planner; VM specialist and observability specialist planned",
   "steps": [
     {
       "id": "A",
       "title": "Discovery & reconciliation",
-      "status": "accepted",
+      "status": "partial",
       "capability": "Read-only subscription inventory and optional state reconciliation",
       "value": "An operator can inventory Foundry, Key Vault, and registry resources in a chosen subscription without a JAWS state file. Supplying a state file reconciles the named resources. Discover does not change Azure or the state file.",
       "implementation": "installer/Install-Jaws.ps1",
-      "tests": "tests/installer/StepADiscovery.Tests.ps1",
+      "tests": "tests/installer/StepADiscovery.Tests.ps1; installer/Test-JawsStepADiscovery.ps1",
       "microsoftUrl": "https://learn.microsoft.com/en-us/azure/governance/resource-graph/overview",
       "microsoftTitle": "Azure Resource Graph",
-      "evidence": "Pester covers empty inventory, unclaimed rows, tenant mismatch, and state reconciliation. A live run in a new subscription was not executed with this change."
+      "evidence": "Pester covers empty inventory, unclaimed rows, tenant mismatch, reconciliation, and Test-JawsStepADiscovery.ps1. A live Discover in a new subscription has not been recorded, so that run is BLOCKED."
     },
     {
       "id": "B",

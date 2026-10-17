@@ -150,4 +150,43 @@ function New-JawsStepADiscoveryReport {
     }
 }
 
-Export-ModuleMember -Function New-JawsStepADiscoveryReport
+function Test-JawsStepADiscoveryReport {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Report)
+    $reasons=@()
+    $writes=Get-JawsStepAProperty -InputObject $Report -PropertyName 'AzureWrites'
+    $created=Get-JawsStepAProperty -InputObject $Report -PropertyName 'InstallationStateCreated'
+    $rewritten=Get-JawsStepAProperty -InputObject $Report -PropertyName 'StateFileRewritten'
+    $acceptance=Get-JawsStepAProperty -InputObject $Report -PropertyName 'Acceptance'
+    $readOnly=Get-JawsStepAProperty -InputObject $acceptance -PropertyName 'ReadOnlyDiscovery'
+    $cloudChanges=Get-JawsStepAProperty -InputObject $acceptance -PropertyName 'CloudChanges'
+    $compared=Get-JawsStepAProperty -InputObject $acceptance -PropertyName 'InventoryCompared'
+    $outcome=[string](Get-JawsStepAProperty -InputObject $Report -PropertyName 'Outcome')
+    if ($writes -ne 0) { $reasons += 'AzureWrites is not 0.' }
+    if ($created -ne $false) { $reasons += 'InstallationStateCreated is not false.' }
+    if ($rewritten -ne $false) { $reasons += 'StateFileRewritten is not false.' }
+    if ($readOnly -ne $true) { $reasons += 'ReadOnlyDiscovery is not true.' }
+    if ($cloudChanges -ne 0) { $reasons += 'CloudChanges is not 0.' }
+    $inventory=@(Get-JawsStepAProperty -InputObject $Report -PropertyName 'Inventory')
+    foreach ($row in $inventory) {
+        if ($null -eq $row) { continue }
+        $adoption=[string](Get-JawsStepAProperty -InputObject $row -PropertyName 'Adoption')
+        $name=[string](Get-JawsStepAProperty -InputObject $row -PropertyName 'Name')
+        if ($adoption -ne 'Unclaimed') { $reasons += "Inventory row '$name' has Adoption '$adoption'." }
+    }
+    $targets=@(Get-JawsStepAProperty -InputObject $Report -PropertyName 'TargetDiscovery')
+    $unmatched=@($targets | Where-Object { $null -ne $_ -and [string](Get-JawsStepAProperty -InputObject $_ -PropertyName 'Status') -ne 'Match' })
+    $result='FAIL'
+    if ($reasons.Count -eq 0 -and $outcome -eq 'NoInstallationState' -and $compared -eq $false) {
+        $result='PASS'
+    } elseif ($reasons.Count -eq 0 -and $outcome -eq 'Reconciled' -and $compared -eq $true -and $targets.Count -gt 0 -and $unmatched.Count -eq 0) {
+        $result='PASS'
+    } elseif ($reasons.Count -eq 0 -and $outcome -eq 'Drift') {
+        $result='DRIFT'
+    } elseif ($reasons.Count -eq 0) {
+        $reasons += "Outcome '$outcome' does not meet Step A acceptance."
+    }
+    [pscustomobject]@{ Result=$result; Outcome=$outcome; Reasons=@($reasons) }
+}
+
+Export-ModuleMember -Function New-JawsStepADiscoveryReport,Test-JawsStepADiscoveryReport

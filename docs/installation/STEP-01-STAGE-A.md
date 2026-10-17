@@ -15,7 +15,21 @@ Step A establishes your signed-in Azure identity and subscription scope, invento
 
 ## Four activities
 
-### 1. Authenticate and verify your Azure scope
+### 1. Clone JAWS from GitHub to your local computer
+
+Install Git and PowerShell 7 from the official links in the [Quick Start](../status/quick-start.html). In PowerShell 7:
+
+```powershell
+Set-Location "$HOME\Documents"
+git clone --branch feature/step-c-investigation-publishing https://github.com/The-John-Charitable-Trust/Jaws.git
+Set-Location .\Jaws
+git status
+Test-Path .\installer\Install-Jaws.ps1
+```
+
+**Expected result:** The repository downloads, Git shows the selected branch, and `Test-Path` returns `True`. If already cloned, check for uncommitted work before pulling updates.
+
+### 2. Authenticate and verify your Azure scope
 
 Open **PowerShell 7** in a terminal:
 
@@ -28,7 +42,7 @@ az account show --query "{name:name,id:id,tenantId:tenantId}" --output table
 
 **Expected result:** Your intended subscription appears as Enabled and `az account show` identifies its tenant and subscription. If access is missing, contact the subscription administrator. These commands do **not** install JAWS.
 
-### 2. Inspect subscriptions and resource inventory
+### 3. Inspect subscriptions and resource inventory
 
 Use the authorized Azure CLI session to list resource groups and (when permitted) resources in **your selected subscription**, even when it is empty.
 
@@ -39,7 +53,7 @@ az resource list --output table
 
 **Expected result:** Azure returns the resources visible to your identity, possibly an empty list. Empty inventory is an acceptable Step A discovery finding. This is a manual Azure CLI verification, **not** a claim that the old JAWS state-first installer supports uninitialized customer state.
 
-### 3. Reconcile resources against installation state, if JAWS already exists
+### 4. Reconcile resources against installation state, if JAWS already exists
 
 For an existing JAWS deployment with its **own verified state file**, run from the checked-out repository root:
 
@@ -51,7 +65,7 @@ For an existing JAWS deployment with its **own verified state file**, run from t
 
 **For a new subscription without JAWS:** Skip the command above. In the current v0.4.6 installer, `Discover` requires an existing state file and will fail with `JAWS-STATE-003` if one is absent. This is a documented product gap, **not an instruction to create imaginary JAWS state or resources**. The future greenfield installer must generate state during approved provisioning.
 
-### 4. Record reports and verify no configuration changes
+### 5. Record reports and verify no configuration changes
 
 With an existing state file and successful installer reconciliation, inspect:
 
@@ -65,6 +79,7 @@ With an existing state file and successful installer reconciliation, inspect:
 
 | Evidence | Empty customer subscription | Existing JAWS installation |
 |---|---|---|
+| Local repository cloned and installer present | Verified | Verified |
 | Identity and subscription | Authorized tenant/subscription confirmed | Confirmed |
 | Visible resource inventory | Listed, even when empty | Listed |
 | JAWS resource comparison | Not applicable until provisioning | Reported per resource |
@@ -74,6 +89,7 @@ With an existing state file and successful installer reconciliation, inspect:
 
 ## Step A acceptance criteria
 
+- **A-00 Local source:** Git clone, correct branch, and repository-root installer file verified.
 - **A-01 Authentication:** The selected Entra identity and target subscription are explicit; failures are actionable.
 - **A-02 Inventory:** All accessible selected-scope resources can be enumerated; empty inventory is valid; unreadable scope is identified rather than silently accepted.
 - **A-03 Reconciliation (existing installations):** The correct installation state is matched to subscription/resource group; expected resources are identified; identity/configuration drift is reported. A greenfield customer is **not** required to supply an existing JAWS state.

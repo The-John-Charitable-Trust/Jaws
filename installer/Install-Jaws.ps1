@@ -1,7 +1,7 @@
-# JAWS Installer 0.4.6 - State-first read-only discovery and reconciliation
+# JAWS Installer 0.4.8 - discovery, plan, local package, and approved Step B foundation install
 [CmdletBinding()]
 param(
-    [ValidateSet('Discover','Plan','Package')][string]$Mode='Discover',
+    [ValidateSet('Discover','Plan','Package','Install')][string]$Mode='Discover',
     [string]$PlanFile,
     [switch]$AzureAware,
     [switch]$BuildContainer,
@@ -11,6 +11,11 @@ param(
     [string]$SubscriptionId,
     [string]$ResourceGroupName,
     [string]$EnvironmentName='dev',
+    [string]$Location,
+    [string]$ModelName='gpt-5-mini',
+    [string]$ModelVersion='2025-08-07',
+    [switch]$AcknowledgeStepBInstall,
+    [string]$ApprovedPlanSha256,
     [string]$StateFile,
     [switch]$NonInteractive
 )
@@ -24,16 +29,78 @@ if ($Mode -eq 'Package') {
     Import-Module (Join-Path $PSScriptRoot 'modules/SupervisorPackage.psm1') -Force
     $package=Get-JawsSupervisorPackagePlan -InstallerRoot $PSScriptRoot
     $result=Invoke-JawsSupervisorLocalBuild -PackagePlan $package -BuildContainer:$BuildContainer
+    if ($result.Status -ne 'LOCAL_PACKAGE_CREATED' -or $result.AzureWrites -ne 0 -or
+        $result.RegistryPushPerformed -or $result.FoundryDeploymentPerformed) {
+        throw 'JAWS-STEP-B-005: Local package result is not a Step B pass.'
+    }
+    $outputDir = Join-Path $PSScriptRoot '.local'
+    if (-not (Test-Path -LiteralPath $outputDir)) { New-Item -ItemType Directory -Path $outputDir -Force | Out-Null }
+    $packageReport=[pscustomobject]@{
+        SchemaVersion='1.0'
+        Mode='Package'
+        Status=[string]$result.Status
+        OutputPath=[string]$result.OutputPath
+        ProjectPath=[string]$package.ProjectPath
+        ContainerBuilt=[bool]$result.ContainerBuilt
+        ContainerTag=$(if ($result.ContainerTag) {[string]$result.ContainerTag} else {$null})
+        AzureWrites=0
+        RegistryPushPerformed=$false
+        FoundryDeploymentPerformed=$false
+    }
+    $packageReportPath=Join-Path $outputDir 'jaws-step-b-package.generated.json'
+    $packageReport | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $packageReportPath -Encoding utf8
     Write-Host 'JAWS SUPERVISOR LOCAL PACKAGE: NO AZURE WRITES OR DEPLOYMENT' -ForegroundColor Cyan
-    $result | Format-List | Out-Host
+    Write-Host 'STEP-B PACKAGE PASS'
+    Write-Host "Status: $($packageReport.Status)"
+    Write-Host 'Azure writes: 0'
+    Write-Host 'Registry push: false'
+    Write-Host 'Foundry deployment: false'
+    Write-Host ("Container built: " + $(if ($packageReport.ContainerBuilt) {'true'} else {'false'}))
+    if ($packageReport.ContainerBuilt) { Write-Host "Container tag: $($packageReport.ContainerTag)" }
+    Write-Host "Output: $($packageReport.OutputPath)"
+    Write-Host "Report: $packageReportPath"
     return
 }
 if ($BuildContainer) { throw 'JAWS-PACKAGE-008: -BuildContainer applies only to -Mode Package.' }
-# B2 Plan is an OFFLINE blueprint. It runs before Stage A Azure imports and cannot call Azure.
+# Plan validates the blueprint offline. A placeholder subscription is captured from
+# the subscription already selected in Azure CLI. The example blueprint is not edited.
 if ($Mode -eq 'Plan') {
     Import-Module (Join-Path $PSScriptRoot 'modules/DeploymentPlan.psm1') -Force
     if (-not $PlanFile) { $PlanFile = Join-Path $PSScriptRoot 'config/jaws-stage-b-plan.example.json' }
-    $offlinePlan = New-JawsOfflineDeploymentPlan -BlueprintPath $PlanFile
+    $examplePath = Join-Path $PSScriptRoot 'config/jaws-stage-b-plan.example.json'
+    $exampleBefore = Get-Content -LiteralPath $examplePath -Raw
+    $blueprint = Get-Content -LiteralPath $PlanFile -Raw | ConvertFrom-Json
+    $resolvedSubscription = $null
+    $subscriptionSource = 'Blueprint'
+    if ($SubscriptionId) {
+        $resolvedSubscription = $SubscriptionId
+        $subscriptionSource = 'Parameter'
+    } elseif (Test-JawsPlaceholderSubscriptionId ([string]$blueprint.Scope.SubscriptionId)) {
+        Import-Module (Join-Path $PSScriptRoot 'modules/AzurePreflight.psm1') -Force
+        $selectedAccount = Get-JawsAuthorizedSubscriptions -NonInteractive:$NonInteractive
+        $resolvedSubscription = [string]$selectedAccount.Account.id
+        $subscriptionSource = 'AzureCli'
+        if (Test-JawsPlaceholderSubscriptionId $resolvedSubscription) {
+            throw 'JAWS-PLAN-011: Azure CLI has no selected subscription. Run az login and az account set. The example blueprint is not edited.'
+        }
+    }
+    $planArgs=@{ BlueprintPath = $PlanFile }
+    if ($resolvedSubscription) {
+        $planArgs.SubscriptionId = $resolvedSubscription
+        $planArgs.SubscriptionSource = $subscriptionSource
+    }
+    $offlinePlan = New-JawsOfflineDeploymentPlan @planArgs
+    $exampleAfter = Get-Content -LiteralPath $examplePath -Raw
+    if ($exampleAfter -ne $exampleBefore) { throw 'JAWS-PLAN-012: Plan mode rewrote the example blueprint.' }
+    if ($PSBoundParameters.ContainsKey('EnvironmentName') -and $PSBoundParameters.ContainsKey('ResourceGroupName') -and $PSBoundParameters.ContainsKey('Location')) {
+        Import-Module (Join-Path $PSScriptRoot 'modules/StepBInstall.psm1') -Force
+        $installScope = New-JawsStepBInstallScope -SubscriptionId $offlinePlan.SubscriptionId -ResourceGroupName $ResourceGroupName -Location $Location -EnvironmentName $EnvironmentName -ModelName $ModelName -ModelVersion $ModelVersion
+        $offlinePlan | Add-Member -NotePropertyName InstallScope -NotePropertyValue $installScope -Force
+        $offlinePlan | Add-Member -NotePropertyName PlanSha256 -NotePropertyValue $installScope.PlanSha256 -Force
+        $offlinePlan.ResourceGroupName = $installScope.ResourceGroupName
+        $offlinePlan.Location = $installScope.Location
+        $offlinePlan.EnvironmentName = $installScope.EnvironmentName
+    }
     $planResult = $offlinePlan
     if ($AzureAware) {
         Import-Module (Join-Path $PSScriptRoot 'modules/AzurePreflight.psm1') -Force
@@ -88,6 +155,60 @@ if ($Mode -eq 'Plan') {
     Write-Host "Status: $($planResult.Status)" -ForegroundColor Yellow
     Write-Host "Output: $outputPath"
     Write-Host 'Azure writes: 0 | Costs, deployment permissions, user authorization and approvals: not verified'
+    if (-not $AzureAware) {
+        if ($planResult.AzureWrites -ne 0 -or $planResult.CanExecute -or $planResult.AzureDiscoveryPerformed -or
+            $planResult.Status -ne 'BLOCKED_PENDING_AZURE_DISCOVERY_AND_APPROVAL' -or
+            (Test-JawsPlaceholderSubscriptionId ([string]$planResult.SubscriptionId))) {
+            throw 'JAWS-STEP-B-002: Offline plan is not a Step B pass.'
+        }
+        Write-Host 'STEP-B PLAN PASS'
+        Write-Host "Subscription: $($planResult.SubscriptionId)"
+        Write-Host "Subscription source: $($planResult.SubscriptionSource)"
+        Write-Host "Resource group: $($planResult.ResourceGroupName)"
+        Write-Host "Location: $($planResult.Location)"
+        Write-Host "Status: $($planResult.Status)"
+        Write-Host 'Can execute: false'
+        Write-Host 'Azure writes: 0'
+        Write-Host 'Example blueprint: unchanged'
+        if ($planResult.PSObject.Properties['PlanSha256']) {
+            Write-Host "Plan SHA-256: $($planResult.PlanSha256)"
+            Write-Host "Foundry account: $($planResult.InstallScope.FoundryAccountName)"
+            Write-Host "Project: $($planResult.InstallScope.ProjectName)"
+            Write-Host "Model: $($planResult.InstallScope.ModelName) $($planResult.InstallScope.ModelVersion)"
+            Write-Host "Registry: $($planResult.InstallScope.RegistryName)"
+            Write-Host "Agent: $($planResult.InstallScope.AgentName)"
+            Write-Host 'Install authorized: false'
+        }
+    }
+    return
+}
+if ($Mode -eq 'Install') {
+    if (-not $PSBoundParameters.ContainsKey('EnvironmentName') -or -not $PSBoundParameters.ContainsKey('ResourceGroupName') -or -not $PSBoundParameters.ContainsKey('Location')) {
+        throw 'JAWS-STEP-B-016: Install requires the same -EnvironmentName, -ResourceGroupName, and -Location used to create the plan.'
+    }
+    Import-Module (Join-Path $PSScriptRoot 'modules/StepBInstall.psm1') -Force
+    $planPath = Join-Path $PSScriptRoot ".local/jaws-stage-b-plan.$EnvironmentName.offline.generated.json"
+    if (-not (Test-Path -LiteralPath $planPath -PathType Leaf)) {
+        throw "JAWS-STEP-B-016: Approved plan not found at $planPath. Run -Mode Plan with the same environment, resource group, and location first."
+    }
+    $saved = Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json
+    if (-not $saved.PSObject.Properties['InstallScope']) {
+        throw 'JAWS-STEP-B-016: The saved plan has no install scope. Re-run Plan with -EnvironmentName, -ResourceGroupName, and -Location.'
+    }
+    $installed = Invoke-JawsStepBInstall -Scope $saved.InstallScope -ApprovedPlanSha256 $ApprovedPlanSha256 -InstallerRoot $PSScriptRoot -AcknowledgeStepBInstall:$AcknowledgeStepBInstall
+    $done = $installed.Receipt
+    Write-Host 'STEP-B INSTALL PASS'
+    Write-Host "Foundry account: $($done.FoundryAccountName)"
+    Write-Host "Project: $($done.ProjectName)"
+    Write-Host "Model: $($done.ModelName) $($done.ModelVersion)"
+    Write-Host "Registry: $($done.RegistryLoginServer)"
+    Write-Host "Image: $($done.Image)"
+    Write-Host "Agent: $($done.AgentName)"
+    Write-Host "Agent version: $($done.AgentVersion)"
+    Write-Host "Agent status: $($done.AgentStatus)"
+    Write-Host "Azure writes: $($done.AzureWrites)"
+    Write-Host "State: $($installed.StatePath)"
+    Write-Host "Receipt: $($installed.ReceiptPath)"
     return
 }
 Import-Module (Join-Path $PSScriptRoot 'modules/AzurePreflight.psm1') -Force
@@ -104,7 +225,7 @@ if ($SubscriptionId -and $SubscriptionId -ine $state.SubscriptionId) { throw 'JA
 if ($ResourceGroupName -and $ResourceGroupName -ine $state.ResourceGroupName) { throw 'JAWS-STATE-002: Resource group differs from the authoritative state.' }
 $SubscriptionId=[string]$state.SubscriptionId
 $ResourceGroupName=[string]$state.ResourceGroupName
-Write-Host "JAWS Installer v0.4.6 | $Mode | State-first verification" -ForegroundColor Cyan
+Write-Host "JAWS Installer v0.4.8 | $Mode | State-first verification" -ForegroundColor Cyan
 Write-Host "Authoritative state: $StateFile"
 Write-Host "Target: $SubscriptionId | $ResourceGroupName"
 $context=Get-JawsAuthorizedSubscriptions -NonInteractive:$NonInteractive

@@ -35,15 +35,18 @@ function Invoke-JawsSupervisorLocalBuild {
         throw 'JAWS-PACKAGE-003: .NET SDK not found. Install .NET 10 before packaging.'
     }
     # Only the fixed repository Supervisor project is built, no operator-supplied commands.
-    & dotnet publish $PackagePlan.ProjectPath '-c' 'Release' '--output' $PackagePlan.OutputPath
-    if ($LASTEXITCODE -ne 0) { throw "JAWS-PACKAGE-004: dotnet publish failed ($LASTEXITCODE)." }
+    # Host the tool output so it is not returned as the package result.
+    & dotnet publish $PackagePlan.ProjectPath '-c' 'Release' '--output' $PackagePlan.OutputPath *>&1 | Out-Host
+    $publishExit = $LASTEXITCODE
+    if ($publishExit -ne 0) { throw "JAWS-PACKAGE-004: dotnet publish failed ($publishExit)." }
     if ($BuildContainer) {
         if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
             throw 'JAWS-PACKAGE-005: Docker not available; published binaries remain local.'
         }
         # Buildx keeps the image as an OCI index with OCI layers, which Foundry can provision.
-        & docker buildx build '--platform' 'linux/amd64' '--tag' $PackagePlan.DockerTag '--file' $PackagePlan.DockerfilePath '--load' $PackagePlan.BuildContext
-        if ($LASTEXITCODE -ne 0) { throw "JAWS-PACKAGE-006: Docker build failed ($LASTEXITCODE)." }
+        & docker buildx build '--platform' 'linux/amd64' '--tag' $PackagePlan.DockerTag '--file' $PackagePlan.DockerfilePath '--load' $PackagePlan.BuildContext *>&1 | Out-Host
+        $dockerExit = $LASTEXITCODE
+        if ($dockerExit -ne 0) { throw "JAWS-PACKAGE-006: Docker build failed ($dockerExit)." }
     }
     return [pscustomobject]@{
         Status='LOCAL_PACKAGE_CREATED'

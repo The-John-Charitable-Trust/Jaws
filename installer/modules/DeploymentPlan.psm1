@@ -1,9 +1,20 @@
 # JAWS Stage B2: offline-only deployment blueprint validation. No Azure or network calls.
 Set-StrictMode -Version Latest
 
+function Test-JawsPlaceholderSubscriptionId {
+    [CmdletBinding()]
+    param([AllowNull()][string]$SubscriptionId)
+    $parsed = [guid]::Empty
+    return (-not [guid]::TryParse([string]$SubscriptionId, [ref]$parsed) -or $parsed -eq [guid]::Empty)
+}
+
 function New-JawsOfflineDeploymentPlan {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$BlueprintPath)
+    param(
+        [Parameter(Mandatory)][string]$BlueprintPath,
+        [string]$SubscriptionId,
+        [string]$SubscriptionSource
+    )
 
     if (-not (Test-Path -LiteralPath $BlueprintPath -PathType Leaf)) {
         throw "JAWS-PLAN-001: Blueprint not found: $BlueprintPath"
@@ -23,9 +34,15 @@ function New-JawsOfflineDeploymentPlan {
         [string]$blueprint.EnvironmentName -notmatch '^[a-zA-Z0-9_-]{1,32}$') {
         throw 'JAWS-PLAN-003: Invalid environment or resource group name.'
     }
-    $subId = [guid]::Empty
-    if (-not [guid]::TryParse([string]$scope.SubscriptionId, [ref]$subId) -or $subId -eq [guid]::Empty) {
-        throw 'JAWS-PLAN-004: Replace the example subscription ID with an authorized subscription ID.'
+    $resolvedSubscription = [string]$scope.SubscriptionId
+    $resolvedSource = 'Blueprint'
+    if (-not [string]::IsNullOrWhiteSpace($SubscriptionId)) {
+        $resolvedSubscription = $SubscriptionId
+        $resolvedSource = 'Parameter'
+    }
+    if (-not [string]::IsNullOrWhiteSpace($SubscriptionSource)) { $resolvedSource = $SubscriptionSource }
+    if (Test-JawsPlaceholderSubscriptionId $resolvedSubscription) {
+        throw 'JAWS-PLAN-004: Blueprint subscription is unset. Install-Jaws.ps1 captures the subscription selected in Azure CLI and does not edit the example blueprint.'
     }
     if ($blueprint.Constraints.AzureWritesAllowed -ne $false -or
         $blueprint.Constraints.LiveInferenceAllowed -ne $false -or
@@ -80,7 +97,8 @@ function New-JawsOfflineDeploymentPlan {
     return [pscustomobject]@{
         SchemaVersion='0.1'; Platform='JAWS'; PlanKind='OfflineBlueprint'
         EnvironmentName=[string]$blueprint.EnvironmentName
-        SubscriptionId=[string]$scope.SubscriptionId
+        SubscriptionId=$resolvedSubscription
+        SubscriptionSource=$resolvedSource
         ResourceGroupName=[string]$scope.ResourceGroupName
         Location=[string]$scope.Location
         CanExecute=$false; AzureWrites=0; AzureDiscoveryPerformed=$false
@@ -90,4 +108,4 @@ function New-JawsOfflineDeploymentPlan {
         Components=@($ordered.ToArray())
     }
 }
-Export-ModuleMember -Function New-JawsOfflineDeploymentPlan
+Export-ModuleMember -Function Test-JawsPlaceholderSubscriptionId,New-JawsOfflineDeploymentPlan

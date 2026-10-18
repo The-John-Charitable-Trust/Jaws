@@ -67,9 +67,24 @@ function Invoke-JawsSupervisorAcceptanceResponse {
    $response | Add-Member -NotePropertyName JawsRateLimitAttempts -NotePropertyValue $attempt -Force
    return $response
   }
+  $errorObject=Get-JawsField $response 'error'
+  $issueCode=[string](Get-JawsField $errorObject 'code')
+  $issueMessage=[string](Get-JawsField $errorObject 'message')
+  $issue=if($issueCode -and $issueMessage){"${issueCode}: $issueMessage"}elseif($issueMessage){$issueMessage}else{'Model deployment rate limit exceeded.'}
   Write-Host "Supervisor model rate limit (attempt $attempt of $attempts). Waiting $wait seconds."
+  Write-JawsOperatorIssue -Issue $issue -Action "Waiting $wait seconds, then retrying ($attempt of $attempts). If the limit remains, request more quota for this model and region. The deployment is GlobalStandard capacity 1, and its request rate follows that quota." -QuotaRequest
   if($wait -gt 0){ Start-Sleep -Seconds $wait }
  }
  throw 'JAWS-C-ACCEPT-006: Supervisor invocation produced no response.'
 }
-Export-ModuleMember -Function Get-JawsField,Get-JawsDelegationEvidence,Test-JawsSupervisorRateLimit,Invoke-JawsSupervisorAcceptanceResponse
+function Get-JawsRateLimitAcceptanceFailure($Response) {
+ $errorObject=Get-JawsField $Response 'error'
+ $code=[string](Get-JawsField $errorObject 'code')
+ $message=[string](Get-JawsField $errorObject 'message')
+ $issue=if($code -and $message){"${code}: $message"}elseif($message){$message}else{'Model deployment rate limit exceeded.'}
+ $attempts=[int](Get-JawsField $Response 'JawsRateLimitAttempts')
+ $action="The Investigation task is not the failure. Acceptance tried $attempts times. Retry after the rate-limit window. If it fails again, request more quota for this model and region. The Step B deployment is GlobalStandard capacity 1."
+ Write-JawsOperatorIssue -Issue $issue -Action $action -QuotaRequest
+ return "JAWS-C-ACCEPT-010: $issue $action Quota request: $(Get-JawsQuotaRequestUrl)"
+}
+Export-ModuleMember -Function Get-JawsField,Get-JawsDelegationEvidence,Test-JawsSupervisorRateLimit,Invoke-JawsSupervisorAcceptanceResponse,Get-JawsRateLimitAcceptanceFailure

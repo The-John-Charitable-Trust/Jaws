@@ -35,6 +35,25 @@ function Save-JawsMilestoneFailure {
     } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $Path -Encoding utf8
 }
 
+function Get-JawsQuotaRequestUrl {
+    # Foundry quota increase form for Azure OpenAI and Foundry models.
+    'https://aka.ms/oai/stuquotarequest'
+}
+
+function Write-JawsOperatorIssue {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Issue,
+        [Parameter(Mandatory)][string]$Action,
+        [switch]$QuotaRequest
+    )
+    Write-Host "Issue: $Issue"
+    Write-Host "Action: $Action"
+    if ($QuotaRequest) {
+        Write-Host "Quota request: $(Get-JawsQuotaRequestUrl)"
+    }
+}
+
 function Write-JawsMilestoneResult {
     [CmdletBinding()]
     param(
@@ -50,4 +69,4 @@ function Write-JawsMilestoneResult {
     Write-Host "Evidence: $(Resolve-JawsEvidencePath $EvidencePath)"
 }
 
-Export-ModuleMember -Function Resolve-JawsEvidencePath,Save-JawsMilestoneFailure,Write-JawsMilestoneResult
+Export-ModuleMember -Function Resolve-JawsEvidencePath,Save-JawsMilestoneFailure,Get-JawsQuotaRequestUrl,Write-JawsOperatorIssue,Write-JawsMilestoneResult

@@ -80,6 +80,9 @@ if args[:4] == ["cognitiveservices", "account", "project", "create"]:
 if args[:4] == ["cognitiveservices", "account", "deployment", "show"]:
     emit(load("deployment")) if exists("deployment") else missing()
 if args[:4] == ["cognitiveservices", "account", "deployment", "create"]:
+    if os.environ.get("JAWS_STEPB_STUB_QUOTA") == "1":
+        print('{"error":{"code":"InsufficientQuota","message":"Quota exceeded for model gpt-5-mini in eastus."}}', file=sys.stderr)
+        sys.exit(1)
     payload = {"name": "gpt-5-mini", "properties": {"provisioningState": "Succeeded", "model": {"name": "gpt-5-mini", "version": "2025-08-07"}}}
     save("deployment", payload)
     emit(payload)
@@ -266,6 +269,45 @@ Describe 'Step B foundation install' {
             $env:JAWS_STEPB_STUB_SUB = $savedSub
             $env:JAWS_STEPB_STUB_ENV = $savedEnv
             if ($null -eq $savedHide) { Remove-Item Env:JAWS_STEPB_STUB_HIDE_MODEL -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_HIDE_MODEL = $savedHide }
+            Remove-Item Env:JAWS_STEPB_POLL_SECONDS -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'prints the quota request link when model deployment quota is refused' {
+        $state = Join-Path $script:stub 'state-quota'
+        $savedPath = $env:PATH
+        $savedState = $env:JAWS_STEPB_STUB_STATE
+        $savedSub = $env:JAWS_STEPB_STUB_SUB
+        $savedEnv = $env:JAWS_STEPB_STUB_ENV
+        $savedQuota = $env:JAWS_STEPB_STUB_QUOTA
+        try {
+            $env:JAWS_STEPB_STUB_STATE = $state
+            $env:JAWS_STEPB_STUB_SUB = $script:sub
+            $env:JAWS_STEPB_STUB_ENV = 'lab1'
+            $env:JAWS_STEPB_STUB_QUOTA = '1'
+            $env:JAWS_STEPB_POLL_SECONDS = '0'
+            $env:PATH = $script:stub + [System.IO.Path]::PathSeparator + '/usr/bin'
+            & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Plan -NonInteractive -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus'
+            $plan = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-stage-b-plan.lab1.offline.generated.json') -Raw | ConvertFrom-Json
+            $output = ''
+            try {
+                & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Install -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' -ApprovedPlanSha256 $plan.PlanSha256 -AcknowledgeStepBInstall *>&1 | ForEach-Object { $output += "$_`n" }
+                throw 'Install returned instead of JAWS-STEP-B-MODEL-001.'
+            } catch {
+                $output += $_.Exception.Message
+            }
+            $output | Should -Match 'JAWS-STEP-B-MODEL-001'
+            $output | Should -Match 'Issue: '
+            $output | Should -Match 'InsufficientQuota'
+            $output | Should -Match 'Action: Request a quota increase'
+            $output | Should -Match 'Quota request: https://aka.ms/oai/stuquotarequest'
+            $output | Should -Match 'Result: FAIL'
+        } finally {
+            $env:PATH = $savedPath
+            if ($null -eq $savedState) { Remove-Item Env:JAWS_STEPB_STUB_STATE -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_STATE = $savedState }
+            if ($null -eq $savedSub) { Remove-Item Env:JAWS_STEPB_STUB_SUB -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_SUB = $savedSub }
+            if ($null -eq $savedEnv) { Remove-Item Env:JAWS_STEPB_STUB_ENV -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_ENV = $savedEnv }
+            if ($null -eq $savedQuota) { Remove-Item Env:JAWS_STEPB_STUB_QUOTA -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_QUOTA = $savedQuota }
             Remove-Item Env:JAWS_STEPB_POLL_SECONDS -ErrorAction SilentlyContinue
         }
     }

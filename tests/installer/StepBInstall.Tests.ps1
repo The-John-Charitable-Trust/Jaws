@@ -132,6 +132,12 @@ if args[:1] == ["rest"] and "--method" in args:
         emit({"value": [{"skuName": "S0", "skuAvailable": True}]})
     if method == "POST" and ("checkNameAvailability" in url or "checkDomainAvailability" in url):
         emit({"nameAvailable": True, "isSubdomainAvailable": True})
+    if method == "GET" and "/versions/1" in url and not exists("agent"):
+        print(os.environ.get(
+            "JAWS_STEPB_STUB_AGENT_MISSING",
+            '{"error":{"code":"not_found","message":"Not Found"}}',
+        ), file=sys.stderr)
+        sys.exit(1)
     if method == "GET":
         emit(load("agent")) if exists("agent") else missing()
     body_flag = args[args.index("--body") + 1]
@@ -343,6 +349,37 @@ Describe 'Step B foundation install' {
             $env:JAWS_STEPB_STUB_STATE = $savedState
             $env:JAWS_STEPB_STUB_SUB = $savedSub
             $env:JAWS_STEPB_STUB_ENV = $savedEnv
+        }
+    }
+
+    It 'treats Foundry not_found and Not Found as a missing Supervisor and still fails without -AllowMissing' {
+        $state = Join-Path $script:stub 'state-agent-missing'
+        $savedPath = $env:PATH
+        $savedState = $env:JAWS_STEPB_STUB_STATE
+        $savedSub = $env:JAWS_STEPB_STUB_SUB
+        $savedEnv = $env:JAWS_STEPB_STUB_ENV
+        $savedMissing = $env:JAWS_STEPB_STUB_AGENT_MISSING
+        try {
+            $env:JAWS_STEPB_STUB_STATE = $state
+            $env:JAWS_STEPB_STUB_SUB = $script:sub
+            $env:JAWS_STEPB_STUB_ENV = 'lab1'
+            $env:PATH = $script:stub + [System.IO.Path]::PathSeparator + '/usr/bin'
+            InModuleScope StepBInstall {
+                $arguments = @('rest','--method','GET','--url','https://example.test/agents/jaws-supervisor-lab1/versions/1','--output','json')
+                foreach ($body in @('{"error":{"code":"not_found"}}', 'Not Found')) {
+                    $env:JAWS_STEPB_STUB_AGENT_MISSING = $body
+                    $result = Invoke-JawsStepBAz -AllowMissing -Arguments $arguments
+                    $result | Should -BeNullOrEmpty
+                }
+                $env:JAWS_STEPB_STUB_AGENT_MISSING = '{"error":{"code":"not_found","message":"Not Found"}}'
+                { Invoke-JawsStepBAz -Arguments $arguments } | Should -Throw '*JAWS-STEP-B-AZ-001*'
+            }
+        } finally {
+            $env:PATH = $savedPath
+            if ($null -eq $savedState) { Remove-Item Env:JAWS_STEPB_STUB_STATE -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_STATE = $savedState }
+            if ($null -eq $savedSub) { Remove-Item Env:JAWS_STEPB_STUB_SUB -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_SUB = $savedSub }
+            if ($null -eq $savedEnv) { Remove-Item Env:JAWS_STEPB_STUB_ENV -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_ENV = $savedEnv }
+            if ($null -eq $savedMissing) { Remove-Item Env:JAWS_STEPB_STUB_AGENT_MISSING -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_AGENT_MISSING = $savedMissing }
         }
     }
 }

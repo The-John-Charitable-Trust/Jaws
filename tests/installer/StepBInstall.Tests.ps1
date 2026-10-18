@@ -101,8 +101,10 @@ if args[:2] == ["acr", "build"]:
     if "--platform" not in args or args[args.index("--platform") + 1] != "linux/amd64":
         print("platform must be linux/amd64", file=sys.stderr)
         sys.exit(2)
-    if "--file" not in args or args[args.index("--file") + 1] != "Dockerfile":
-        print("dockerfile must be Dockerfile", file=sys.stderr)
+    file_arg = args[args.index("--file") + 1] if "--file" in args else ""
+    normalized = file_arg.replace("\\", "/")
+    if file_arg == "Dockerfile" or not normalized.endswith("src/Jaws.Supervisor.Host/Dockerfile"):
+        print("dockerfile must be the Supervisor Dockerfile path", file=sys.stderr)
         sys.exit(2)
     sys.exit(0)
 if args[:3] == ["acr", "manifest", "show-metadata"]:
@@ -194,6 +196,8 @@ Describe 'Step B foundation install' {
             ([regex]::Matches($log, 'acr build')).Count | Should -Be 1
             $log | Should -Match 'acr build --registry jawsacrlab1'
             $log | Should -Match '--platform linux/amd64'
+            $log | Should -Match '--file .+src/Jaws\.Supervisor\.Host/Dockerfile'
+            $log | Should -Not -Match '--file Dockerfile( |$)'
             $log | Should -Not -Match 'acr login'
             $log | Should -Not -Match 'jaws-foundry-dev'
             $log | Should -Not -Match 'c52f597b-7753-45b4-a764-67e290dcfd5e'

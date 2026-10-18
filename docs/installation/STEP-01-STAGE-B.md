@@ -83,7 +83,7 @@ Agent status: active
 
 `Test-JawsStepB.ps1 -Mode Install` prints the same install lines and then `Live Azure read: false`. That score checks the receipt file. It does not re-read Azure and it is not acceptance.
 
-Install uploads `src/Jaws.Supervisor.Host` and runs `az acr build --platform linux/amd64`. It does not run `docker build`, `docker tag`, or `docker push`. The image line ends in `@sha256:` and a 64-character digest read back from the registry. The receipt is `installer/.local/jaws-step-b-install.your-environment.generated.json`. The generated state file is `installer/.local/jaws-installation-state.your-environment.generated.json`. `installer/config/jaws-installation-state.dev.json` is unchanged.
+Install uploads `src/Jaws.Supervisor.Host` and runs `az acr build --platform linux/amd64`. `--file` is the package plan's full Dockerfile path. When that argument is set, Azure CLI checks it from the current directory, so a bare `Dockerfile` name is not used. It does not run `docker build`, `docker tag`, or `docker push`. The image line ends in `@sha256:` and a 64-character digest read back from the registry. The receipt is `installer/.local/jaws-step-b-install.your-environment.generated.json`. The generated state file is `installer/.local/jaws-installation-state.your-environment.generated.json`. `installer/config/jaws-installation-state.dev.json` is unchanged.
 
 | Condition | Result |
 | --- | --- |

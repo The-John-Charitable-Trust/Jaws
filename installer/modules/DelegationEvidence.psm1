@@ -43,4 +43,33 @@ function Get-JawsDelegationEvidence($Response) {
   ResponseCompleted=([string](Get-JawsField $Response 'status') -ceq 'completed')
  }
 }
-Export-ModuleMember -Function Get-JawsDelegationEvidence
+function Test-JawsSupervisorRateLimit($Response) {
+ $errorObject=Get-JawsField $Response 'error'
+ $code=[string](Get-JawsField $errorObject 'code')
+ $message=[string](Get-JawsField $errorObject 'message')
+ return ($message -match '(?i)rate limit' -or $code -match '(?i)rate.?limit|^429$')
+}
+function Invoke-JawsSupervisorAcceptanceResponse {
+ param([Parameter(Mandatory)][string]$Url,[Parameter(Mandatory)][string]$Body)
+ $attempts=3
+ $wait=60
+ if($env:JAWS_STEPC_RATE_LIMIT_WAIT_SECONDS -match '^\d+$'){ $wait=[int]$env:JAWS_STEPC_RATE_LIMIT_WAIT_SECONDS }
+ $response=$null
+ for($attempt=1; $attempt -le $attempts; $attempt++){
+  $tmp=[IO.Path]::GetTempFileName()
+  try{
+   [IO.File]::WriteAllText($tmp,$Body,[Text.UTF8Encoding]::new($false))
+   $raw=& az rest --method post --url $Url --resource https://ai.azure.com --headers 'Content-Type=application/json' --body "@$tmp" --output json --only-show-errors 2>&1
+   if($LASTEXITCODE -ne 0){ throw "JAWS-C-ACCEPT-006: Supervisor invocation failed: $($raw | Out-String)" }
+   $response=$raw | Out-String | ConvertFrom-Json -ErrorAction Stop
+  } finally { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
+  if(-not (Test-JawsSupervisorRateLimit $response) -or $attempt -eq $attempts){
+   $response | Add-Member -NotePropertyName JawsRateLimitAttempts -NotePropertyValue $attempt -Force
+   return $response
+  }
+  Write-Host "Supervisor model rate limit (attempt $attempt of $attempts). Waiting $wait seconds."
+  if($wait -gt 0){ Start-Sleep -Seconds $wait }
+ }
+ throw 'JAWS-C-ACCEPT-006: Supervisor invocation produced no response.'
+}
+Export-ModuleMember -Function Get-JawsField,Get-JawsDelegationEvidence,Test-JawsSupervisorRateLimit,Invoke-JawsSupervisorAcceptanceResponse

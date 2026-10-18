@@ -48,14 +48,8 @@ $body=@{
     stream=$false
     store=$false
 } | ConvertTo-Json -Depth 8 -Compress
-$tmp=[IO.Path]::GetTempFileName()
-try{
-    [IO.File]::WriteAllText($tmp,$body,[Text.UTF8Encoding]::new($false))
-    $raw=& az rest --method post --url "$endpoint/agents/$agent/endpoint/protocols/openai/responses?api-version=v1" --resource https://ai.azure.com --headers 'Content-Type=application/json' --body "@$tmp" --output json --only-show-errors 2>&1
-    if($LASTEXITCODE -ne 0){ throw "JAWS-C-ACCEPT-006: Supervisor invocation failed: $($raw | Out-String)" }
-    $response=$raw | Out-String | ConvertFrom-Json -ErrorAction Stop
-} finally { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
 Import-Module (Join-Path $root 'modules/DelegationEvidence.psm1') -Force
+$response=Invoke-JawsSupervisorAcceptanceResponse -Url "$endpoint/agents/$agent/endpoint/protocols/openai/responses?api-version=v1" -Body $body
 $evidence=Get-JawsDelegationEvidence -Response $response
 $outputTypes=@($response.output | ForEach-Object { if($_ -and $_.PSObject.Properties['type']){[string]$_.type}else{'<missing-type>'} })
 $status=if($evidence.ResponseCompleted -and $evidence.Classification -ceq 'TOOL_INVOKED_SUCCEEDED'){'PASS'}else{'FAIL'}
@@ -73,6 +67,9 @@ $report=[pscustomobject]@{
     A2ATargetLimitation='Foundry returns HOSTED_AGENT_NOT_SUPPORTED for A2A operations against a hosted agent. This environment does not create a hosted Investigation agent. The RemoteA2A connection targets the prompt planner.'
     ResponseId=[string]$response.id
     ResponseStatus=[string]$response.status
+    ResponseErrorCode=[string](Get-JawsField (Get-JawsField $response 'error') 'code')
+    ResponseErrorMessage=[string](Get-JawsField (Get-JawsField $response 'error') 'message')
+    RateLimitAttempts=[int]$response.JawsRateLimitAttempts
     TaskState=$taskState
     PlannerResponseId=$plannerResponseId
     OutputItemTypes=$outputTypes
@@ -89,6 +86,10 @@ $report=[pscustomobject]@{
 $path=Join-Path $root ".local/jaws-step-c-final-acceptance.$($ctx.PlanSuffix).generated.json"
 $report | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $path -Encoding utf8
 Write-Host "Supervisor status: $($response.status); output types: $($outputTypes -join ', ')"
+$responseError=Get-JawsField $response 'error'
+if(-not [string]::IsNullOrWhiteSpace([string](Get-JawsField $responseError 'message'))){
+    Write-Host "Supervisor error: $([string](Get-JawsField $responseError 'code')); $([string](Get-JawsField $responseError 'message'))"
+}
 Write-Host "Delegation classification: $($evidence.Classification)"
 Write-Host "Task state: $taskState"
 Write-Host "Step C acceptance: $status; report: $path"
@@ -96,4 +97,7 @@ Write-Host 'Customer installation accepted: false'
 Import-Module (Join-Path $root 'modules/MilestoneResult.psm1') -Force
 $stepCPassed = ($status -eq 'PASS' -and $taskState -eq 'TASK_STATE_COMPLETED')
 Write-JawsMilestoneResult -Result $(if($stepCPassed){'PASS'}else{'FAIL'}) -ReadyForNextStep $stepCPassed -NextStep $(if($stepCPassed){'Step D Validate'}else{'Step C inference acceptance'}) -EvidencePath $path
+if($status -ne 'PASS' -and (Test-JawsSupervisorRateLimit $response)){
+    throw "JAWS-C-ACCEPT-010: Model deployment rate limit exceeded after $($response.JawsRateLimitAttempts) attempts. The Investigation task is not the failure. Retry acceptance after the limit window, or raise the model deployment capacity. Step C is not closed."
+}
 if($status -ne 'PASS'){ throw "JAWS-C-ACCEPT-007: $($evidence.Classification). See tool output in acceptance report; Step C not closed." }

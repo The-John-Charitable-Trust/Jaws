@@ -116,4 +116,6 @@ The functional check spends model usage and writes no configuration:
 
 A pass on a live project ends `CLOSED`, with Acceptance `Passed` and `TASK_STATE_COMPLETED` in the tool output. The report is `installer/.local/jaws-step-c-final-acceptance.<environment>.generated.json`. The response uses `store=false`. The receipt field `CustomerInstallationAccepted` stays false. Record a fresh-subscription run before treating Step C as accepted for that subscription. This repository does not contain that receipt.
 
+A Supervisor response whose error is a model deployment rate limit is not a failed Investigation task. Acceptance waits 60 seconds and tries the same call twice more. The report records `ResponseErrorCode`, `ResponseErrorMessage`, and `RateLimitAttempts`. If all three calls are still rate limited, the run stops at `JAWS-C-ACCEPT-010` and Step C stays open. The Step B deployment remains GlobalStandard capacity 1.
+
 The receipt for either mode is `installer/.local/jaws-step-c-install.<environment>.generated.json`. `SupervisorV1Modified` is false unless a read shows that version 1 changed. `SupervisorVersionPosted` is true only for the run that posted the route.

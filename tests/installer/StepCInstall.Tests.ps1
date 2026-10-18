@@ -161,14 +161,25 @@ if method == "post" and "/toolboxes/jaws-investigation-a2a-tools/versions" in ur
     save()
     emit({"name": "jaws-investigation-a2a-tools", "version": "1"})
 if method == "post" and "/protocols/openai/responses" in url:
-    emit({
-        "id": "caresp_stub",
-        "status": "completed",
-        "output": [
-            {"type": "function_call", "call_id": "call_stub", "name": "jaws-investigation-a2a-lab1___SendMessage"},
-            {"type": "function_call_output", "call_id": "call_stub", "status": "completed", "output": "TASK_STATE_COMPLETED resp_stubplanner123 read-only plan"},
-        ],
-    })
+    limit = int(os.environ.get("JAWS_STEPC_STUB_RATE_LIMITS", "0") or "0")
+    used_path = os.path.join(state_dir, "rate-limits-used")
+    used = int(open(used_path, encoding="utf-8").read()) if os.path.exists(used_path) else 0
+    output = [
+        {"type": "function_call", "call_id": "call_stub", "name": "jaws-investigation-a2a-lab1___SendMessage"},
+        {"type": "function_call_output", "call_id": "call_stub", "status": "completed", "output": "TASK_STATE_COMPLETED resp_stubplanner123 read-only plan"},
+    ]
+    if used < limit:
+        open(used_path, "w", encoding="utf-8").write(str(used + 1))
+        emit({
+            "id": "caresp_stub_limited",
+            "status": "failed",
+            "error": {
+                "code": "server_error",
+                "message": "Model deployment rate limit exceeded. Your requests to gpt-5-mini for gpt-5-mini in eastus have exceeded request rate limit.",
+            },
+            "output": output,
+        })
+    emit({"id": "caresp_stub", "status": "completed", "output": output})
 print("unexpected " + " ".join(args), file=sys.stderr)
 sys.exit(9)
 '@
@@ -299,11 +310,15 @@ Describe 'Step C from a Step B environment' {
         $script:savedImage = $env:JAWS_STEPC_STUB_IMAGE
         $script:savedToolbox = $env:JAWS_STEPC_STUB_V1_TOOLBOX
         $script:savedPoll = $env:JAWS_STEPC_POLL_SECONDS
+        $script:savedLimits = $env:JAWS_STEPC_STUB_RATE_LIMITS
+        $script:savedWait = $env:JAWS_STEPC_RATE_LIMIT_WAIT_SECONDS
         $env:JAWS_STEPC_STUB_STATE = $script:state
         $env:JAWS_STEPC_STUB_SUB = $script:sub
         $env:JAWS_STEPC_STUB_IMAGE = $script:image
         $env:JAWS_STEPC_STUB_V1_TOOLBOX = '0'
         $env:JAWS_STEPC_POLL_SECONDS = '0'
+        $env:JAWS_STEPC_RATE_LIMIT_WAIT_SECONDS = '0'
+        Remove-Item Env:JAWS_STEPC_STUB_RATE_LIMITS -ErrorAction SilentlyContinue
         $env:PATH = $script:stub + [System.IO.Path]::PathSeparator + $env:PATH
         $script:devBefore = Get-Content -LiteralPath (Join-Path $script:root 'installer/config/jaws-installation-state.dev.json') -Raw
     }
@@ -314,7 +329,9 @@ Describe 'Step C from a Step B environment' {
             @{ Name = 'JAWS_STEPC_STUB_SUB'; Value = $script:savedSub },
             @{ Name = 'JAWS_STEPC_STUB_IMAGE'; Value = $script:savedImage },
             @{ Name = 'JAWS_STEPC_STUB_V1_TOOLBOX'; Value = $script:savedToolbox },
-            @{ Name = 'JAWS_STEPC_POLL_SECONDS'; Value = $script:savedPoll }
+            @{ Name = 'JAWS_STEPC_POLL_SECONDS'; Value = $script:savedPoll },
+            @{ Name = 'JAWS_STEPC_STUB_RATE_LIMITS'; Value = $script:savedLimits },
+            @{ Name = 'JAWS_STEPC_RATE_LIMIT_WAIT_SECONDS'; Value = $script:savedWait }
         )) {
             if ($null -eq $pair.Value) { Remove-Item "Env:$($pair.Name)" -ErrorAction SilentlyContinue } else { Set-Item "Env:$($pair.Name)" $pair.Value }
         }
@@ -432,5 +449,46 @@ Describe 'Step C from a Step B environment' {
         $report.CustomerInstallationAccepted | Should -BeFalse
         $report.HostedInvestigationAgent | Should -Be ''
         $report.InvestigationAgent | Should -Be 'jaws-investigation-planner-lab1'
+        $report.RateLimitAttempts | Should -Be 1
+    }
+
+    It 'retries a model rate limit and then accepts the completed Investigation task' {
+        Write-StepBFixture
+        $env:JAWS_STEPC_STUB_RATE_LIMITS = '1'
+        $output = & (Join-Path $script:root 'installer/Install-JawsThroughStepC.ps1') -Mode Install -EnvironmentName 'lab1' -AcknowledgeStepCInstall -AcknowledgeInferenceCharges *>&1 | Out-String
+        $output | Should -Match 'Supervisor model rate limit \(attempt 1 of 3\)'
+        $output | Should -Match 'Step C install: CLOSED'
+        $output | Should -Match 'Task state: TASK_STATE_COMPLETED'
+        $log = Get-Content -LiteralPath (Join-Path $script:state 'log.txt') -Raw
+        ([regex]::Matches($log, '/protocols/openai/responses')).Count | Should -Be 2
+        $report = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-step-c-final-acceptance.lab1.generated.json') -Raw | ConvertFrom-Json
+        $report.Status | Should -Be 'PASS'
+        $report.RateLimitAttempts | Should -Be 2
+        $report.ResponseStatus | Should -Be 'completed'
+        $report.CustomerInstallationAccepted | Should -BeFalse
+    }
+
+    It 'stops after repeated model rate limits without calling the delegation a tool failure' {
+        Write-StepBFixture
+        $env:JAWS_STEPC_STUB_RATE_LIMITS = '5'
+        $output = ''
+        try {
+            & (Join-Path $script:root 'installer/Install-JawsThroughStepC.ps1') -Mode Install -EnvironmentName 'lab1' -AcknowledgeStepCInstall -AcknowledgeInferenceCharges *>&1 | ForEach-Object { $output += "$_`n" }
+            throw 'Acceptance returned instead of JAWS-C-ACCEPT-010.'
+        } catch {
+            $output += $_.Exception.Message
+        }
+        $output | Should -Match 'JAWS-C-ACCEPT-010'
+        $output | Should -Not -Match 'JAWS-C-ACCEPT-007'
+        $output | Should -Match 'Result: FAIL'
+        $log = Get-Content -LiteralPath (Join-Path $script:state 'log.txt') -Raw
+        ([regex]::Matches($log, '/protocols/openai/responses')).Count | Should -Be 3
+        $report = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-step-c-final-acceptance.lab1.generated.json') -Raw | ConvertFrom-Json
+        $report.Status | Should -Be 'FAIL'
+        $report.ResponseErrorCode | Should -Be 'server_error'
+        $report.ResponseErrorMessage | Should -Match 'rate limit'
+        $report.RateLimitAttempts | Should -Be 3
+        $report.TaskState | Should -Be 'TASK_STATE_COMPLETED'
+        $report.CustomerInstallationAccepted | Should -BeFalse
     }
 }

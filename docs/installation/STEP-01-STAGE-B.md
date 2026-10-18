@@ -28,7 +28,28 @@ These resources are billable. Install does nothing unless `-AcknowledgeStepBInst
 .\installer\Test-JawsStepB.ps1 -Mode Plan -ReportPath .\installer\.local\jaws-stage-b-plan.your-environment.offline.generated.json
 ```
 
-**Expected result.** Both commands print `STEP-B PLAN PASS`, `Subscription source: AzureCli`, `Install authorized: false`, and `Plan SHA-256`. Azure writes stay 0. The report is `installer/.local/jaws-stage-b-plan.your-environment.offline.generated.json`.
+**Expected result.** Both commands print `STEP-B PLAN PASS`, `Subscription source: AzureCli`, `Install authorized: false`, and `Plan SHA-256`. Azure writes stay 0. The report is `installer/.local/jaws-stage-b-plan.your-environment.offline.generated.json`. The digest binds the subscription, names, and model. It does not authorize every mutation or an open-ended cost.
+
+## B1a. Preflight
+
+```powershell
+.\installer\Install-Jaws.ps1 -Mode Preflight -EnvironmentName your-environment -ResourceGroupName rg-jaws-your-environment -Location eastus
+```
+
+**Expected result.**
+
+```text
+STEP-B PREFLIGHT PASS
+Azure writes: 0
+Providers: Registered
+Resource write: true
+Role assignment: true
+Model quota: deferred
+Policy simulation: not performed
+Authorized writes: bounded
+```
+
+The report is `installer/.local/jaws-step-b-preflight.your-environment.generated.json`. It lists the only writes Install is allowed to attempt. Model quota stays deferred until the Foundry account exists, and the install then refuses a model the account does not offer. Azure Policy deny effects are listed as not simulated. A caller with Contributor but without Owner, User Access Administrator, or Role Based Access Control Administrator stops at `JAWS-STEP-B-026`. No resource group is created. Install repeats this check before its first write, so an old report cannot skip it.
 
 ## B2. Package
 
@@ -67,6 +88,7 @@ The image line ends in `@sha256:` and a 64-character digest. The receipt is `ins
 | Condition | Result |
 | --- | --- |
 | Approval switch omitted | `JAWS-STEP-B-010`, no Azure writes |
+| Preflight is not ready | `JAWS-STEP-B-026`, no Azure writes |
 | Plan digest differs | `JAWS-STEP-B-011`, no Azure writes |
 | Environment `dev` or resource group `rg-aiops-lab` | `JAWS-STEP-B-013` |
 | Existing resource without the installer tags | `JAWS-STEP-B-012`, no adoption |

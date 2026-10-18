@@ -43,9 +43,15 @@ def missing():
     sys.exit(3)
 
 if args[:2] == ["account", "show"]:
-    emit({"id": sub, "name": "stub", "state": "Enabled", "tenantId": "33333333-3333-3333-3333-333333333333"})
+    emit({"id": sub, "name": "stub", "state": "Enabled", "tenantId": "33333333-3333-3333-3333-333333333333", "user": {"name": "installer@stub.example", "type": "user"}})
 if args[:2] == ["account", "list"]:
     emit([{"id": sub, "name": "stub", "state": "Enabled", "tenantId": "33333333-3333-3333-3333-333333333333"}])
+if args[:2] == ["account", "list-locations"]:
+    emit([{"name": "eastus", "displayName": "East US"}])
+if args[:2] == ["provider", "show"]:
+    emit({"namespace": "stub", "registrationState": os.environ.get("JAWS_STEPB_STUB_PROVIDER", "Registered")})
+if args[:3] == ["policy", "assignment", "list"]:
+    emit([])
 if args[:2] == ["group", "show"]:
     emit(load("group")) if exists("group") else missing()
 if args[:2] == ["group", "create"]:
@@ -90,8 +96,12 @@ if args[:2] == ["acr", "login"]:
     sys.exit(0)
 if args[:3] == ["acr", "manifest", "show-metadata"]:
     emit({"digest": "sha256:" + ("a" * 64)})
+if args[:2] == ["acr", "check-name"]:
+    emit({"nameAvailable": True})
 if args[:3] == ["role", "assignment", "list"]:
-    emit([load("role")] if exists("role") else [])
+    if "--assignee-object-id" in args:
+        emit([load("role")] if exists("role") else [])
+    emit([{"roleDefinitionName": os.environ.get("JAWS_STEPB_STUB_ROLE", "Owner"), "scope": "/subscriptions/" + sub}])
 if args[:3] == ["role", "assignment", "create"]:
     attempts = 0
     if exists("role-attempts"):
@@ -106,6 +116,11 @@ if args[:3] == ["role", "assignment", "create"]:
     emit(payload)
 if args[:1] == ["rest"] and "--method" in args:
     method = args[args.index("--method") + 1]
+    url = args[args.index("--url") + 1] if "--url" in args else ""
+    if method == "POST" and "checkSkuAvailability" in url:
+        emit({"value": [{"skuName": "S0", "skuAvailable": True}]})
+    if method == "POST" and ("checkNameAvailability" in url or "checkDomainAvailability" in url):
+        emit({"nameAvailable": True, "isSubdomainAvailable": True})
     if method == "GET":
         emit(load("agent")) if exists("agent") else missing()
     body_flag = args[args.index("--body") + 1]
@@ -166,7 +181,7 @@ Describe 'Step B foundation install' {
             $log = Get-Content -LiteralPath (Join-Path $state 'log.txt') -Raw
             @('group create','cognitiveservices account create','project create','deployment create','keyvault create','acr create','role assignment create','rest --method POST').ForEach({ $log | Should -Match ([regex]::Escape($_)) })
             ([regex]::Matches($log, 'cognitiveservices account create')).Count | Should -Be 1
-            ([regex]::Matches($log, 'rest --method POST')).Count | Should -Be 1
+            ([regex]::Matches($log, '/agents\?api-version=v1')).Count | Should -Be 1
             $log | Should -Not -Match 'jaws-foundry-dev'
             $log | Should -Not -Match 'c52f597b-7753-45b4-a764-67e290dcfd5e'
             (Get-Content -LiteralPath (Join-Path $script:root 'installer/config/jaws-installation-state.dev.json') -Raw) | Should -Be $devBefore
@@ -228,6 +243,43 @@ Describe 'Step B foundation install' {
             $env:JAWS_STEPB_STUB_SUB = $savedSub
             $env:JAWS_STEPB_STUB_ENV = $savedEnv
             if ($null -eq $savedHide) { Remove-Item Env:JAWS_STEPB_STUB_HIDE_MODEL -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_HIDE_MODEL = $savedHide }
+            Remove-Item Env:JAWS_STEPB_POLL_SECONDS -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'stops before the first Azure write when the caller cannot assign AcrPull' {
+        $state = Join-Path $script:stub 'state-contributor'
+        $savedPath = $env:PATH
+        $savedState = $env:JAWS_STEPB_STUB_STATE
+        $savedSub = $env:JAWS_STEPB_STUB_SUB
+        $savedEnv = $env:JAWS_STEPB_STUB_ENV
+        $savedRole = $env:JAWS_STEPB_STUB_ROLE
+        try {
+            $env:JAWS_STEPB_STUB_STATE = $state
+            $env:JAWS_STEPB_STUB_SUB = $script:sub
+            $env:JAWS_STEPB_STUB_ENV = 'lab1'
+            $env:JAWS_STEPB_STUB_ROLE = 'Contributor'
+            $env:JAWS_STEPB_POLL_SECONDS = '0'
+            $env:PATH = $script:stub + [System.IO.Path]::PathSeparator + $env:PATH
+            & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Plan -NonInteractive -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus'
+            $plan = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-stage-b-plan.lab1.offline.generated.json') -Raw | ConvertFrom-Json
+            { & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Preflight -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' } | Should -Throw '*JAWS-STEP-B-026*'
+            $log = Get-Content -LiteralPath (Join-Path $state 'log.txt') -Raw
+            $log | Should -Not -Match 'group create'
+            $log | Should -Match 'role assignment list'
+            $report = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-step-b-preflight.lab1.generated.json') -Raw | ConvertFrom-Json
+            $report.Status | Should -Be 'NOT_READY'
+            $report.AzureWrites | Should -Be 0
+            $report.RoleAssignment | Should -BeFalse
+            $report.ModelQuota | Should -Be 'DeferredUntilFoundryAccountExists'
+            $report.PolicySimulation | Should -Be 'NotPerformed'
+            @($report.AuthorizedWrites).Count | Should -BeGreaterThan 5
+        } finally {
+            $env:PATH = $savedPath
+            $env:JAWS_STEPB_STUB_STATE = $savedState
+            $env:JAWS_STEPB_STUB_SUB = $savedSub
+            $env:JAWS_STEPB_STUB_ENV = $savedEnv
+            if ($null -eq $savedRole) { Remove-Item Env:JAWS_STEPB_STUB_ROLE -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_ROLE = $savedRole }
             Remove-Item Env:JAWS_STEPB_POLL_SECONDS -ErrorAction SilentlyContinue
         }
     }

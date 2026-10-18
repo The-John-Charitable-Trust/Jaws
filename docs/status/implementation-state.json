@@ -2,6 +2,14 @@
   "baseline": "2026-10-17",
   "scope": "JAWS DEV only",
   "sourceOfTruth": "docs/installation/IMPLEMENTATION_ROADMAP.md",
+  "evidenceRule": "No acceptance status advances solely because documentation or simulated tests pass.",
+  "evidenceLevels": [
+    {"level": "Code implemented", "requiredEvidence": "Verified source and build"},
+    {"level": "Offline tests passed", "requiredEvidence": "Actual unit or Pester results"},
+    {"level": "Provisioning validated", "requiredEvidence": "Authorized live Azure installation receipt"},
+    {"level": "Functional acceptance", "requiredEvidence": "Working hosted Supervisor and verified runtime behavior"},
+    {"level": "Customer installation accepted", "requiredEvidence": "Independent clean-subscription walkthrough"}
+  ],
   "acceptedArchitecture": "Supervisor to A2A Investigation Planner; VM specialist and observability specialist planned",
   "steps": [
     {
@@ -14,7 +22,8 @@
       "tests": "tests/installer/",
       "microsoftUrl": "https://learn.microsoft.com/en-us/azure/governance/resource-graph/overview",
       "microsoftTitle": "Azure Resource Graph",
-      "evidence": "Read-only discovery and state comparison accepted in DEV; live current rerun not supplied."
+      "acceptanceScope": "Existing DEV reconciliation only",
+      "evidence": "DEV reconciliation remains the accepted evidence. Installer 0.4.10 Discover supports an empty subscription and offline Pester passed. A fresh-subscription discovery receipt has not been recorded, so greenfield Step A is not accepted."
     },
     {
       "id": "B",
@@ -26,7 +35,7 @@
       "tests": "tests/installer/StepBInstall.Tests.ps1",
       "microsoftUrl": "https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/deploy-hosted-agent",
       "microsoftTitle": "Foundry hosted agents",
-      "evidence": "Install -Mode Accept re-reads Azure and prints STEP-B ACCEPTANCE PASS only from live resources. A fresh-subscription run has not been recorded, so Step B is not accepted."
+      "evidence": "Code and offline CLI-stand-in tests cover Preflight, Install, and Accept. Provisioning, functional acceptance, and customer installation are not recorded. The plan digest binds names and model, not an unbounded cost."
     },
     {
       "id": "C",

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Step A — Azure discovery | JAWS</title>
+<link rel="stylesheet" href="../status/styles.css">
+</head>
+<body>
+<header>
+<h1>Step A — Azure discovery</h1>
+<p>Installer 0.4.10 · empty subscription · no resource creation</p>
+<nav>
+<a href="../status/quick-start.html">Quick Start</a>
+<a href="tutorial/index.html#step-A">Tutorial</a>
+<a href="standard/index.html">Standard guide</a>
+<a href="../status/references.html#step-A">Acceptance</a>
+</nav>
+</header>
+<main>
+<section>
+<p>Step A is read-only. Discover checks the signed-in identity, inventories that subscription, and writes a receipt. It does not create a resource group, a Foundry account, or a JAWS state file.</p>
+<h2>A1. Discover an empty subscription</h2>
+<pre>git clone --branch main https://github.com/The-John-Charitable-Trust/Jaws.git
+Set-Location .\Jaws
+az login
+az account set --subscription "&lt;your-subscription-id&gt;"
+.\installer\Install-Jaws.ps1 -Mode Discover -NonInteractive -EnvironmentName your-environment -ResourceGroupName rg-jaws-your-environment -Location eastus
+.\installer\Test-JawsStepA.ps1 -ReportPath .\installer\.local\jaws-step-a-discovery.your-environment.generated.json</pre>
+<p><strong>Expected:</strong> <code>STEP-A DISCOVERY PASS</code>, <code>Discovery: Greenfield</code>, <code>Subscription source: AzureCli</code>, <code>State file required: false</code>, <code>State file written: false</code>, <code>Azure writes: 0</code>, and <code>Prepared for Step B: true</code>. An empty subscription prints <code>Resource groups: 0</code> and <code>Resources: 0</code>. <code>Test-JawsStepA.ps1</code> prints those lines and then <code>Live Azure read: false</code>.</p>
+<p>Receipt: <code>installer/.local/jaws-step-a-discovery.your-environment.generated.json</code>. Nothing is written under <code>installer/config/</code>.</p>
+<h2>A2. Reconcile an existing installation</h2>
+<pre>.\installer\Install-Jaws.ps1 -Mode Discover -EnvironmentName dev</pre>
+<p>The dev command reads <code>installer/config/jaws-installation-state.dev.json</code>. For any other installation, pass <code>-StateFile</code> with that installation's own file. A missing <code>-StateFile</code> stops at <code>JAWS-STATE-003</code>.</p>
+<h2>Failure recovery</h2>
+<ul>
+<li><code>JAWS-AUTH-001</code>: sign in with <code>az login</code> and select the subscription. Nothing is created.</li>
+<li><code>JAWS-AUTH-007</code>: <code>-SubscriptionId</code> does not match <code>az account show</code>.</li>
+<li><code>JAWS-STATE-003</code>: the requested state file is missing. Discover does not invent one.</li>
+<li><code>Prepared for Step B: false</code>: the environment is <code>dev</code>, the resource group is <code>rg-aiops-lab</code>, or the group already exists in another region.</li>
+</ul>
+<h2>Acceptance</h2>
+<p>Offline Pester covers the empty-subscription path with a stand-in Azure CLI. A fresh-subscription receipt has not been archived, so greenfield Step A is not accepted. Dev-project reconciliation remains the previously accepted Step A evidence.</p>
+<p><a href="STEP-01-STAGE-A.md">Markdown copy</a> · <a href="STEP-01-STAGE-B.md">Step B</a></p>
+</section>
+</main>
+</body>
+</html>

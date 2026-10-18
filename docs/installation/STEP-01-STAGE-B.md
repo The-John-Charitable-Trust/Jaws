@@ -133,3 +133,7 @@ The report is `installer/.local/jaws-step-b-acceptance.your-environment.generate
 ## Acceptance
 
 `STEP-B ACCEPTANCE PASS` is the only Step B acceptance line. `STEP-B INSTALL PASS` records the installer receipt. A local stand-in for Azure CLI can exercise the commands, and that exercise is not a fresh-subscription receipt. Step B stays unaccepted until B4 prints `STEP-B ACCEPTANCE PASS` against a real subscription that is not the dev project.
+
+## Actual JAWS implementation source (B)
+
+The [Step B source-code walkthrough](source-code/STEP-B.md) includes **verbatim PowerShell, C# and repository JSON excerpts**, reviewed file paths, source line ranges, and direct links to the complete source in the JAWS repository. No illustrative or Microsoft sample implementation has been substituted, and no Python code is included because this stage has no verified JAWS Python implementation. The excerpts are reference material, not standalone executable scripts. For complete behavior, consult the linked source and the install/validation commands above.

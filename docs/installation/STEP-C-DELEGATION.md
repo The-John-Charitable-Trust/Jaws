@@ -126,3 +126,7 @@ Regression suite (requires PowerShell 7 and Pester 5):
 Invoke-Pester .\tests\installer\SupervisorCandidateLifecycle.Tests.ps1 -Output Detailed
 ```
 The mocked suite covers empty inventories, delayed visibility, version detail hydration, ambiguity, pagination, terminal errors, and timeout. These tests do not replace live read-only reconciliation.
+
+## Actual JAWS implementation source (C)
+
+The [Step C source-code walkthrough](source-code/STEP-C.md) includes **verbatim PowerShell, C# excerpts**, reviewed file paths, source line ranges, and direct links to the complete source in the JAWS repository. No illustrative or Microsoft sample implementation has been substituted, and no Python code is included because this stage has no verified JAWS Python implementation. The excerpts are reference material, not standalone executable scripts. For complete behavior, consult the linked source and the install/validation commands above.

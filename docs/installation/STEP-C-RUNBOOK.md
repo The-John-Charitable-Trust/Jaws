@@ -58,7 +58,7 @@ The default expected image is Supervisor `sha256:86c556fff7f54eb8ad81c84bc768093
 
 ## Receipt
 
-`Status` is `VALIDATED`, `CLOSED`, or `BLOCKED`. `BLOCKED` includes `ErrorCode`, the failed gate, and the gates that already passed. Corrections are listed by name. `SupervisorV1Modified` and `SupervisorVersionPosted` are false for this installer. Run the same command again after fixing a blocked gate; completed gates pass without a second write.
+`Status` is `VALIDATED`, `CLOSED`, or `BLOCKED`. `BLOCKED` includes `ErrorCode`, the failed gate, and the gates that already passed. Corrections are listed by name. For the dev-project command, `SupervisorV1Modified` and `SupervisorVersionPosted` are false. Run the same command again after fixing a blocked gate; completed gates pass without a second write.
 
 ## Local evidence
 
@@ -69,6 +69,10 @@ Invoke-Pester .\tests\installer\ -Output Minimal
 ```
 
 The correction policy is covered by `tests/installer/StepCInstall.Tests.ps1`. Those tests include a CLI stand-in for a Step B environment. A stand-in result is not a live Azure receipt and does not accept a customer installation.
+
+## Actual JAWS implementation source (C)
+
+The [Step C source-code walkthrough](source-code/STEP-C.md) includes verbatim PowerShell and C# excerpts, reviewed file paths, source line ranges, and links to the complete source. No illustrative or Microsoft sample implementation has been substituted, and no Python code is included because this stage has no JAWS Python implementation. The excerpts are reference material, not standalone executable scripts.
 
 ## Step C after Step B
 

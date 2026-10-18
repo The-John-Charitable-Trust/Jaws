@@ -73,3 +73,7 @@ Pester `tests/installer/StepA.Tests.ps1` exercises a stand-in Azure CLI. That is
 - A-04: `Azure writes: 0`, and no file is added under `installer/config/`.
 - A-05: The discovery receipt exists. The test script's `Live Azure read: false` line is not a second Azure read.
 - A-06: Greenfield Step A is not accepted until a real subscription prints `STEP-A DISCOVERY PASS`.
+
+## Actual JAWS implementation source (A)
+
+The [Step A source-code walkthrough](source-code/STEP-A.md) includes **verbatim PowerShell excerpts**, reviewed file paths, source line ranges, and direct links to the complete source in the JAWS repository. No illustrative or Microsoft sample implementation has been substituted, and no Python code is included because this stage has no verified JAWS Python implementation. The excerpts are reference material, not standalone executable scripts. For complete behavior, consult the linked source and the install/validation commands above.

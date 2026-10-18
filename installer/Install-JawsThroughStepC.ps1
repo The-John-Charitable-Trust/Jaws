@@ -1,17 +1,30 @@
-# One Step C installation for the dev project.
-# Validate reads Azure and writes nothing. Install applies one known correction per failed gate,
-# re-checks that gate, and stops on any other drift. Supervisor v1 is never modified and no
-# Supervisor version is posted.
+# Step C installation.
+# The default, and -EnvironmentName dev, is the accepted dev project. Validate reads Azure and
+# writes nothing. Install applies one known correction per failed gate and stops on any other
+# drift. Supervisor v1 is never modified and no Supervisor version is posted on that path.
+# Any other -EnvironmentName reads the Step B receipt and runs Install-JawsStepCFromStepB.ps1.
 [CmdletBinding()]
 param(
  [ValidateSet('Validate','Install')][string]$Mode='Validate',
  [switch]$AcknowledgeStepCInstall,
  [switch]$AcknowledgeInferenceCharges,
- [string]$ExpectedImage='jawsregistrydev001.azurecr.io/jaws/supervisor@sha256:86c556fff7f54eb8ad81c84bc768093fd7bc083e941e9e16bbf1ea8bc0cfa289'
+ [string]$ExpectedImage='jawsregistrydev001.azurecr.io/jaws/supervisor@sha256:86c556fff7f54eb8ad81c84bc768093fd7bc083e941e9e16bbf1ea8bc0cfa289',
+ [string]$EnvironmentName='dev'
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $root=$PSScriptRoot
+if($EnvironmentName -cne 'dev'){
+ if($EnvironmentName -notmatch '^[a-z][a-z0-9-]{1,20}$'){
+  throw 'JAWS-INSTALL-C-015: Environment name must be 2-21 characters, start with a letter, and use lowercase letters, digits, and hyphens.'
+ }
+ $forward=@{ Mode=$Mode; EnvironmentName=$EnvironmentName }
+ if($AcknowledgeStepCInstall){ $forward.AcknowledgeStepCInstall=$true }
+ if($AcknowledgeInferenceCharges){ $forward.AcknowledgeInferenceCharges=$true }
+ if($PSBoundParameters.ContainsKey('ExpectedImage')){ $forward.ExpectedImage=$ExpectedImage }
+ & (Join-Path $root 'Install-JawsStepCFromStepB.ps1') @forward
+ return
+}
 Import-Module (Join-Path $root 'modules/StepCInstall.psm1') -Force
 Import-Module (Join-Path $root 'modules/FoundrySupervisorReconciliation.psm1') -Force
 if($ExpectedImage -cnotmatch '^jawsregistrydev001\.azurecr\.io/jaws/supervisor@sha256:[a-f0-9]{64}$'){

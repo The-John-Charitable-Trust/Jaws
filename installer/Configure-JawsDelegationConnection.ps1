@@ -11,14 +11,29 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 Import-Module (Join-Path $PSScriptRoot 'modules/InstallationState.psm1') -Force
 $state=Read-JawsInstallationState -Path $StateFile
-if($state.Platform -cne 'JAWS' -or $state.EnvironmentName -cne 'dev' -or
- $state.ResourceGroupName -cne 'rg-aiops-lab'){throw 'JAWS-DELEGATE-001: Unauthorized installation state.'}
-$foundry='jaws-foundry-dev'; $project='jaws-dev'; $name='jaws-investigation-a2a-dev'
+if($null -eq $state -or $state.Platform -cne 'JAWS'){throw 'JAWS-DELEGATE-001: Unauthorized installation state.'}
+if([string]$state.EnvironmentName -ceq 'dev'){
+ if($state.ResourceGroupName -cne 'rg-aiops-lab'){throw 'JAWS-DELEGATE-001: Unauthorized installation state.'}
+ $foundry='jaws-foundry-dev'; $project='jaws-dev'; $name='jaws-investigation-a2a-dev'
+ $hostedAgent='jaws-investigation-dev'; $plannerAgent='jaws-investigation-planner-dev'
+ $sharedToAll=$true
+ $planSuffix='dev'
+}else{
+ Import-Module (Join-Path $PSScriptRoot 'modules/StepCEnvironment.psm1') -Force
+ $connectionContext=Resolve-JawsStepCStepBContext -EnvironmentName ([string]$state.EnvironmentName) -InstallerRoot $PSScriptRoot
+ if($state.ResourceGroupName -cne $connectionContext.ResourceGroupName -or [string]$state.SubscriptionId -ine $connectionContext.SubscriptionId){
+  throw 'JAWS-DELEGATE-001: Installation state does not match the Step B receipt.'
+ }
+ $foundry=$connectionContext.FoundryAccountName; $project=$connectionContext.ProjectName; $name=$connectionContext.ConnectionName
+ $hostedAgent="jaws-investigation-$($connectionContext.EnvironmentName)"; $plannerAgent=$connectionContext.PlannerAgent
+ $sharedToAll=$false
+ $planSuffix=$connectionContext.PlanSuffix
+}
 $endpoint="https://$foundry.services.ai.azure.com/api/projects/$project"
 # Foundry rejects A2A operations on hosted agents (HOSTED_AGENT_NOT_SUPPORTED / -32099).
-# The prompt planner is the A2A target. Hosted Investigation v1 stays in place.
-$hostedTarget="$endpoint/agents/jaws-investigation-dev/endpoint/protocols/a2a"
-$target="$endpoint/agents/jaws-investigation-planner-dev/endpoint/protocols/a2a"
+# The prompt planner is the A2A target. A hosted Investigation agent is not created for a Step B environment.
+$hostedTarget="$endpoint/agents/$hostedAgent/endpoint/protocols/a2a"
+$target="$endpoint/agents/$plannerAgent/endpoint/protocols/a2a"
 $id="/subscriptions/$($state.SubscriptionId)/resourceGroups/$($state.ResourceGroupName)/providers/Microsoft.CognitiveServices/accounts/$foundry/projects/$project/connections/$name"
 # Correct PowerShell interpolation: a question mark immediately after a variable needs $().
 $url="https://management.azure.com/$($id.TrimStart('/'))?api-version=2025-04-01-preview"
@@ -29,7 +44,7 @@ $payload=[ordered]@{
   group='ServicesAndApps'
   category='RemoteA2A'
   target=$target
-  isSharedToAll=$true
+  isSharedToAll=$sharedToAll
   sharedUserList=@()
   audience='https://ai.azure.com'
   Credentials=[ordered]@{}
@@ -40,7 +55,7 @@ $json=ConvertTo-Json -InputObject $payload -Depth 12 -Compress
 $sha=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($json))).ToLowerInvariant()
 $dir=Join-Path $PSScriptRoot '.local'
 if(-not(Test-Path $dir)){ $null=New-Item -ItemType Directory -Path $dir -Force }
-$planFile=Join-Path $dir 'jaws-step-c-delegation-connection-plan.dev.generated.json'
+$planFile=Join-Path $dir "jaws-step-c-delegation-connection-plan.$planSuffix.generated.json"
 [pscustomobject]@{Action='CreateRemoteA2AConnection';ConnectionResourceId=$id;Target=$target;AuthType='AgenticIdentityToken';Audience='https://ai.azure.com';PlanSha256=$sha;AzureWrites=0} |
  ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $planFile -Encoding utf8
 function Read-Connection {
@@ -106,7 +121,7 @@ if($Mode -eq 'Retarget'){
   throw 'JAWS-DELEGATE-009: Connection is not the hosted Investigation target; refusing to retarget.'
  }
  Assert-Connection (Read-Connection)
- $receipt=Join-Path $dir 'jaws-step-c-delegation-connection-receipt.dev.generated.json'
+ $receipt=Join-Path $dir "jaws-step-c-delegation-connection-receipt.$planSuffix.generated.json"
  [pscustomobject]@{Status='REMOTE_A2A_CONNECTION_VERIFIED';ResourceId=$id;Target=$target;AuthType='AgenticIdentityToken';PlanSha256=$sha;SupervisorDelegationVerified=$false;VerifiedAtUtc=[DateTime]::UtcNow.ToString('o')} |
   ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $receipt -Encoding utf8
  Write-Host "Retargeted RemoteA2A connection: $name; Receipt: $receipt"
@@ -130,7 +145,7 @@ if($Mode -eq 'Install' -and $null -eq $current){
  }finally{Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue}
 }
 Assert-Connection (Read-Connection)
-$receipt=Join-Path $dir 'jaws-step-c-delegation-connection-receipt.dev.generated.json'
+$receipt=Join-Path $dir "jaws-step-c-delegation-connection-receipt.$planSuffix.generated.json"
 [pscustomobject]@{Status='REMOTE_A2A_CONNECTION_VERIFIED';ResourceId=$id;Target=$target;AuthType='AgenticIdentityToken';PlanSha256=$sha;SupervisorDelegationVerified=$false;VerifiedAtUtc=[DateTime]::UtcNow.ToString('o')} |
  ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $receipt -Encoding utf8
 Write-Host "Verified RemoteA2A connection: $name; Receipt: $receipt"

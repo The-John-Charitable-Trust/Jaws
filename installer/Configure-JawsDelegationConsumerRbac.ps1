@@ -3,20 +3,33 @@
 param(
  [ValidateSet('Plan','Assign','Verify')][string]$Mode='Plan',
  [string]$ApprovedPlanSha256,
- [switch]$AcknowledgeSecurityRoleAssignment
+ [switch]$AcknowledgeSecurityRoleAssignment,
+ [string]$StateFile=(Join-Path $PSScriptRoot 'config/jaws-installation-state.dev.json')
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 Import-Module (Join-Path $PSScriptRoot 'modules/InstallationState.psm1') -Force
-$state=Read-JawsInstallationState -Path (Join-Path $PSScriptRoot 'config/jaws-installation-state.dev.json')
-if($state.EnvironmentName -cne 'dev' -or $state.ResourceGroupName -cne 'rg-aiops-lab'){
- throw 'JAWS-DELEGATE-RBAC-000: Authoritative JAWS dev state required.'
+$state=Read-JawsInstallationState -Path $StateFile
+if($null -eq $state){ throw 'JAWS-DELEGATE-RBAC-000: Installation state required.' }
+if([string]$state.EnvironmentName -ceq 'dev'){
+ if($state.ResourceGroupName -cne 'rg-aiops-lab'){
+  throw 'JAWS-DELEGATE-RBAC-000: Authoritative JAWS dev state required.'
+ }
+ $agent='jaws-supervisor-dev'
+ $planSuffix='dev'
+}else{
+ Import-Module (Join-Path $PSScriptRoot 'modules/StepCEnvironment.psm1') -Force
+ $rbacContext=Resolve-JawsStepCStepBContext -EnvironmentName ([string]$state.EnvironmentName) -InstallerRoot $PSScriptRoot
+ if($state.ResourceGroupName -cne $rbacContext.ResourceGroupName -or [string]$state.SubscriptionId -ine $rbacContext.SubscriptionId){
+  throw 'JAWS-DELEGATE-RBAC-000: Installation state does not match the Step B receipt.'
+ }
+ $agent=$rbacContext.SupervisorAgent
+ $planSuffix=$rbacContext.PlanSuffix
 }
 $subscription=[string]$state.SubscriptionId
 $resourceGroup=[string]$state.ResourceGroupName
 $account=[string]@($state.Resources | Where-Object Type -eq 'Microsoft.CognitiveServices/accounts')[0].Name
 $project=[string]@($state.Resources | Where-Object Type -eq 'Microsoft.CognitiveServices/accounts/projects')[0].Name
-$agent='jaws-supervisor-dev'
 $endpoint="https://$account.services.ai.azure.com/api/projects/$project"
 $scope="/subscriptions/$subscription/resourceGroups/$resourceGroup/providers/Microsoft.CognitiveServices/accounts/$account/projects/$project"
 $roleDefinitionId='eed3b665-ab3a-47b6-8f48-c9382fb1dad6' # Foundry Agent Consumer
@@ -49,7 +62,7 @@ $payload=ConvertTo-Json -InputObject $desired -Depth 8 -Compress
 $hash=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($payload))).ToLowerInvariant()
 $local=Join-Path $PSScriptRoot '.local'
 if(-not(Test-Path -LiteralPath $local)){$null=New-Item -ItemType Directory -Force -Path $local}
-$planPath=Join-Path $local 'jaws-step-c-delegation-consumer-rbac-plan.dev.generated.json'
+$planPath=Join-Path $local "jaws-step-c-delegation-consumer-rbac-plan.$planSuffix.generated.json"
 
 function Read-Assignments {
  $assignments=Read-JsonCommand { az role assignment list --assignee-object-id $principalId --scope $scope --output json --only-show-errors } 'JAWS-DELEGATE-RBAC-003'
@@ -87,7 +100,7 @@ $verified=@(Find-ExpectedAssignment)
 if($verified.Count -ne 1){
  throw 'JAWS-DELEGATE-RBAC-007: Routed Supervisor lacks one exact Foundry Agent Consumer assignment at project scope.'
 }
-$receiptPath=Join-Path $local 'jaws-step-c-delegation-consumer-rbac-receipt.dev.generated.json'
+$receiptPath=Join-Path $local "jaws-step-c-delegation-consumer-rbac-receipt.$planSuffix.generated.json"
 [pscustomobject]@{Status='FOUNDRY_AGENT_CONSUMER_VERIFIED';PrincipalId=$principalId;RoleDefinitionId=$roleDefinitionId;Scope=$scope;PlanSha256=$hash;VerifiedAtUtc=[DateTime]::UtcNow.ToString('o')} |
  ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $receiptPath -Encoding utf8
 Write-Host "Verified Foundry Agent Consumer role for Supervisor version $($version): $principalId"

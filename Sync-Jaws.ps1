@@ -66,7 +66,7 @@ try {
         Write-Host "Preserving $($untracked.Count) untracked file(s) in: $backupDir" -ForegroundColor Cyan
         foreach ($relative in $untracked) {
             # Git paths are relative to repository root; do not allow traversal.
-            if ([IO.Path]::IsPathRooted($relative) -or $relative -split '[\\/]' | Where-Object { $_ -eq '..' }) {
+            if ([IO.Path]::IsPathRooted($relative) -or @($relative -split '[\\/]' | Where-Object { $_ -eq '..' }).Count -gt 0) {
                 throw "Unsafe untracked file path: $relative"
             }
             $source = Join-Path $top $relative

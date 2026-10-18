@@ -69,3 +69,7 @@ Invoke-Pester .\tests\installer\ -Output Minimal
 ```
 
 The correction policy is covered by `tests/installer/StepCInstall.Tests.ps1`.
+
+## Actual JAWS implementation source (C)
+
+The [Step C source-code walkthrough](source-code/STEP-C.md) includes **verbatim PowerShell, C# excerpts**, reviewed file paths, source line ranges, and direct links to the complete source in the JAWS repository. No illustrative or Microsoft sample implementation has been substituted, and no Python code is included because this stage has no verified JAWS Python implementation. The excerpts are reference material, not standalone executable scripts. For complete behavior, consult the linked source and the install/validation commands above.

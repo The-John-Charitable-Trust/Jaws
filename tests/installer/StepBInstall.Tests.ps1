@@ -47,6 +47,9 @@ if args[:2] == ["account", "show"]:
 if args[:2] == ["account", "list"]:
     emit([{"id": sub, "name": "stub", "state": "Enabled", "tenantId": "33333333-3333-3333-3333-333333333333"}])
 if args[:2] == ["account", "list-locations"]:
+    if "--subscription" in args:
+        print("unrecognized arguments: --subscription", file=sys.stderr)
+        sys.exit(2)
     emit([{"name": "eastus", "displayName": "East US"}])
 if args[:2] == ["provider", "show"]:
     emit({"namespace": "stub", "registrationState": os.environ.get("JAWS_STEPB_STUB_PROVIDER", "Registered")})
@@ -184,6 +187,8 @@ Describe 'Step B foundation install' {
             ([regex]::Matches($log, '/agents\?api-version=v1')).Count | Should -Be 1
             $log | Should -Not -Match 'jaws-foundry-dev'
             $log | Should -Not -Match 'c52f597b-7753-45b4-a764-67e290dcfd5e'
+            $log | Should -Match 'account list-locations --output json --only-show-errors'
+            $log | Should -Not -Match 'list-locations --subscription'
             (Get-Content -LiteralPath (Join-Path $script:root 'installer/config/jaws-installation-state.dev.json') -Raw) | Should -Be $devBefore
             $accept = & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Accept -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' *>&1 | Out-String
             $accept | Should -Match 'STEP-B ACCEPTANCE PASS'
@@ -267,10 +272,15 @@ Describe 'Step B foundation install' {
             $log = Get-Content -LiteralPath (Join-Path $state 'log.txt') -Raw
             $log | Should -Not -Match 'group create'
             $log | Should -Match 'role assignment list'
+            $log | Should -Match 'account list-locations --output json --only-show-errors'
+            $log | Should -Not -Match 'list-locations --subscription'
             $report = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-step-b-preflight.lab1.generated.json') -Raw | ConvertFrom-Json
             $report.Status | Should -Be 'NOT_READY'
             $report.AzureWrites | Should -Be 0
+            $report.LocationAccepted | Should -BeTrue
             $report.RoleAssignment | Should -BeFalse
+            ($report.Reasons -join ' ') | Should -Not -Match 'list subscription locations'
+            ($report.Reasons -join ' ') | Should -Not -Match 'is not enabled'
             $report.ModelQuota | Should -Be 'DeferredUntilFoundryAccountExists'
             $report.PolicySimulation | Should -Be 'NotPerformed'
             @($report.AuthorizedWrites).Count | Should -BeGreaterThan 5
@@ -281,6 +291,40 @@ Describe 'Step B foundation install' {
             $env:JAWS_STEPB_STUB_ENV = $savedEnv
             if ($null -eq $savedRole) { Remove-Item Env:JAWS_STEPB_STUB_ROLE -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_ROLE = $savedRole }
             Remove-Item Env:JAWS_STEPB_POLL_SECONDS -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'does not pass --subscription to az account list-locations and skips that call when the CLI subscription differs' {
+        $state = Join-Path $script:stub 'state-wrong-subscription'
+        $savedPath = $env:PATH
+        $savedState = $env:JAWS_STEPB_STUB_STATE
+        $savedSub = $env:JAWS_STEPB_STUB_SUB
+        $savedEnv = $env:JAWS_STEPB_STUB_ENV
+        try {
+            $env:JAWS_STEPB_STUB_STATE = $state
+            $env:JAWS_STEPB_STUB_SUB = $script:sub
+            $env:JAWS_STEPB_STUB_ENV = 'lab2'
+            $env:PATH = $script:stub + [System.IO.Path]::PathSeparator + $env:PATH
+            $scope = New-JawsStepBInstallScope -SubscriptionId '44444444-4444-4444-4444-444444444444' -ResourceGroupName 'rg-jaws-lab2' -Location 'eastus' -EnvironmentName 'lab2' -ModelName 'gpt-5-mini' -ModelVersion '2025-08-07'
+            $devState = Join-Path $script:root 'installer/config/jaws-installation-state.dev.json'
+            $devBefore = Get-Content -LiteralPath $devState -Raw
+            $checked = Invoke-JawsStepBPreflight -Scope $scope -InstallerRoot (Join-Path $script:root 'installer')
+            (Get-Content -LiteralPath $devState -Raw) | Should -Be $devBefore
+            $checked.Ready | Should -BeFalse
+            $checked.Report.AzureWrites | Should -Be 0
+            $checked.Report.LocationAccepted | Should -BeFalse
+            $checked.Report.Status | Should -Be 'NOT_READY'
+            ($checked.Report.Reasons -join ' ') | Should -Match 'JAWS-STEP-B-019'
+            ($checked.Report.Reasons -join ' ') | Should -Not -Match 'list subscription locations'
+            ($checked.Report.Reasons -join ' ') | Should -Not -Match 'is not enabled'
+            $log = Get-Content -LiteralPath (Join-Path $state 'log.txt') -Raw
+            $log | Should -Not -Match 'list-locations'
+            $log | Should -Not -Match 'group create'
+        } finally {
+            $env:PATH = $savedPath
+            $env:JAWS_STEPB_STUB_STATE = $savedState
+            $env:JAWS_STEPB_STUB_SUB = $savedSub
+            $env:JAWS_STEPB_STUB_ENV = $savedEnv
         }
     }
 }

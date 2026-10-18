@@ -6,7 +6,7 @@ Azure provisioning and readiness are implemented in PowerShell; the hosted Super
 
 ## installer/modules/StepBInstall.psm1
 
-[View complete JAWS source](https://github.com/The-John-Charitable-Trust/Jaws/blob/main/installer/modules/StepBInstall.psm1) · Reviewed blob `27aa531405212dd87791401060de3a53a813d6f3`
+[View complete JAWS source](https://github.com/The-John-Charitable-Trust/Jaws/blob/main/installer/modules/StepBInstall.psm1) · Reviewed blob `9b005536f6c132285eedb76a4757355461f49543`
 
 **Source lines 96–120:**
 
@@ -38,7 +38,7 @@ function Invoke-JawsStepBAz {
     if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
 ```
 
-**Source lines 279–313:**
+**Source lines 279–316:**
 
 ```powershell
 function Invoke-JawsStepBPreflight {
@@ -69,16 +69,19 @@ function Invoke-JawsStepBPreflight {
         }
     }
     $locations = @()
-    try {
-        $locations = @(Invoke-JawsStepBAz -Arguments @('account','list-locations','--subscription',$sub,'--output','json','--only-show-errors'))
-    } catch {
-        $reasons.Add("Could not list subscription locations. $($_.Exception.Message)")
+    $locationOk = $false
+    if ([string]$account.id -ieq [string]$Scope.SubscriptionId) {
+        try {
+            $locations = @(Invoke-JawsStepBAz -Arguments @('account','list-locations','--output','json','--only-show-errors'))
+        } catch {
+            $reasons.Add("Could not list subscription locations. $($_.Exception.Message)")
+        }
+        $locationOk = @($locations | Where-Object { $_ -and [string]$_.name -eq [string]$Scope.Location }).Count -eq 1
+        if (-not $locationOk) { $reasons.Add("Location '$([string]$Scope.Location)' is not enabled for this subscription.") }
     }
-    $locationOk = @($locations | Where-Object { $_ -and [string]$_.name -eq [string]$Scope.Location }).Count -eq 1
-    if (-not $locationOk) { $reasons.Add("Location '$([string]$Scope.Location)' is not enabled for this subscription.") }
 ```
 
-**Source lines 639–661:**
+**Source lines 642–664:**
 
 ```powershell
 function Invoke-JawsStepBAccept {

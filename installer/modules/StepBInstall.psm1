@@ -304,13 +304,16 @@ function Invoke-JawsStepBPreflight {
         }
     }
     $locations = @()
-    try {
-        $locations = @(Invoke-JawsStepBAz -Arguments @('account','list-locations','--subscription',$sub,'--output','json','--only-show-errors'))
-    } catch {
-        $reasons.Add("Could not list subscription locations. $($_.Exception.Message)")
+    $locationOk = $false
+    if ([string]$account.id -ieq [string]$Scope.SubscriptionId) {
+        try {
+            $locations = @(Invoke-JawsStepBAz -Arguments @('account','list-locations','--output','json','--only-show-errors'))
+        } catch {
+            $reasons.Add("Could not list subscription locations. $($_.Exception.Message)")
+        }
+        $locationOk = @($locations | Where-Object { $_ -and [string]$_.name -eq [string]$Scope.Location }).Count -eq 1
+        if (-not $locationOk) { $reasons.Add("Location '$([string]$Scope.Location)' is not enabled for this subscription.") }
     }
-    $locationOk = @($locations | Where-Object { $_ -and [string]$_.name -eq [string]$Scope.Location }).Count -eq 1
-    if (-not $locationOk) { $reasons.Add("Location '$([string]$Scope.Location)' is not enabled for this subscription.") }
     $canWrite = $false
     $canAssign = $false
     if (-not [string]::IsNullOrWhiteSpace($user)) {

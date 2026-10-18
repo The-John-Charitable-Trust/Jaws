@@ -33,7 +33,10 @@ def emit(payload, code=0):
     sys.exit(code)
 
 def missing():
-    print("404 ResourceNotFound", file=sys.stderr)
+    print(os.environ.get(
+        "JAWS_STEPD_STUB_MISSING",
+        '{"error":{"code":"not_found","message":"Not Found"}}',
+    ), file=sys.stderr)
     sys.exit(1)
 
 def flag(name):
@@ -210,10 +213,12 @@ Describe 'Step D installer' {
         $script:savedState = $env:JAWS_STEPD_STUB_STATE
         $script:savedImage = $env:JAWS_STEPD_STUB_DEV_IMAGE
         $script:savedMissing = $env:JAWS_STEPD_STUB_DEV_MISSING
+        $script:savedAgentMissing = $env:JAWS_STEPD_STUB_MISSING
         $script:savedPoll = $env:JAWS_STEPD_POLL_SECONDS
         $env:JAWS_STEPD_STUB_STATE = $script:state
         $env:JAWS_STEPD_STUB_DEV_IMAGE = $script:devImage
         $env:JAWS_STEPD_STUB_DEV_MISSING = '0'
+        Remove-Item Env:JAWS_STEPD_STUB_MISSING -ErrorAction SilentlyContinue
         $env:JAWS_STEPD_POLL_SECONDS = '0'
         $env:PATH = $script:stub + [System.IO.Path]::PathSeparator + $env:PATH
         $script:devBefore = Get-Content -LiteralPath (Join-Path $script:root 'installer/config/jaws-installation-state.dev.json') -Raw
@@ -224,6 +229,7 @@ Describe 'Step D installer' {
             @{ Name = 'JAWS_STEPD_STUB_STATE'; Value = $script:savedState },
             @{ Name = 'JAWS_STEPD_STUB_DEV_IMAGE'; Value = $script:savedImage },
             @{ Name = 'JAWS_STEPD_STUB_DEV_MISSING'; Value = $script:savedMissing },
+            @{ Name = 'JAWS_STEPD_STUB_MISSING'; Value = $script:savedAgentMissing },
             @{ Name = 'JAWS_STEPD_POLL_SECONDS'; Value = $script:savedPoll }
         )) {
             if ($null -eq $pair.Value) { Remove-Item "Env:$($pair.Name)" -ErrorAction SilentlyContinue } else { Set-Item "Env:$($pair.Name)" $pair.Value }
@@ -321,5 +327,18 @@ Describe 'Step D installer' {
         @($catalog.Specialists)[0].FoundryAgentName | Should -Be 'jaws-investigation-dev'
         @($catalog.Specialists)[0].ComputeEnvironmentId | Should -Be 'jaws-investigation-dev'
         (Get-Content -LiteralPath (Join-Path $script:root 'installer/config/jaws-installation-state.dev.json') -Raw) | Should -Be $script:devBefore
+    }
+
+    It 'treats Foundry not_found and Not Found as a missing specialist and still fails without -AllowMissing' {
+        InModuleScope StepDInstall {
+            $arguments = @('rest','--method','GET','--url','https://example.test/agents/jaws-vm-specialist-lab9/versions/1','--output','json')
+            foreach ($body in @('{"error":{"code":"not_found"}}', 'Not Found')) {
+                $env:JAWS_STEPD_STUB_MISSING = $body
+                $result = Invoke-JawsStepDAz -AllowMissing -Arguments $arguments
+                $result | Should -BeNullOrEmpty
+            }
+            $env:JAWS_STEPD_STUB_MISSING = '{"error":{"code":"not_found","message":"Not Found"}}'
+            { Invoke-JawsStepDAz -Arguments $arguments } | Should -Throw '*JAWS-STEP-D-AZ-001*'
+        }
     }
 }

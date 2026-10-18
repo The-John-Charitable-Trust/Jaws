@@ -124,7 +124,7 @@ function Invoke-JawsStepBAz {
     $code = $LASTEXITCODE
     $text = (@($output) | ForEach-Object { "$_" }) -join "`n"
     if ($code -ne 0) {
-        if ($AllowMissing -and $text -match 'MISSING|ResourceNotFound|ResourceGroupNotFound|ParentResourceNotFound|was not found|NotFound') {
+        if ($AllowMissing -and $text -match 'MISSING|ResourceNotFound|ResourceGroupNotFound|ParentResourceNotFound|was not found|NotFound|not_found|Not Found') {
             return $null
         }
         if ($text -match 'MissingSubscriptionRegistration|not registered') {

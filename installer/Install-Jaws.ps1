@@ -1,7 +1,7 @@
-# JAWS Installer 0.4.8 - discovery, plan, local package, and approved Step B foundation install
+# JAWS Installer 0.4.9 - discovery, plan, local package, approved Step B install, and live acceptance
 [CmdletBinding()]
 param(
-    [ValidateSet('Discover','Plan','Package','Install')][string]$Mode='Discover',
+    [ValidateSet('Discover','Plan','Package','Install','Accept')][string]$Mode='Discover',
     [string]$PlanFile,
     [switch]$AzureAware,
     [switch]$BuildContainer,
@@ -211,6 +211,31 @@ if ($Mode -eq 'Install') {
     Write-Host "Receipt: $($installed.ReceiptPath)"
     return
 }
+if ($Mode -eq 'Accept') {
+    if (-not $PSBoundParameters.ContainsKey('EnvironmentName') -or -not $PSBoundParameters.ContainsKey('ResourceGroupName') -or -not $PSBoundParameters.ContainsKey('Location')) {
+        throw 'JAWS-STEP-B-016: Accept requires the same -EnvironmentName, -ResourceGroupName, and -Location used to install.'
+    }
+    Import-Module (Join-Path $PSScriptRoot 'modules/StepBInstall.psm1') -Force
+    $accepted = Invoke-JawsStepBAccept -EnvironmentName $EnvironmentName -ResourceGroupName $ResourceGroupName -Location $Location -ModelName $ModelName -ModelVersion $ModelVersion -InstallerRoot $PSScriptRoot
+    $live = $accepted.Report
+    Write-Host 'STEP-B ACCEPTANCE PASS'
+    Write-Host 'Live Azure read: true'
+    Write-Host 'Azure writes: 0'
+    Write-Host "Foundry account: $($live.FoundryAccountName)"
+    Write-Host "Foundry provisioning: $($live.FoundryProvisioningState)"
+    Write-Host "Project: $($live.ProjectName)"
+    Write-Host "Model: $($live.ModelName) $($live.ModelVersion)"
+    Write-Host "Deployment: $($live.DeploymentProvisioningState)"
+    Write-Host "Registry admin: false"
+    Write-Host 'AcrPull: true'
+    Write-Host "Image: $($live.Image)"
+    Write-Host "Agent: $($live.AgentName)"
+    Write-Host 'Agent version: 1'
+    Write-Host 'Agent status: active'
+    Write-Host 'Dev state: unchanged'
+    Write-Host "Receipt: $($live.ReceiptPath)"
+    return
+}
 Import-Module (Join-Path $PSScriptRoot 'modules/AzurePreflight.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'modules/ResourceDiscovery.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'modules/ResourceManifest.psm1') -Force
@@ -225,7 +250,7 @@ if ($SubscriptionId -and $SubscriptionId -ine $state.SubscriptionId) { throw 'JA
 if ($ResourceGroupName -and $ResourceGroupName -ine $state.ResourceGroupName) { throw 'JAWS-STATE-002: Resource group differs from the authoritative state.' }
 $SubscriptionId=[string]$state.SubscriptionId
 $ResourceGroupName=[string]$state.ResourceGroupName
-Write-Host "JAWS Installer v0.4.8 | $Mode | State-first verification" -ForegroundColor Cyan
+Write-Host "JAWS Installer v0.4.9 | $Mode | State-first verification" -ForegroundColor Cyan
 Write-Host "Authoritative state: $StateFile"
 Write-Host "Target: $SubscriptionId | $ResourceGroupName"
 $context=Get-JawsAuthorizedSubscriptions -NonInteractive:$NonInteractive

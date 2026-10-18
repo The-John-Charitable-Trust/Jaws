@@ -157,6 +157,105 @@ function Get-JawsStepBProperty {
     return $current
 }
 
+function Start-JawsStepBPollSleep {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][int]$Seconds)
+    $configured = $Seconds
+    if ($env:JAWS_STEPB_POLL_SECONDS -match '^\d+$') { $configured = [int]$env:JAWS_STEPB_POLL_SECONDS }
+    if ($configured -gt 0) { Start-Sleep -Seconds $configured }
+}
+
+function Get-JawsStepBProvisioningState {
+    param($Resource)
+    if ($null -eq $Resource) { return '' }
+    $state = [string](Get-JawsStepBProperty -Object $Resource -Names @('properties','provisioningState'))
+    if ([string]::IsNullOrWhiteSpace($state)) {
+        $state = [string](Get-JawsStepBProperty -Object $Resource -Names @('provisioningState'))
+    }
+    return $state
+}
+
+function Wait-JawsStepBProvisioned {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string[]]$Arguments,[Parameter(Mandatory)][string]$Label)
+    $resource = $null
+    for ($attempt = 0; $attempt -lt 36; $attempt++) {
+        $resource = Invoke-JawsStepBAz -AllowMissing -Arguments $Arguments
+        $state = Get-JawsStepBProvisioningState -Resource $resource
+        if ($null -ne $resource -and ([string]::IsNullOrWhiteSpace($state) -or $state -eq 'Succeeded')) { return $resource }
+        if ($state -in @('Failed','Canceled','Cancelled')) {
+            throw "JAWS-STEP-B-023: $Label provisioning is $state."
+        }
+        if ($attempt -eq 35) { break }
+        Start-JawsStepBPollSleep -Seconds 5
+    }
+    throw "JAWS-STEP-B-023: $Label did not reach provisioning state Succeeded."
+}
+
+function Test-JawsStepBModelOffered {
+    param($Catalog,[Parameter(Mandatory)][string]$Name,[Parameter(Mandatory)][string]$Version)
+    foreach ($item in @($Catalog)) {
+        if ($null -eq $item) { continue }
+        $model = $item
+        if ($item.PSObject.Properties['model'] -and $null -ne $item.model) { $model = $item.model }
+        $itemName = [string](Get-JawsStepBProperty -Object $model -Names @('name'))
+        if ([string]::IsNullOrWhiteSpace($itemName)) { $itemName = [string](Get-JawsStepBProperty -Object $item -Names @('name')) }
+        $itemVersion = [string](Get-JawsStepBProperty -Object $model -Names @('version'))
+        if ([string]::IsNullOrWhiteSpace($itemVersion)) { $itemVersion = [string](Get-JawsStepBProperty -Object $item -Names @('version')) }
+        $format = [string](Get-JawsStepBProperty -Object $model -Names @('format'))
+        if ([string]::IsNullOrWhiteSpace($format)) { $format = [string](Get-JawsStepBProperty -Object $item -Names @('format')) }
+        if ($itemName -ne $Name -or $itemVersion -ne $Version) { continue }
+        if (-not [string]::IsNullOrWhiteSpace($format) -and $format -ne 'OpenAI') { continue }
+        $skus = @()
+        if ($model.PSObject.Properties['skus']) { $skus = @($model.skus) }
+        elseif ($item.PSObject.Properties['skus']) { $skus = @($item.skus) }
+        elseif ($model.PSObject.Properties['sku'] -and $null -ne $model.sku) { $skus = @($model.sku) }
+        if ($skus.Count -eq 0) { return $true }
+        foreach ($sku in $skus) {
+            $skuName = [string]$sku
+            if ($null -ne $sku -and $sku.PSObject.Properties['name']) { $skuName = [string]$sku.name }
+            if ($skuName -eq 'GlobalStandard') { return $true }
+        }
+    }
+    return $false
+}
+
+function Get-JawsStepBDeploymentModel {
+    param($Deployment)
+    $name = [string](Get-JawsStepBProperty -Object $Deployment -Names @('properties','model','name'))
+    $version = [string](Get-JawsStepBProperty -Object $Deployment -Names @('properties','model','version'))
+    if ([string]::IsNullOrWhiteSpace($name)) { $name = [string](Get-JawsStepBProperty -Object $Deployment -Names @('model','name')) }
+    if ([string]::IsNullOrWhiteSpace($version)) { $version = [string](Get-JawsStepBProperty -Object $Deployment -Names @('model','version')) }
+    return [pscustomobject]@{ Name = $name; Version = $version }
+}
+
+function Invoke-JawsStepBRoleAssignment {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string[]]$Arguments)
+    for ($attempt = 1; $attempt -le 12; $attempt++) {
+        try { return Invoke-JawsStepBAz -Arguments $Arguments }
+        catch {
+            if ($attempt -eq 12 -or $_.Exception.Message -notmatch 'PrincipalNotFound') { throw }
+            Start-JawsStepBPollSleep -Seconds 5
+        }
+    }
+}
+
+function Get-JawsStepBRegistryDigest {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$RegistryName,[Parameter(Mandatory)][string]$ImageName)
+    $metadataArguments = @('acr','manifest','show-metadata','--registry',$RegistryName,'--name',$ImageName,'--output','json','--only-show-errors')
+    try {
+        $manifest = Invoke-JawsStepBAz -Arguments $metadataArguments
+        if ([string]$manifest.digest -match '^sha256:[a-f0-9]{64}$') { return $Matches[0] }
+    } catch { }
+    $shown = Invoke-JawsStepBAz -Arguments @('acr','repository','show','--name',$RegistryName,'--image',$ImageName,'--output','json','--only-show-errors')
+    if ([string]$shown.digest -notmatch '^sha256:[a-f0-9]{64}$') {
+        throw 'JAWS-PUSH-016: Registry did not return a valid immutable digest.'
+    }
+    return $Matches[0]
+}
+
 function Invoke-JawsStepBInstall {
     [CmdletBinding()]
     param(
@@ -193,42 +292,66 @@ function Invoke-JawsStepBInstall {
     }
     $foundry = Invoke-JawsStepBAz -AllowMissing -Arguments @('cognitiveservices','account','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.FoundryAccountName,'--output','json','--only-show-errors')
     if ($null -eq $foundry) {
-        $foundry = Invoke-JawsStepBAz -Arguments (@('cognitiveservices','account','create','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.FoundryAccountName,'--kind','AIServices','--sku','S0','--location',[string]$Scope.Location,'--custom-domain',[string]$Scope.FoundryAccountName,'--assign-identity','--allow-project-management','--yes','--output','json','--only-show-errors','--tags') + $tags)
+        $foundry = Invoke-JawsStepBAz -Arguments (@('cognitiveservices','account','create','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.FoundryAccountName,'--kind','AIServices','--sku','S0','--location',[string]$Scope.Location,'--custom-domain',[string]$Scope.FoundryAccountName,'--assign-identity','--allow-project-management','true','--yes','--output','json','--only-show-errors','--tags') + $tags)
         $writes++
     } elseif (-not (Test-JawsStepBOwned -Resource $foundry -EnvironmentName $Scope.EnvironmentName)) {
         throw 'JAWS-STEP-B-012: Foundry account exists and is not owned by this installer. Refusing adoption.'
     }
-    $project = Invoke-JawsStepBAz -AllowMissing -Arguments @('cognitiveservices','account','project','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.FoundryAccountName,'--project-name',[string]$Scope.ProjectName,'--output','json','--only-show-errors')
+    $foundryShow = @('cognitiveservices','account','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.FoundryAccountName,'--output','json','--only-show-errors')
+    $foundry = Wait-JawsStepBProvisioned -Arguments $foundryShow -Label 'Foundry account'
+    $projectShow = @('cognitiveservices','account','project','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.FoundryAccountName,'--project-name',[string]$Scope.ProjectName,'--output','json','--only-show-errors')
+    $project = Invoke-JawsStepBAz -AllowMissing -Arguments $projectShow
     if ($null -eq $project) {
         $project = Invoke-JawsStepBAz -Arguments @('cognitiveservices','account','project','create','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.FoundryAccountName,'--project-name',[string]$Scope.ProjectName,'--location',[string]$Scope.Location,'--assign-identity','--output','json','--only-show-errors')
         $writes++
     }
-    $principal = [string](Get-JawsStepBProperty -Object $project -Names @('identity','principalId'))
+    $principal = ''
+    for ($attempt = 0; $attempt -lt 36; $attempt++) {
+        $project = Wait-JawsStepBProvisioned -Arguments $projectShow -Label 'Foundry project'
+        $principal = [string](Get-JawsStepBProperty -Object $project -Names @('identity','principalId'))
+        if (-not [string]::IsNullOrWhiteSpace($principal)) { break }
+        Start-JawsStepBPollSleep -Seconds 5
+    }
     if ([string]::IsNullOrWhiteSpace($principal)) { throw 'JAWS-STEP-B-020: Foundry project has no managed identity principal.' }
-    $deployment = Invoke-JawsStepBAz -AllowMissing -Arguments @('cognitiveservices','account','deployment','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.FoundryAccountName,'--deployment-name',[string]$Scope.ModelDeploymentName,'--output','json','--only-show-errors')
+    $deploymentShow = @('cognitiveservices','account','deployment','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.FoundryAccountName,'--deployment-name',[string]$Scope.ModelDeploymentName,'--output','json','--only-show-errors')
+    $deployment = Invoke-JawsStepBAz -AllowMissing -Arguments $deploymentShow
     if ($null -eq $deployment) {
+        $catalog = Invoke-JawsStepBAz -Arguments @('cognitiveservices','account','list-models','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.FoundryAccountName,'--output','json','--only-show-errors')
+        if ($catalog -and $catalog.PSObject.Properties['value']) { $catalog = $catalog.value }
+        if (-not (Test-JawsStepBModelOffered -Catalog $catalog -Name $Scope.ModelName -Version $Scope.ModelVersion)) {
+            throw "JAWS-STEP-B-MODEL-001: $($Scope.ModelName) $($Scope.ModelVersion) OpenAI GlobalStandard is not offered on this Foundry account. The approved plan was not changed."
+        }
         $deployment = Invoke-JawsStepBAz -Arguments @('cognitiveservices','account','deployment','create','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.FoundryAccountName,'--deployment-name',[string]$Scope.ModelDeploymentName,'--model-name',[string]$Scope.ModelName,'--model-version',[string]$Scope.ModelVersion,'--model-format','OpenAI','--sku-name','GlobalStandard','--sku-capacity','1','--output','json','--only-show-errors')
         $writes++
     }
-    $vault = Invoke-JawsStepBAz -AllowMissing -Arguments @('keyvault','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.KeyVaultName,'--output','json','--only-show-errors')
+    $deployment = Wait-JawsStepBProvisioned -Arguments $deploymentShow -Label 'Model deployment'
+    $deployedModel = Get-JawsStepBDeploymentModel -Deployment $deployment
+    if ($deployedModel.Name -ne [string]$Scope.ModelName -or $deployedModel.Version -ne [string]$Scope.ModelVersion) {
+        throw 'JAWS-STEP-B-MODEL-001: The deployment does not match the approved model name and version. The plan was not changed.'
+    }
+    $vaultShow = @('keyvault','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.KeyVaultName,'--output','json','--only-show-errors')
+    $vault = Invoke-JawsStepBAz -AllowMissing -Arguments $vaultShow
     if ($null -eq $vault) {
         $vault = Invoke-JawsStepBAz -Arguments (@('keyvault','create','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.KeyVaultName,'--location',[string]$Scope.Location,'--enable-rbac-authorization','true','--enable-purge-protection','true','--output','json','--only-show-errors','--tags') + $tags)
         $writes++
     } elseif (-not (Test-JawsStepBOwned -Resource $vault -EnvironmentName $Scope.EnvironmentName)) {
         throw 'JAWS-STEP-B-012: Key Vault exists and is not owned by this installer. Refusing adoption.'
     }
-    $registry = Invoke-JawsStepBAz -AllowMissing -Arguments @('acr','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.RegistryName,'--output','json','--only-show-errors')
+    $vault = Wait-JawsStepBProvisioned -Arguments $vaultShow -Label 'Key Vault'
+    $registryShow = @('acr','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.RegistryName,'--output','json','--only-show-errors')
+    $registry = Invoke-JawsStepBAz -AllowMissing -Arguments $registryShow
     if ($null -eq $registry) {
         $registry = Invoke-JawsStepBAz -Arguments (@('acr','create','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.RegistryName,'--location',[string]$Scope.Location,'--sku','Basic','--admin-enabled','false','--public-network-enabled','true','--role-assignment-mode','rbac','--output','json','--only-show-errors','--tags') + $tags)
         $writes++
     } elseif (-not (Test-JawsStepBOwned -Resource $registry -EnvironmentName $Scope.EnvironmentName) -or $registry.adminUserEnabled -ne $false) {
         throw 'JAWS-STEP-B-012: Registry exists and is not an installer-owned Basic registry with admin disabled.'
     }
+    $registry = Wait-JawsStepBProvisioned -Arguments $registryShow -Label 'Container registry'
     $registryId = "/subscriptions/$sub/resourceGroups/$rg/providers/Microsoft.ContainerRegistry/registries/$($Scope.RegistryName)"
     $roles = @(Invoke-JawsStepBAz -Arguments @('role','assignment','list','--subscription',$sub,'--assignee-object-id',$principal,'--scope',$registryId,'--include-inherited','--fill-principal-name','false','--output','json','--only-show-errors'))
     $hasPull = @($roles | Where-Object { $_ -and [string]$_.roleDefinitionName -in @('AcrPull','Container Registry Repository Reader') }).Count -gt 0
     if (-not $hasPull) {
-        $null = Invoke-JawsStepBAz -Arguments @('role','assignment','create','--subscription',$sub,'--assignee-object-id',$principal,'--assignee-principal-type','ServicePrincipal','--role','AcrPull','--scope',$registryId,'--output','json','--only-show-errors')
+        $null = Invoke-JawsStepBRoleAssignment -Arguments @('role','assignment','create','--subscription',$sub,'--assignee-object-id',$principal,'--assignee-principal-type','ServicePrincipal','--role','AcrPull','--scope',$registryId,'--output','json','--only-show-errors')
         $writes++
     }
     $login = "$($Scope.RegistryName).azurecr.io"
@@ -251,9 +374,7 @@ function Invoke-JawsStepBInstall {
         & docker push $target *>&1 | Out-Host
         if ($LASTEXITCODE -ne 0) { throw 'JAWS-PUSH-014: Docker push failed. Inspect the registry before retrying.' }
         $writes++
-        $manifest = Invoke-JawsStepBAz -Arguments @('acr','manifest','show-metadata','--registry',[string]$Scope.RegistryName,'--name',"jaws/supervisor:$tag",'--output','json','--only-show-errors')
-        $digest = [string]$manifest.digest
-        if ($digest -notmatch '^sha256:[a-f0-9]{64}$') { throw 'JAWS-PUSH-016: Registry did not return a valid immutable digest.' }
+        $digest = Get-JawsStepBRegistryDigest -RegistryName ([string]$Scope.RegistryName) -ImageName "jaws/supervisor:$tag"
         $image = "$login/jaws/supervisor@$digest"
         $body = @{
             name = [string]$Scope.AgentName
@@ -273,11 +394,11 @@ function Invoke-JawsStepBInstall {
         $null = Invoke-JawsStepBAz -Arguments @('rest','--method','POST','--url',"$endpoint/agents?api-version=v1",'--resource','https://ai.azure.com','--body',"@$bodyFile",'--output','json','--only-show-errors')
         $writes++
         $existing = $null
-        for ($attempt = 0; $attempt -lt 30; $attempt++) {
+        for ($attempt = 0; $attempt -lt 60; $attempt++) {
             $existing = Invoke-JawsStepBAz -AllowMissing -Arguments @('rest','--method','GET','--url',$versionUrl,'--resource','https://ai.azure.com','--output','json','--only-show-errors')
             if ($null -ne $existing -and [string]$existing.status -eq 'failed') { throw 'JAWS-STEP-B-018: Hosted Supervisor provisioning failed.' }
             if ($null -ne $existing -and [string]$existing.status -eq 'active') { break }
-            Start-Sleep -Seconds 5
+            Start-JawsStepBPollSleep -Seconds 10
         }
     }
     if ($null -eq $existing) { throw 'JAWS-STEP-B-018: Hosted Supervisor version 1 did not become active.' }
@@ -296,7 +417,7 @@ function Invoke-JawsStepBInstall {
     $state = [pscustomobject]@{
         SchemaVersion = '1.1'
         Platform = 'JAWS'
-        InstallerVersion = '0.4.8'
+        InstallerVersion = '0.4.9'
         EnvironmentName = [string]$Scope.EnvironmentName
         SubscriptionId = $sub
         ResourceGroupName = $rg
@@ -346,4 +467,128 @@ function Invoke-JawsStepBInstall {
     return [pscustomobject]@{ Receipt = $receipt; ReceiptPath = $receiptPath; StatePath = $statePath }
 }
 
-Export-ModuleMember -Function New-JawsStepBInstallScope,Get-JawsStepBScopeSha256,Invoke-JawsStepBInstall
+function Invoke-JawsStepBAccept {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$EnvironmentName,
+        [Parameter(Mandatory)][string]$ResourceGroupName,
+        [Parameter(Mandatory)][string]$Location,
+        [Parameter(Mandatory)][string]$ModelName,
+        [Parameter(Mandatory)][string]$ModelVersion,
+        [Parameter(Mandatory)][string]$InstallerRoot
+    )
+    $devState = Join-Path $InstallerRoot 'config/jaws-installation-state.dev.json'
+    $devBefore = Get-Content -LiteralPath $devState -Raw
+    $receiptPath = Join-Path $InstallerRoot ".local/jaws-step-b-install.$EnvironmentName.generated.json"
+    if (-not (Test-Path -LiteralPath $receiptPath -PathType Leaf)) {
+        throw "JAWS-STEP-B-006: Step B install receipt not found: $receiptPath"
+    }
+    $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+    $account = Invoke-JawsStepBAz -Arguments @('account','show','--output','json','--only-show-errors')
+    if ([string]$account.id -ine [string]$receipt.SubscriptionId) {
+        throw 'JAWS-STEP-B-019: Azure CLI subscription differs from the install receipt. No resources were changed.'
+    }
+    $scope = New-JawsStepBInstallScope -SubscriptionId ([string]$account.id) -ResourceGroupName $ResourceGroupName -Location $Location -EnvironmentName $EnvironmentName -ModelName $ModelName -ModelVersion $ModelVersion
+    $mismatch = @()
+    if ([string]$receipt.PlanSha256 -cne [string]$scope.PlanSha256) { $mismatch += 'plan digest' }
+    foreach ($name in @('ResourceGroupName','FoundryAccountName','ProjectName','ModelDeploymentName','ModelName','ModelVersion','KeyVaultName','RegistryName','AgentName')) {
+        if ([string]$receipt.$name -cne [string]$scope.$name) { $mismatch += $name }
+    }
+    if ($mismatch.Count -gt 0) {
+        throw "JAWS-STEP-B-025: Install receipt does not match this scope ($($mismatch -join ', ')). No resources were changed."
+    }
+    $sub = [string]$scope.SubscriptionId
+    $rg = [string]$scope.ResourceGroupName
+    $reasons = @()
+    $group = Invoke-JawsStepBAz -AllowMissing -Arguments @('group','show','--subscription',$sub,'--name',$rg,'--output','json','--only-show-errors')
+    if ($null -eq $group) { $reasons += 'resource group is missing' }
+    elseif ([string]$group.location -ine [string]$scope.Location) { $reasons += 'resource group location differs' }
+    $foundry = Invoke-JawsStepBAz -AllowMissing -Arguments @('cognitiveservices','account','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$scope.FoundryAccountName,'--output','json','--only-show-errors')
+    if ($null -eq $foundry) { $reasons += 'Foundry account is missing' }
+    else {
+        if ((Get-JawsStepBProvisioningState -Resource $foundry) -ne 'Succeeded') { $reasons += 'Foundry provisioning is not Succeeded' }
+        if ([string]$foundry.kind -ne 'AIServices') { $reasons += 'Foundry kind is not AIServices' }
+        if (-not (Test-JawsStepBOwned -Resource $foundry -EnvironmentName $scope.EnvironmentName)) { $reasons += 'Foundry account is not installer-owned' }
+        $domain = [string](Get-JawsStepBProperty -Object $foundry -Names @('properties','customSubDomainName'))
+        if (-not [string]::IsNullOrWhiteSpace($domain) -and $domain -ne [string]$scope.FoundryAccountName) { $reasons += 'Foundry custom domain differs' }
+    }
+    $project = Invoke-JawsStepBAz -AllowMissing -Arguments @('cognitiveservices','account','project','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$scope.FoundryAccountName,'--project-name',[string]$scope.ProjectName,'--output','json','--only-show-errors')
+    $principal = [string](Get-JawsStepBProperty -Object $project -Names @('identity','principalId'))
+    if ([string]::IsNullOrWhiteSpace($principal)) { $reasons += 'project identity is missing' }
+    elseif ($principal -ine [string]$receipt.ProjectPrincipalId) { $reasons += 'project principal differs from the receipt' }
+    $deployment = Invoke-JawsStepBAz -AllowMissing -Arguments @('cognitiveservices','account','deployment','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$scope.FoundryAccountName,'--deployment-name',[string]$scope.ModelDeploymentName,'--output','json','--only-show-errors')
+    $deployedModel = Get-JawsStepBDeploymentModel -Deployment $deployment
+    if ($null -eq $deployment) { $reasons += 'model deployment is missing' }
+    elseif ((Get-JawsStepBProvisioningState -Resource $deployment) -ne 'Succeeded') { $reasons += 'model deployment is not Succeeded' }
+    elseif ($deployedModel.Name -ne [string]$scope.ModelName -or $deployedModel.Version -ne [string]$scope.ModelVersion) { $reasons += 'deployed model differs from the approved plan' }
+    $vault = Invoke-JawsStepBAz -AllowMissing -Arguments @('keyvault','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$scope.KeyVaultName,'--output','json','--only-show-errors')
+    $rbac = Get-JawsStepBProperty -Object $vault -Names @('properties','enableRbacAuthorization')
+    $purge = Get-JawsStepBProperty -Object $vault -Names @('properties','enablePurgeProtection')
+    if ($null -eq $vault) { $reasons += 'Key Vault is missing' }
+    elseif (-not (Test-JawsStepBOwned -Resource $vault -EnvironmentName $scope.EnvironmentName)) { $reasons += 'Key Vault is not installer-owned' }
+    elseif ($rbac -ne $true -or $purge -ne $true) { $reasons += 'Key Vault is missing RBAC authorization or purge protection' }
+    $registry = Invoke-JawsStepBAz -AllowMissing -Arguments @('acr','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$scope.RegistryName,'--output','json','--only-show-errors')
+    $skuName = [string](Get-JawsStepBProperty -Object $registry -Names @('sku','name'))
+    if ($null -eq $registry) { $reasons += 'registry is missing' }
+    elseif (-not (Test-JawsStepBOwned -Resource $registry -EnvironmentName $scope.EnvironmentName) -or $registry.adminUserEnabled -ne $false -or $skuName -ne 'Basic') {
+        $reasons += 'registry is not an installer-owned Basic registry with admin disabled'
+    }
+    $registryId = "/subscriptions/$sub/resourceGroups/$rg/providers/Microsoft.ContainerRegistry/registries/$($scope.RegistryName)"
+    $roles = @()
+    if (-not [string]::IsNullOrWhiteSpace($principal)) {
+        $roles = @(Invoke-JawsStepBAz -Arguments @('role','assignment','list','--subscription',$sub,'--assignee-object-id',$principal,'--scope',$registryId,'--include-inherited','--fill-principal-name','false','--output','json','--only-show-errors'))
+    }
+    $hasPull = @($roles | Where-Object { $_ -and [string]$_.roleDefinitionName -in @('AcrPull','Container Registry Repository Reader') }).Count -gt 0
+    if (-not $hasPull) { $reasons += 'project identity is missing AcrPull' }
+    $endpoint = "https://$($scope.FoundryAccountName).services.ai.azure.com/api/projects/$($scope.ProjectName)"
+    $versionUrl = "$endpoint/agents/$($scope.AgentName)/versions/1?api-version=v1"
+    $agent = Invoke-JawsStepBAz -AllowMissing -Arguments @('rest','--method','GET','--url',$versionUrl,'--resource','https://ai.azure.com','--output','json','--only-show-errors')
+    $image = [string](Get-JawsStepBProperty -Object $agent -Names @('definition','container_configuration','image'))
+    $draft = Get-JawsStepBProperty -Object $agent -Names @('draft')
+    if ($null -eq $agent) { $reasons += 'hosted Supervisor version 1 is missing' }
+    elseif ([string]$agent.status -ne 'active' -or $draft -eq $true) { $reasons += 'hosted Supervisor version 1 is not active' }
+    elseif ($image -cne [string]$receipt.Image -or $image -notmatch '@sha256:[a-f0-9]{64}$') { $reasons += 'hosted Supervisor image is not the receipt digest' }
+    if ($reasons.Count -gt 0) {
+        throw "JAWS-STEP-B-024: Live Step B acceptance failed. $($reasons -join '; ')."
+    }
+    if ((Get-Content -LiteralPath $devState -Raw) -ne $devBefore -or $devBefore -notmatch 'c52f597b-7753-45b4-a764-67e290dcfd5e') {
+        throw 'JAWS-STEP-B-022: Step B acceptance changed the dev installation state.'
+    }
+    $report = [pscustomobject]@{
+        SchemaVersion = '1.0'
+        Status = 'STEP_B_ACCEPTED'
+        LiveAzureRead = $true
+        AzureWrites = 0
+        PlanSha256 = [string]$scope.PlanSha256
+        SubscriptionId = $sub
+        ResourceGroupName = $rg
+        Location = [string]$scope.Location
+        EnvironmentName = [string]$scope.EnvironmentName
+        FoundryAccountName = [string]$scope.FoundryAccountName
+        FoundryProvisioningState = 'Succeeded'
+        ProjectName = [string]$scope.ProjectName
+        ProjectPrincipalId = $principal
+        ModelName = [string]$scope.ModelName
+        ModelVersion = [string]$scope.ModelVersion
+        DeploymentProvisioningState = 'Succeeded'
+        KeyVaultName = [string]$scope.KeyVaultName
+        KeyVaultRbac = $true
+        KeyVaultPurgeProtection = $true
+        RegistryName = [string]$scope.RegistryName
+        RegistryAdminEnabled = $false
+        AcrPull = $true
+        Image = $image
+        AgentName = [string]$scope.AgentName
+        AgentVersion = '1'
+        AgentStatus = 'active'
+        DevStateUnchanged = $true
+        ReceiptPath = $receiptPath
+    }
+    $local = Join-Path $InstallerRoot '.local'
+    if (-not (Test-Path -LiteralPath $local)) { New-Item -ItemType Directory -Path $local | Out-Null }
+    $reportPath = Join-Path $local "jaws-step-b-acceptance.$EnvironmentName.generated.json"
+    $report | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $reportPath -Encoding utf8
+    return [pscustomobject]@{ Report = $report; ReportPath = $reportPath }
+}
+
+Export-ModuleMember -Function New-JawsStepBInstallScope,Get-JawsStepBScopeSha256,Invoke-JawsStepBInstall,Invoke-JawsStepBAccept

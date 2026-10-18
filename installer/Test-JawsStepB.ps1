@@ -1,8 +1,8 @@
-# Scores a Step B plan or package report already produced by Install-Jaws.ps1.
-# This script does not call Azure, publish, or build a container.
+# Plan, Package, and Install score local reports and do not call Azure.
+# Accept re-reads the signed-in subscription. A local receipt alone cannot pass Accept.
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('Plan','Package','Install')][string]$Mode,
+    [Parameter(Mandatory)][ValidateSet('Plan','Package','Install','Accept')][string]$Mode,
     [string]$ReportPath
 )
 Set-StrictMode -Version Latest
@@ -79,6 +79,19 @@ if ($Mode -eq 'Install') {
     Write-Host 'Agent version: 1'
     Write-Host 'Agent status: active'
     Write-Host "Azure writes: $($receipt.AzureWrites)"
+    Write-Host 'Live Azure read: false'
+    return
+}
+
+if ($Mode -eq 'Accept') {
+    if (-not $ReportPath) {
+        $found = @(Get-ChildItem -LiteralPath (Join-Path $installerRoot '.local') -Filter 'jaws-step-b-install.*.generated.json' -ErrorAction SilentlyContinue)
+        if ($found.Count -ne 1) { throw "JAWS-STEP-B-006: Expected one Step B install receipt, found $($found.Count)." }
+        $ReportPath = $found[0].FullName
+    }
+    if (-not (Test-Path -LiteralPath $ReportPath -PathType Leaf)) { throw "JAWS-STEP-B-006: Step B install receipt not found: $ReportPath" }
+    $receipt = Get-Content -LiteralPath $ReportPath -Raw | ConvertFrom-Json
+    & (Join-Path $installerRoot 'Install-Jaws.ps1') -Mode Accept -EnvironmentName ([string]$receipt.EnvironmentName) -ResourceGroupName ([string]$receipt.ResourceGroupName) -Location ([string]$receipt.Location) -ModelName ([string]$receipt.ModelName) -ModelVersion ([string]$receipt.ModelVersion)
     return
 }
 

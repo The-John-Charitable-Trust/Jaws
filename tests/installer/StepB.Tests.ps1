@@ -48,6 +48,13 @@ Describe 'Step B subscription capture and local package' {
         $installModule | Should -Match 'PrincipalNotFound'
         $installModule | Should -Match 'JAWS-STEP-B-026'
         $installModule | Should -Match 'Get-JawsStepBAuthorizedWrites'
+        $installModule | Should -Match 'acr build'
+        $installModule | Should -Match 'linux/amd64'
+        $installModule | Should -Not -Match 'docker tag'
+        $installModule | Should -Not -Match 'docker push'
+        $installModule | Should -Not -Match 'docker buildx'
+        $installModule | Should -Not -Match 'Get-Command docker'
+        $installModule | Should -Not -Match 'Get-Command dotnet'
         $installModule | Should -Match 'PolicySimulation'
     }
 

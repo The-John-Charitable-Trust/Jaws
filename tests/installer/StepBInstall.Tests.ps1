@@ -97,6 +97,14 @@ if args[:2] == ["acr", "create"]:
     emit(payload)
 if args[:2] == ["acr", "login"]:
     sys.exit(0)
+if args[:2] == ["acr", "build"]:
+    if "--platform" not in args or args[args.index("--platform") + 1] != "linux/amd64":
+        print("platform must be linux/amd64", file=sys.stderr)
+        sys.exit(2)
+    if "--file" not in args or args[args.index("--file") + 1] != "Dockerfile":
+        print("dockerfile must be Dockerfile", file=sys.stderr)
+        sys.exit(2)
+    sys.exit(0)
 if args[:3] == ["acr", "manifest", "show-metadata"]:
     emit({"digest": "sha256:" + ("a" * 64)})
 if args[:2] == ["acr", "check-name"]:
@@ -136,15 +144,7 @@ if args[:1] == ["rest"] and "--method" in args:
 print("unexpected " + " ".join(args), file=sys.stderr)
 sys.exit(9)
 '@
-    Set-Content -LiteralPath (Join-Path $script:stub 'docker') -Encoding ascii -Value @'
-#!/bin/bash
-if [[ "$1" == "image" && "$2" == "inspect" ]]; then
-  printf '%s\n' 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
-  exit 0
-fi
-exit 0
-'@
-    foreach ($name in @('az','docker')) { chmod +x (Join-Path $script:stub $name) | Out-Null }
+    chmod +x (Join-Path $script:stub 'az') | Out-Null
 }
 
 Describe 'Step B foundation install' {
@@ -165,7 +165,7 @@ Describe 'Step B foundation install' {
             $env:JAWS_STEPB_STUB_SUB = $script:sub
             $env:JAWS_STEPB_STUB_ENV = 'lab1'
             $env:JAWS_STEPB_POLL_SECONDS = '0'
-            $env:PATH = $script:stub + [System.IO.Path]::PathSeparator + $env:PATH
+            $env:PATH = $script:stub + [System.IO.Path]::PathSeparator + '/usr/bin'
             $devBefore = Get-Content -LiteralPath (Join-Path $script:root 'installer/config/jaws-installation-state.dev.json') -Raw
             & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Plan -NonInteractive -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus'
             $planPath = Join-Path $script:root 'installer/.local/jaws-stage-b-plan.lab1.offline.generated.json'
@@ -185,6 +185,10 @@ Describe 'Step B foundation install' {
             @('group create','cognitiveservices account create','project create','deployment create','keyvault create','acr create','role assignment create','rest --method POST').ForEach({ $log | Should -Match ([regex]::Escape($_)) })
             ([regex]::Matches($log, 'cognitiveservices account create')).Count | Should -Be 1
             ([regex]::Matches($log, '/agents\?api-version=v1')).Count | Should -Be 1
+            ([regex]::Matches($log, 'acr build')).Count | Should -Be 1
+            $log | Should -Match 'acr build --registry jawsacrlab1'
+            $log | Should -Match '--platform linux/amd64'
+            $log | Should -Not -Match 'acr login'
             $log | Should -Not -Match 'jaws-foundry-dev'
             $log | Should -Not -Match 'c52f597b-7753-45b4-a764-67e290dcfd5e'
             $log | Should -Match 'account list-locations --output json --only-show-errors'

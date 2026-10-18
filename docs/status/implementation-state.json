@@ -35,7 +35,7 @@
       "tests": "tests/installer/StepBInstall.Tests.ps1",
       "microsoftUrl": "https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/deploy-hosted-agent",
       "microsoftTitle": "Foundry hosted agents",
-      "evidence": "Code and offline CLI-stand-in tests cover Preflight, Install, and Accept. Provisioning, functional acceptance, and customer installation are not recorded. The plan digest binds names and model, not an unbounded cost."
+      "evidence": "Code and offline CLI-stand-in tests cover Preflight, Install, and Accept. Install builds the Supervisor image with az acr build and reads the digest from the registry. It does not call docker build, docker tag, or docker push. Provisioning, functional acceptance, and customer installation are not recorded. The plan digest binds names and model, not an unbounded cost."
     },
     {
       "id": "C",

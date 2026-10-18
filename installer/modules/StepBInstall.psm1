@@ -265,7 +265,7 @@ function Get-JawsStepBAuthorizedWrites {
         [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.KeyVault/vaults'; BoundTo = 'RBAC authorization and purge protection.' },
         [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.ContainerRegistry/registries'; BoundTo = 'Basic SKU, admin disabled, public network enabled.' },
         [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.Authorization/roleAssignments'; BoundTo = 'AcrPull for this project identity on this registry only.' },
-        [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Foundry hosted agent version'; BoundTo = 'Supervisor version 1, cpu 1, memory 2Gi, image pinned to the registry digest.' }
+        [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Foundry hosted agent version'; BoundTo = 'Supervisor version 1, cpu 1, memory 2Gi. The image is built by az acr build for linux/amd64 and pinned to the registry digest.' }
     )
 }
 
@@ -441,8 +441,6 @@ function Invoke-JawsStepBInstall {
     }
     $devState = Join-Path $InstallerRoot 'config/jaws-installation-state.dev.json'
     $devBefore = Get-Content -LiteralPath $devState -Raw
-    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw 'JAWS-PACKAGE-005: Docker is required before Step B install creates resources.' }
-    if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) { throw 'JAWS-PACKAGE-003: .NET SDK not found. Install .NET 10 before Step B install.' }
     $preflight = Invoke-JawsStepBPreflight -Scope $Scope -InstallerRoot $InstallerRoot
     if (-not $preflight.Ready) {
         throw "JAWS-STEP-B-026: Step B preflight is not ready. No Azure writes were attempted. $($preflight.Report.Reasons -join ' ')"
@@ -534,19 +532,28 @@ function Invoke-JawsStepBInstall {
     if ($null -eq $existing) {
         Import-Module (Join-Path $PSScriptRoot 'SupervisorPackage.psm1') -Force
         $package = Get-JawsSupervisorPackagePlan -InstallerRoot $InstallerRoot
-        $built = Invoke-JawsSupervisorLocalBuild -PackagePlan $package -BuildContainer
-        if (-not $built.ContainerBuilt) { throw 'JAWS-STEP-B-021: Local Supervisor image was not built.' }
-        $imageId = (& docker image inspect $package.DockerTag --format '{{.Id}}' 2>$null | Out-String).Trim()
-        if ($LASTEXITCODE -ne 0 -or $imageId -notmatch '^sha256:[a-f0-9]{64}$') { throw 'JAWS-STEP-B-021: Local image id is not a sha256 digest.' }
-        $tag = 'build-' + $imageId.Substring(7, 16)
-        $target = "$login/jaws/supervisor:$tag"
-        $null = Invoke-JawsStepBAz -Arguments @('acr','login','--name',[string]$Scope.RegistryName,'--subscription',$sub,'--only-show-errors')
-        & docker tag $package.DockerTag $target
-        if ($LASTEXITCODE -ne 0) { throw 'JAWS-PUSH-013: Docker tag failed.' }
-        & docker push $target *>&1 | Out-Host
-        if ($LASTEXITCODE -ne 0) { throw 'JAWS-PUSH-014: Docker push failed. Inspect the registry before retrying.' }
+        $tag = 'build-' + [guid]::NewGuid().ToString('N').Substring(0, 16)
+        $imageName = "jaws/supervisor:$tag"
+        if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
+            throw 'JAWS-PREREQ-001: Azure CLI is not installed or not on PATH.'
+        }
+        $buildOutput = & az @(
+            'acr','build',
+            '--registry',[string]$Scope.RegistryName,
+            '--subscription',$sub,
+            '--image',$imageName,
+            '--file','Dockerfile',
+            '--platform','linux/amd64',
+            '--output','none',
+            $package.BuildContext
+        ) 2>&1
+        $buildCode = $LASTEXITCODE
+        $buildOutput | Out-Host
+        if ($buildCode -ne 0) {
+            throw "JAWS-STEP-B-021: Azure Container Registry build failed ($buildCode). Docker was not used. $($buildOutput | Out-String)"
+        }
         $writes++
-        $digest = Get-JawsStepBRegistryDigest -RegistryName ([string]$Scope.RegistryName) -ImageName "jaws/supervisor:$tag"
+        $digest = Get-JawsStepBRegistryDigest -RegistryName ([string]$Scope.RegistryName) -ImageName $imageName
         $image = "$login/jaws/supervisor@$digest"
         $body = @{
             name = [string]$Scope.AgentName

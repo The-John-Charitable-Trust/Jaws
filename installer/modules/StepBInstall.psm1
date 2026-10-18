@@ -131,7 +131,10 @@ function Invoke-JawsStepBAz {
             throw "JAWS-STEP-B-PROVIDER-001: Required resource provider is not registered. $text"
         }
         if ($text -match 'InsufficientQuota|quota') {
-            throw "JAWS-STEP-B-MODEL-001: Model quota blocked the deployment. $text"
+            $issue = (($text -split '\r?\n' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ' ').Trim()
+            $action = 'Request a quota increase for this model and region, then run Install again. The installer keeps the deployment at GlobalStandard capacity 1.'
+            Write-JawsOperatorIssue -Issue $issue -Action $action -QuotaRequest
+            throw "JAWS-STEP-B-MODEL-001: Model quota blocked the deployment. $action Quota request: $(Get-JawsQuotaRequestUrl). $issue"
         }
         throw "JAWS-STEP-B-AZ-001: az $($Arguments -join ' ') failed ($code). $text"
     }

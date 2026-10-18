@@ -3,13 +3,35 @@
 param(
  [ValidateSet('Plan','Install','Verify')][string]$Mode='Plan',
  [string]$ApprovedPlanSha256,
- [switch]$AcknowledgeToolboxChargesAndAccess
+ [switch]$AcknowledgeToolboxChargesAndAccess,
+ [string]$EnvironmentName='dev',
+ [string]$ProjectEndpoint='https://jaws-foundry-dev.services.ai.azure.com/api/projects/jaws-dev',
+ [string]$ToolboxName='jaws-investigation-a2a-tools',
+ [string]$ConnectionName='jaws-investigation-a2a-dev',
+ [string]$PlannerAgent='jaws-investigation-planner-dev'
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
-$project='https://jaws-foundry-dev.services.ai.azure.com/api/projects/jaws-dev'
-$name='jaws-investigation-a2a-tools'
-$connName='jaws-investigation-a2a-dev'
+if($EnvironmentName -ceq 'dev'){
+ if($ProjectEndpoint -cne 'https://jaws-foundry-dev.services.ai.azure.com/api/projects/jaws-dev' -or
+    $ToolboxName -cne 'jaws-investigation-a2a-tools' -or
+    $ConnectionName -cne 'jaws-investigation-a2a-dev' -or
+    $PlannerAgent -cne 'jaws-investigation-planner-dev'){
+  throw 'JAWS-TOOLBOX-010: Unexpected toolbox scope.'
+ }
+ $planSuffix='dev'
+}else{
+ Import-Module (Join-Path $PSScriptRoot 'modules/StepCEnvironment.psm1') -Force
+ $toolboxContext=Resolve-JawsStepCStepBContext -EnvironmentName $EnvironmentName -InstallerRoot $PSScriptRoot
+ if($ProjectEndpoint -cne $toolboxContext.ProjectEndpoint -or $ToolboxName -cne $toolboxContext.ToolboxName -or
+    $ConnectionName -cne $toolboxContext.ConnectionName -or $PlannerAgent -cne $toolboxContext.PlannerAgent){
+  throw 'JAWS-TOOLBOX-010: Toolbox scope does not match the Step B installation.'
+ }
+ $planSuffix=$toolboxContext.PlanSuffix
+}
+$project=$ProjectEndpoint
+$name=$ToolboxName
+$connName=$ConnectionName
 $connectionUrl="$project/connections/$($connName)?api-version=v1"
 function Get-Api([string]$Url,[switch]$AllowNotFound) {
  $result=& az rest --method get --url $Url --resource https://ai.azure.com --output json --only-show-errors 2>&1
@@ -22,7 +44,7 @@ $conn=Get-Api -Url $connectionUrl
 if($null -eq $conn -or -not $conn.id -or $conn.name -cne $connName) {
  throw 'JAWS-TOOLBOX-002: Authenticated Investigation RemoteA2A project connection not verified.'
 }
-$target="https://jaws-foundry-dev.services.ai.azure.com/api/projects/jaws-dev/agents/jaws-investigation-planner-dev/endpoint/protocols/a2a"
+$target="$project/agents/$PlannerAgent/endpoint/protocols/a2a"
 $directTarget=if($conn.PSObject.Properties['target']){[string]$conn.target}else{''}
 $nestedTarget=if($conn.PSObject.Properties['properties'] -and $conn.properties -and $conn.properties.PSObject.Properties['target']){[string]$conn.properties.target}else{''}
 if($directTarget -cne $target -and $nestedTarget -cne $target) {
@@ -40,7 +62,7 @@ $payload=ConvertTo-Json -InputObject $desired -Depth 15 -Compress
 $hash=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($payload))).ToLowerInvariant()
 $local=Join-Path $PSScriptRoot '.local'
 if(-not(Test-Path $local)){$null=New-Item -ItemType Directory -Force -Path $local}
-$planPath=Join-Path $local 'jaws-step-c-toolbox-plan.dev.generated.json'
+$planPath=Join-Path $local "jaws-step-c-toolbox-plan.$planSuffix.generated.json"
 [pscustomobject]@{ToolboxName=$name;ConnectionId=$conn.id;PlanSha256=$hash;Target=$target;AzureWrites=0} |
  ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $planPath -Encoding utf8
 $versionsUrl="$project/toolboxes/$name/versions?api-version=v1"
@@ -76,7 +98,7 @@ if($Mode -eq 'Install' -and $items.Count -eq 0){
 } elseif($Mode -eq 'Install' -and $items.Count -gt 0) {
  throw 'JAWS-TOOLBOX-006: Existing toolbox versions detected. Refuse to replace or add a version without verified configuration comparison.'
 }
-$actual=Get-Api -Url $versionsUrl
+$actual=Get-Api -Url $versionsUrl -AllowNotFound
 $actualItems=@()
 if($null -ne $actual) {
  $listProp=$actual.PSObject.Properties['data']

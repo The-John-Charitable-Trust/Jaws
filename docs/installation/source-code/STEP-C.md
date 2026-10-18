@@ -6,44 +6,38 @@ RemoteA2A and toolbox configuration are implemented in PowerShell; the hosted Su
 
 ## installer/Configure-JawsDelegationConnection.ps1
 
-[View complete JAWS source](https://github.com/The-John-Charitable-Trust/Jaws/blob/main/installer/Configure-JawsDelegationConnection.ps1) · Reviewed blob `2957e311caf3af710bf4b321c7926647e1c185a0`
+[View complete JAWS source](https://github.com/The-John-Charitable-Trust/Jaws/blob/main/installer/Configure-JawsDelegationConnection.ps1) · Reviewed blob `484831a52a4252e110bea9b0a7c3f960d4e1820d`
 
-**Source lines 18–43:**
+**Source lines 15–36:**
 
 ```powershell
-# Foundry rejects A2A operations on hosted agents (HOSTED_AGENT_NOT_SUPPORTED / -32099).
-# The prompt planner is the A2A target. Hosted Investigation v1 stays in place.
-$hostedTarget="$endpoint/agents/jaws-investigation-dev/endpoint/protocols/a2a"
-$target="$endpoint/agents/jaws-investigation-planner-dev/endpoint/protocols/a2a"
-$id="/subscriptions/$($state.SubscriptionId)/resourceGroups/$($state.ResourceGroupName)/providers/Microsoft.CognitiveServices/accounts/$foundry/projects/$project/connections/$name"
-# Correct PowerShell interpolation: a question mark immediately after a variable needs $().
-$url="https://management.azure.com/$($id.TrimStart('/'))?api-version=2025-04-01-preview"
-$payload=[ordered]@{
- name=$name
- properties=[ordered]@{
-  authType='AgenticIdentityToken'
-  group='ServicesAndApps'
-  category='RemoteA2A'
-  target=$target
-  isSharedToAll=$true
-  sharedUserList=@()
-  audience='https://ai.azure.com'
-  Credentials=[ordered]@{}
-  metadata=[ordered]@{ApiType='Azure'}
+if([string]$state.EnvironmentName -ceq 'dev'){
+ if($state.ResourceGroupName -cne 'rg-aiops-lab'){throw 'JAWS-DELEGATE-001: Unauthorized installation state.'}
+ $foundry='jaws-foundry-dev'; $project='jaws-dev'; $name='jaws-investigation-a2a-dev'
+ $hostedAgent='jaws-investigation-dev'; $plannerAgent='jaws-investigation-planner-dev'
+ $sharedToAll=$true
+ $planSuffix='dev'
+}else{
+ Import-Module (Join-Path $PSScriptRoot 'modules/StepCEnvironment.psm1') -Force
+ $connectionContext=Resolve-JawsStepCStepBContext -EnvironmentName ([string]$state.EnvironmentName) -InstallerRoot $PSScriptRoot
+ if($state.ResourceGroupName -cne $connectionContext.ResourceGroupName -or [string]$state.SubscriptionId -ine $connectionContext.SubscriptionId){
+  throw 'JAWS-DELEGATE-001: Installation state does not match the Step B receipt.'
  }
+ $foundry=$connectionContext.FoundryAccountName; $project=$connectionContext.ProjectName; $name=$connectionContext.ConnectionName
+ $hostedAgent="jaws-investigation-$($connectionContext.EnvironmentName)"; $plannerAgent=$connectionContext.PlannerAgent
+ $sharedToAll=$false
+ $planSuffix=$connectionContext.PlanSuffix
 }
-$json=ConvertTo-Json -InputObject $payload -Depth 12 -Compress
-$sha=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($json))).ToLowerInvariant()
-$dir=Join-Path $PSScriptRoot '.local'
-if(-not(Test-Path $dir)){ $null=New-Item -ItemType Directory -Path $dir -Force }
-$planFile=Join-Path $dir 'jaws-step-c-delegation-connection-plan.dev.generated.json'
+$endpoint="https://$foundry.services.ai.azure.com/api/projects/$project"
+# Foundry rejects A2A operations on hosted agents (HOSTED_AGENT_NOT_SUPPORTED / -32099).
+# The prompt planner is the A2A target. A hosted Investigation agent is not created for a Step B environment.
+$hostedTarget="$endpoint/agents/$hostedAgent/endpoint/protocols/a2a"
+$target="$endpoint/agents/$plannerAgent/endpoint/protocols/a2a"
 ```
 
-**Source lines 119–136:**
+**Source lines 136–151:**
 
 ```powershell
- throw 'JAWS-DELEGATE-004: Existing connection differs; refusing to overwrite.'
-}
 if($Mode -eq 'Install' -and $null -eq $current){
  if(-not $AcknowledgeA2AConnection -or $ApprovedPlanSha256 -cne $sha){
   throw 'JAWS-DELEGATE-005: Exact plan approval and acknowledgment required.'
@@ -56,7 +50,7 @@ if($Mode -eq 'Install' -and $null -eq $current){
  }finally{Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue}
 }
 Assert-Connection (Read-Connection)
-$receipt=Join-Path $dir 'jaws-step-c-delegation-connection-receipt.dev.generated.json'
+$receipt=Join-Path $dir "jaws-step-c-delegation-connection-receipt.$planSuffix.generated.json"
 [pscustomobject]@{Status='REMOTE_A2A_CONNECTION_VERIFIED';ResourceId=$id;Target=$target;AuthType='AgenticIdentityToken';PlanSha256=$sha;SupervisorDelegationVerified=$false;VerifiedAtUtc=[DateTime]::UtcNow.ToString('o')} |
  ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $receipt -Encoding utf8
 Write-Host "Verified RemoteA2A connection: $name; Receipt: $receipt"
@@ -64,9 +58,9 @@ Write-Host "Verified RemoteA2A connection: $name; Receipt: $receipt"
 
 ## installer/Configure-JawsDelegationToolbox.ps1
 
-[View complete JAWS source](https://github.com/The-John-Charitable-Trust/Jaws/blob/main/installer/Configure-JawsDelegationToolbox.ps1) · Reviewed blob `8b7e3aae3a8500bce52d4b51ea18dbd6249f6a89`
+[View complete JAWS source](https://github.com/The-John-Charitable-Trust/Jaws/blob/main/installer/Configure-JawsDelegationToolbox.ps1) · Reviewed blob `81a95337406e11ce14454214096575aaf07c5215`
 
-**Source lines 1–27:**
+**Source lines 1–47:**
 
 ```powershell
 # Step C: Foundry A2A v1.0 toolbox. No Supervisor modification.
@@ -74,13 +68,35 @@ Write-Host "Verified RemoteA2A connection: $name; Receipt: $receipt"
 param(
  [ValidateSet('Plan','Install','Verify')][string]$Mode='Plan',
  [string]$ApprovedPlanSha256,
- [switch]$AcknowledgeToolboxChargesAndAccess
+ [switch]$AcknowledgeToolboxChargesAndAccess,
+ [string]$EnvironmentName='dev',
+ [string]$ProjectEndpoint='https://jaws-foundry-dev.services.ai.azure.com/api/projects/jaws-dev',
+ [string]$ToolboxName='jaws-investigation-a2a-tools',
+ [string]$ConnectionName='jaws-investigation-a2a-dev',
+ [string]$PlannerAgent='jaws-investigation-planner-dev'
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
-$project='https://jaws-foundry-dev.services.ai.azure.com/api/projects/jaws-dev'
-$name='jaws-investigation-a2a-tools'
-$connName='jaws-investigation-a2a-dev'
+if($EnvironmentName -ceq 'dev'){
+ if($ProjectEndpoint -cne 'https://jaws-foundry-dev.services.ai.azure.com/api/projects/jaws-dev' -or
+    $ToolboxName -cne 'jaws-investigation-a2a-tools' -or
+    $ConnectionName -cne 'jaws-investigation-a2a-dev' -or
+    $PlannerAgent -cne 'jaws-investigation-planner-dev'){
+  throw 'JAWS-TOOLBOX-010: Unexpected toolbox scope.'
+ }
+ $planSuffix='dev'
+}else{
+ Import-Module (Join-Path $PSScriptRoot 'modules/StepCEnvironment.psm1') -Force
+ $toolboxContext=Resolve-JawsStepCStepBContext -EnvironmentName $EnvironmentName -InstallerRoot $PSScriptRoot
+ if($ProjectEndpoint -cne $toolboxContext.ProjectEndpoint -or $ToolboxName -cne $toolboxContext.ToolboxName -or
+    $ConnectionName -cne $toolboxContext.ConnectionName -or $PlannerAgent -cne $toolboxContext.PlannerAgent){
+  throw 'JAWS-TOOLBOX-010: Toolbox scope does not match the Step B installation.'
+ }
+ $planSuffix=$toolboxContext.PlanSuffix
+}
+$project=$ProjectEndpoint
+$name=$ToolboxName
+$connName=$ConnectionName
 $connectionUrl="$project/connections/$($connName)?api-version=v1"
 function Get-Api([string]$Url,[switch]$AllowNotFound) {
  $result=& az rest --method get --url $Url --resource https://ai.azure.com --output json --only-show-errors 2>&1
@@ -93,9 +109,7 @@ $conn=Get-Api -Url $connectionUrl
 if($null -eq $conn -or -not $conn.id -or $conn.name -cne $connName) {
  throw 'JAWS-TOOLBOX-002: Authenticated Investigation RemoteA2A project connection not verified.'
 }
-$target="https://jaws-foundry-dev.services.ai.azure.com/api/projects/jaws-dev/agents/jaws-investigation-planner-dev/endpoint/protocols/a2a"
-$directTarget=if($conn.PSObject.Properties['target']){[string]$conn.target}else{''}
-$nestedTarget=if($conn.PSObject.Properties['properties'] -and $conn.properties -and $conn.properties.PSObject.Properties['target']){[string]$conn.properties.target}else{''}
+$target="$project/agents/$PlannerAgent/endpoint/protocols/a2a"
 ```
 
 ## src/Jaws.Supervisor.Host/Program.cs

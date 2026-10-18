@@ -47,7 +47,8 @@
       "tests": "tests/installer/StepCInstall.Tests.ps1",
       "microsoftUrl": "https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/tools/agent-to-agent",
       "microsoftTitle": "Foundry agent-to-agent",
-      "evidence": "Closed DEV: Supervisor v5, planner v1, TASK_STATE_COMPLETED; hosted investigation runtime did not execute."
+      "acceptanceScope": "Existing DEV project only",
+      "evidence": "Closed DEV: Supervisor v5, planner v1, TASK_STATE_COMPLETED; hosted investigation runtime did not execute. Install-JawsThroughStepC.ps1 -EnvironmentName reads a Step B receipt and offline Pester covers that path. A fresh-subscription functional receipt has not been recorded, so the Step B path is not accepted."
     },
     {
       "id": "D",

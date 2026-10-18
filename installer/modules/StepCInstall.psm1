@@ -35,6 +35,35 @@ function Get-JawsStepCCorrection {
  return $null
 }
 
+function Get-JawsStepCFromStepBCorrection {
+ [CmdletBinding()]
+ param(
+  [Parameter(Mandatory)][string]$Gate,
+  [Parameter(Mandatory)][string]$ErrorMessage,
+  [Parameter(Mandatory)][ValidateSet('Validate','Install')][string]$Mode
+ )
+ if($Mode -ne 'Install'){ return $null }
+ switch($Gate){
+  'Planner' {
+   if($ErrorMessage -match 'JAWS-PLANNER-003'){ return 'CreatePlanner' }
+  }
+  'Connection' {
+   if($ErrorMessage -match 'JAWS-DELEGATE-003'){ return 'CreateConnection' }
+   if($ErrorMessage -match 'JAWS-DELEGATE-004: Connection still targets the hosted'){ return 'RetargetConnection' }
+  }
+  'Toolbox' {
+   if($ErrorMessage -match 'JAWS-TOOLBOX-007'){ return 'CreateToolbox' }
+  }
+  'Supervisor' {
+   if($ErrorMessage -match 'JAWS-INSTALL-C-005'){ return 'PublishSupervisorRoute' }
+  }
+  'Rbac' {
+   if($ErrorMessage -match 'JAWS-DELEGATE-RBAC-007'){ return 'AssignConsumerRole' }
+  }
+ }
+ return $null
+}
+
 function Get-JawsStepCInstallStatus {
  [CmdletBinding()]
  param(
@@ -48,4 +77,4 @@ function Get-JawsStepCInstallStatus {
  return 'VALIDATED'
 }
 
-Export-ModuleMember -Function Get-JawsErrorCode,Get-JawsStepCCorrection,Get-JawsStepCInstallStatus
+Export-ModuleMember -Function Get-JawsErrorCode,Get-JawsStepCCorrection,Get-JawsStepCFromStepBCorrection,Get-JawsStepCInstallStatus

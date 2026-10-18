@@ -1,6 +1,6 @@
 # Step C installation
 
-This is the operator path from a checked-out repository to a closed Step C on the dev project. It does not provision a new Foundry account, project, model, or vault. `installer/Install-Jaws.ps1` remains Discover, Plan, and Package. Greenfield `-Mode Install` is not part of this release.
+This is the operator path from a checked-out repository to Step C. The default command checks the accepted dev project. It does not provision a new Foundry account, project, model, or vault. `installer/Install-Jaws.ps1` 0.4.10 also has Discover, Plan, Preflight, Package, Install, and Accept. Step B Install creates that foundation and refuses `dev` and `rg-aiops-lab`. Step C for a foundation created by Step B is the same Step C entry point with `-EnvironmentName`. A fresh-subscription Step C acceptance receipt has not been recorded.
 
 The architecture the installer checks and repairs is:
 
@@ -58,7 +58,7 @@ The default expected image is Supervisor `sha256:86c556fff7f54eb8ad81c84bc768093
 
 ## Receipt
 
-`Status` is `VALIDATED`, `CLOSED`, or `BLOCKED`. `BLOCKED` includes `ErrorCode`, the failed gate, and the gates that already passed. Corrections are listed by name. `SupervisorV1Modified` and `SupervisorVersionPosted` are false for this installer. Run the same command again after fixing a blocked gate; completed gates pass without a second write.
+`Status` is `VALIDATED`, `CLOSED`, or `BLOCKED`. `BLOCKED` includes `ErrorCode`, the failed gate, and the gates that already passed. Corrections are listed by name. For the dev-project command, `SupervisorV1Modified` and `SupervisorVersionPosted` are false. Run the same command again after fixing a blocked gate; completed gates pass without a second write.
 
 ## Local evidence
 
@@ -68,8 +68,52 @@ Installer tests do not call Azure:
 Invoke-Pester .\tests\installer\ -Output Minimal
 ```
 
-The correction policy is covered by `tests/installer/StepCInstall.Tests.ps1`.
+The correction policy is covered by `tests/installer/StepCInstall.Tests.ps1`. Those tests include a CLI stand-in for a Step B environment. A stand-in result is not a live Azure receipt and does not accept a customer installation.
 
 ## Actual JAWS implementation source (C)
 
-The [Step C source-code walkthrough](source-code/STEP-C.md) includes **verbatim PowerShell, C# excerpts**, reviewed file paths, source line ranges, and direct links to the complete source in the JAWS repository. No illustrative or Microsoft sample implementation has been substituted, and no Python code is included because this stage has no verified JAWS Python implementation. The excerpts are reference material, not standalone executable scripts. For complete behavior, consult the linked source and the install/validation commands above.
+The [Step C source-code walkthrough](source-code/STEP-C.md) includes verbatim PowerShell and C# excerpts, reviewed file paths, source line ranges, and links to the complete source. No illustrative or Microsoft sample implementation has been substituted, and no Python code is included because this stage has no JAWS Python implementation. The excerpts are reference material, not standalone executable scripts.
+
+## Step C after Step B
+
+Run this only after Step B has written both of these files for the same environment name:
+
+- `installer/.local/jaws-step-b-install.<environment>.generated.json` with status `STEP_B_INSTALLED`
+- `installer/.local/jaws-installation-state.<environment>.generated.json`
+
+`<environment>` is the name passed to Step B. It is not `dev`. The command reads those files and the signed-in subscription. It does not read `jaws-foundry-dev`, project `jaws-dev`, or registry `jawsregistrydev001`. A receipt that names those resources stops with `JAWS-INSTALL-C-017` before any Azure call. A missing Step B receipt stops with `JAWS-INSTALL-C-016`.
+
+```powershell
+.\installer\Install-JawsThroughStepC.ps1 -Mode Validate -EnvironmentName your-environment
+```
+
+Validate is read-only. It discovers the Foundry account and Supervisor version 1 from the Step B receipt. Names come from that environment:
+
+| Resource | Name |
+| --- | --- |
+| Foundry account | `jaws-foundry-<environment>` |
+| Project | `jaws-<environment>` |
+| Supervisor | `jaws-supervisor-<environment>` |
+| Prompt planner | `jaws-investigation-planner-<environment>` |
+| RemoteA2A connection | `jaws-investigation-a2a-<environment>` |
+| Toolbox | `jaws-investigation-a2a-tools` |
+
+No hosted Investigation agent is created. Foundry returns `HOSTED_AGENT_NOT_SUPPORTED` for A2A calls against a hosted agent, so the connection target is the prompt planner. The Investigation A2A gate is `Skipped` for that reason.
+
+`-Mode Install` requires `-AcknowledgeStepCInstall`. Without that switch the command stops with `JAWS-INSTALL-C-001` before Azure. Install may create the planner, the RemoteA2A connection, and the first toolbox version, assign one Foundry Agent Consumer role, and post one new Supervisor version. Each of those actions uses the plan SHA written by the read that found the gap. The Supervisor post also requires the route plan SHA. Version 1 is not patched. If version 1 already has the Investigation toolbox variable, or its image is not the Step B digest, the run stops with `JAWS-INSTALL-C-018` and posts nothing.
+
+```powershell
+.\installer\Install-JawsThroughStepC.ps1 -Mode Install -EnvironmentName your-environment -AcknowledgeStepCInstall
+```
+
+The new Supervisor version uses the same image digest as Step B and adds `JAWS_INVESTIGATION_TOOLBOX_NAME`. On the dev project the routed digest must differ from version 1, because version 5 is a later build. A Step B environment has one published digest, so version 1 and the routed version share it. Version 1 stays active, keeps that digest, and does not receive the toolbox variable.
+
+The functional check spends model usage and writes no configuration:
+
+```powershell
+.\installer\Install-JawsThroughStepC.ps1 -Mode Validate -EnvironmentName your-environment -AcknowledgeInferenceCharges
+```
+
+A pass on a live project ends `CLOSED`, with Acceptance `Passed` and `TASK_STATE_COMPLETED` in the tool output. The report is `installer/.local/jaws-step-c-final-acceptance.<environment>.generated.json`. The response uses `store=false`. The receipt field `CustomerInstallationAccepted` stays false. Record a fresh-subscription run before treating Step C as accepted for that subscription. This repository does not contain that receipt.
+
+The receipt for either mode is `installer/.local/jaws-step-c-install.<environment>.generated.json`. `SupervisorV1Modified` is false unless a read shows that version 1 changed. `SupervisorVersionPosted` is true only for the run that posted the route.

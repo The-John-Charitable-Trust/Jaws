@@ -1,6 +1,14 @@
 # Step C delegated A2A installer boundaries
 
-The operator entry point is `installer/Install-JawsThroughStepC.ps1`. Validate is read-only. Install repairs only the known gaps in the runbook and then re-checks them. Supervisor v1 is not modified, and this installer does not post a Supervisor version. The RemoteA2A target is prompt agent `jaws-investigation-planner-dev`. Hosted `jaws-investigation-dev` stays in place and is not the A2A target: Foundry returns `HOSTED_AGENT_NOT_SUPPORTED` for A2A operations on a hosted agent. See `docs/installation/STEP-C-RUNBOOK.md`.
+The operator entry point is `installer/Install-JawsThroughStepC.ps1`. Validate is read-only. Install repairs only the known gaps in the runbook and then re-checks them. On the dev project, Supervisor v1 is not modified, and this installer does not post a Supervisor version. The RemoteA2A target is prompt agent `jaws-investigation-planner-dev`. Hosted `jaws-investigation-dev` stays in place and is not the A2A target: Foundry returns `HOSTED_AGENT_NOT_SUPPORTED` for A2A operations on a hosted agent. See `docs/installation/STEP-C-RUNBOOK.md`.
+
+## Step B environment
+
+`-EnvironmentName <environment>` reads the Step B receipt and generated state under `installer/.local`. It refuses `dev`, `rg-aiops-lab`, `jaws-foundry-dev`, `jaws-dev`, and `jawsregistrydev001`. The planner is `jaws-investigation-planner-<environment>`. The RemoteA2A connection is `jaws-investigation-a2a-<environment>` with `AgenticIdentityToken`, audience `https://ai.azure.com`, `isSharedToAll` false, and the planner A2A endpoint as its target. The toolbox name remains `jaws-investigation-a2a-tools` inside that project. No hosted Investigation agent is created.
+
+Install, with `-AcknowledgeStepCInstall`, may post one Supervisor version after version 1. That version uses the Step B image digest and sets `JAWS_INVESTIGATION_TOOLBOX_NAME`. Version 1 is read back and must still be the Step B digest without that variable. The dev project rule that the routed digest differs from version 1 stays on the default command, where the accepted route is Supervisor v5.
+
+A `CLOSED` result from this path is the functional check for that environment. It is a customer installation acceptance only after a live fresh-subscription run is recorded. Offline tests in `tests/installer/StepCInstall.Tests.ps1` do not supply that record.
 
 ## Microsoft-supported pattern
 

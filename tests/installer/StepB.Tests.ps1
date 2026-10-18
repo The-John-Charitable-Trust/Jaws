@@ -50,6 +50,8 @@ Describe 'Step B subscription capture and local package' {
         $installModule | Should -Match 'Get-JawsStepBAuthorizedWrites'
         $installModule | Should -Match 'acr build'
         $installModule | Should -Match 'linux/amd64'
+        $installModule | Should -Match '\$package\.DockerfilePath'
+        $installModule | Should -Not -Match "'--file','Dockerfile'"
         $installModule | Should -Not -Match 'docker tag'
         $installModule | Should -Not -Match 'docker push'
         $installModule | Should -Not -Match 'docker buildx'

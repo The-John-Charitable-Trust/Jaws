@@ -542,7 +542,7 @@ function Invoke-JawsStepBInstall {
             '--registry',[string]$Scope.RegistryName,
             '--subscription',$sub,
             '--image',$imageName,
-            '--file','Dockerfile',
+            '--file',$package.DockerfilePath,
             '--platform','linux/amd64',
             '--output','none',
             $package.BuildContext

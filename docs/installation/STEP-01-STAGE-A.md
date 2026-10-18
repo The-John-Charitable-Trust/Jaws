@@ -1,108 +1,75 @@
-# Step A — Azure Discovery and Reconciliation (First-Time Reader Guide)
+# Step A — Azure discovery for a new subscription
 
-> **Audience:** A new Azure administrator or developer who has never installed JAWS. **Step A is a read-only assessment, not JAWS deployment.** You may start with an empty Azure subscription. The current installer v0.4.6 has an additional *existing-installation reconciliation* function that needs a JAWS state file; **do not copy the developer's state into your subscription**.
+Step A is read-only. Installer 0.4.10 can start from an empty subscription. It checks the signed-in identity, inventories that subscription, and writes a discovery receipt. It does not create a resource group, a Foundry account, or a JAWS state file.
 
-## What Step A achieves
-
-Step A establishes your signed-in Azure identity and subscription scope, inventories visible Azure resources, identifies possible existing JAWS resources, and produces an audit-friendly baseline **without creating, updating, or deleting Azure resources**. A clean subscription is a valid starting point, not a test failure. Full JAWS provisioning is an additional installer deliverable and is **not implemented in the current primary installer**.
+An existing JAWS installation can still be reconciled with its own state file. Do not point that command at `installer/config/jaws-installation-state.dev.json` unless you are checking the accepted dev project.
 
 ## Prerequisites
 
-- An active Azure subscription and Microsoft Entra sign-in with at least resource read permission for the intended subscription/resource group. Without access, request a scoped Reader assignment from your Azure administrator. Readers can inspect resources but cannot deploy them.
-- Windows 11, PowerShell 7, Git and Azure CLI. Official downloads and version checks: [Quick Start](../status/quick-start.html).
-- Internet access for GitHub and Azure management endpoints. **Docker, WSL 2, .NET 10 and Pester 5 are developer/build/test requirements, not necessary to run read-only inventory.**
-- For an *existing* JAWS installation only: the matching, operator-owned state file recording subscription, resource group, Foundry resource, Foundry project, model deployment and Key Vault. Do not use the checked-in DEV state for a different subscription.
+- PowerShell 7 and Azure CLI.
+- An enabled subscription selected with `az account set`.
+- Reader on that subscription is enough for discovery. Install of Step B needs more, and preflight checks that later.
 
-## Four activities
-
-### 1. Clone JAWS from GitHub to your local computer
-
-Install Git and PowerShell 7 from the official links in the [Quick Start](../status/quick-start.html). In PowerShell 7:
+## A1. Discover an empty subscription
 
 ```powershell
-Set-Location "$HOME\Documents"
-git clone --branch feature/step-c-investigation-publishing https://github.com/The-John-Charitable-Trust/Jaws.git
+git clone --branch main https://github.com/The-John-Charitable-Trust/Jaws.git
 Set-Location .\Jaws
-git status
-Test-Path .\installer\Install-Jaws.ps1
-```
-
-**Expected result:** The repository downloads, Git shows the selected branch, and `Test-Path` returns `True`. If already cloned, check for uncommitted work before pulling updates.
-
-### 2. Authenticate and verify your Azure scope
-
-Open **PowerShell 7** in a terminal:
-
-```powershell
-az login  # on a machine without a browser, use: az login --use-device-code
-az account list --query "[].{Name:name,SubscriptionId:id,State:state}" --output table
+az login
 az account set --subscription "<your-subscription-id>"
-az account show --query "{name:name,id:id,tenantId:tenantId}" --output table
+.\installer\Install-Jaws.ps1 -Mode Discover -NonInteractive -EnvironmentName your-environment -ResourceGroupName rg-jaws-your-environment -Location eastus
+.\installer\Test-JawsStepA.ps1 -ReportPath .\installer\.local\jaws-step-a-discovery.your-environment.generated.json
 ```
 
-**Expected result:** Your intended subscription appears as Enabled and `az account show` identifies its tenant and subscription. If access is missing, contact the subscription administrator. These commands do **not** install JAWS.
+**Expected result.** `Install-Jaws.ps1` prints:
 
-### 3. Inspect subscriptions and resource inventory
+```text
+STEP-A DISCOVERY PASS
+Discovery: Greenfield
+Subscription source: AzureCli
+Resource groups: 0
+Resources: 0
+JAWS candidates: 0
+State file required: false
+State file written: false
+Azure writes: 0
+Prepared for Step B: true
+```
 
-Use the authorized Azure CLI session to list resource groups and (when permitted) resources in **your selected subscription**, even when it is empty.
+The resource and candidate counts match the subscription. Zero is valid. `Test-JawsStepA.ps1` prints the same discovery lines and then `Live Azure read: false`, because it scores the receipt and does not call Azure again.
+
+The receipt is `installer/.local/jaws-step-a-discovery.your-environment.generated.json`. Nothing is written under `installer/config/`. `installer/config/jaws-installation-state.dev.json` stays unchanged.
+
+`Prepared for Step B: true` means the environment name is one Step B will accept. It does not create the resource group. The receipt's next command is the Step B plan command. Resource group and location are recorded only when you pass them.
+
+## A2. Reconcile an existing installation
 
 ```powershell
-az group list --output table
-az resource list --output table
+.\installer\Install-Jaws.ps1 -Mode Discover -EnvironmentName dev
 ```
 
-**Expected result:** Azure returns the resources visible to your identity, possibly an empty list. Empty inventory is an acceptable Step A discovery finding. This is a manual Azure CLI verification, **not** a claim that the old JAWS state-first installer supports uninitialized customer state.
+Use your own state file with `-StateFile` for any installation other than the dev project. **Expected result:** tenant scan and target comparison, `Azure writes: 0`, and the state file unchanged. A path passed in `-StateFile` that does not exist stops at `JAWS-STATE-003`. Discover does not invent that file.
 
-### 4. Reconcile resources against installation state, if JAWS already exists
+## Failure recovery
 
-For an existing JAWS deployment with its **own verified state file**, run from the checked-out repository root:
+| Condition | Result |
+| --- | --- |
+| Azure CLI is not signed in | `JAWS-AUTH-001`. Run `az login` and `az account set`. No resources are created. |
+| `-SubscriptionId` does not match `az account show` | `JAWS-AUTH-007`. No resources are created. |
+| `-StateFile` points at a missing file | `JAWS-STATE-003`. No receipt and no new state file. |
+| Environment name `dev` with no dev state file | Discovery can still pass, with `Prepared for Step B: false`. |
+| Resource group `rg-aiops-lab` | `Prepared for Step B: false`. The dev project is not reused. |
 
-```powershell
-.\installer\Install-Jaws.ps1 -Mode Discover -EnvironmentName <environment-name> -StateFile "<path-to-your-installation-state.json>"
-```
+## What this does not accept
 
-**Expected result:** All enabled, accessible subscriptions in the selected tenant are scanned; matching Foundry resource, project, model deployment and Key Vault are queried. The console prints a tenant comparison and targeted resource status such as `Match` or drift. Model deployments may not appear in a broad candidate scan; targeted discovery is authoritative.
+Pester `tests/installer/StepA.Tests.ps1` exercises a stand-in Azure CLI. That is offline evidence. A fresh-subscription discovery receipt has not been archived, so greenfield Step A is not accepted. The previously accepted evidence is read-only reconciliation of the dev project.
 
-**For a new subscription without JAWS:** Skip the command above. In the current v0.4.6 installer, `Discover` requires an existing state file and will fail with `JAWS-STATE-003` if one is absent. This is a documented product gap, **not an instruction to create imaginary JAWS state or resources**. The future greenfield installer must generate state during approved provisioning.
+## Acceptance criteria
 
-### 5. Record reports and verify no configuration changes
-
-With an existing state file and successful installer reconciliation, inspect:
-
-- `installer/.local/jaws-tenant-scan.<environment>.generated.json`
-- `installer/.local/jaws-resources.<environment>.generated.json`
-- `installer/.local/jaws-state-comparison.<environment>.generated.json`
-
-**Expected result:** Reports are generated, the operator-managed state file is unchanged, and the terminal shows `Azure writes: 0`. For a clean subscription, record the subscription/tenant selection and the empty or observed Azure CLI inventory as the Step A **manual discovery baseline**; no JAWS comparison reports exist until a JAWS installation state exists.
-
-## Expected results for completion
-
-| Evidence | Empty customer subscription | Existing JAWS installation |
-|---|---|---|
-| Local repository cloned and installer present | Verified | Verified |
-| Identity and subscription | Authorized tenant/subscription confirmed | Confirmed |
-| Visible resource inventory | Listed, even when empty | Listed |
-| JAWS resource comparison | Not applicable until provisioning | Reported per resource |
-| Installation-state file | Not required and not fabricated | Preserved unchanged |
-| Azure configuration writes | **Zero** | **Zero** |
-| Outcome | **Manual discovery complete; greenfield installer gate remains open** | **Step A installer reconciliation complete when checks match** |
-
-## Step A acceptance criteria
-
-- **A-00 Local source:** Git clone, correct branch, and repository-root installer file verified.
-- **A-01 Authentication:** The selected Entra identity and target subscription are explicit; failures are actionable.
-- **A-02 Inventory:** All accessible selected-scope resources can be enumerated; empty inventory is valid; unreadable scope is identified rather than silently accepted.
-- **A-03 Reconciliation (existing installations):** The correct installation state is matched to subscription/resource group; expected resources are identified; identity/configuration drift is reported. A greenfield customer is **not** required to supply an existing JAWS state.
-- **A-04 Read-only guarantee:** No Azure configuration writes; existing gold-copy state remains unchanged.
-- **A-05 Evidence:** For existing installations the JAWS reports are produced; for a new empty subscription, manual discovery evidence is recorded until the greenfield installer can generate its own receipts.
-- **A-06 Release gate:** Do not label **greenfield Step A installer acceptance** as passed until the new installer can discover and initialize an empty subscription without pre-existing JAWS state and produce a testable installation baseline.
-
-**Acceptance decision:** Existing DEV reconciliation is previously accepted. First-time customer **greenfield automated** Step A is **not yet accepted** under installer v0.4.6.
-
-## References
-
-1. [Azure CLI sign-in](https://learn.microsoft.com/en-us/cli/azure/authenticate-azure-cli-interactively)
-2. [Azure RBAC overview](https://learn.microsoft.com/en-us/azure/role-based-access-control/overview)
-3. [Azure Resource Graph overview](https://learn.microsoft.com/en-us/azure/governance/resource-graph/overview)
-4. [Azure Resource Manager overview](https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/overview)
-5. [JAWS Quick Start](../status/quick-start.html) · [References and Acceptance](../status/references.html#step-A) · [Manual test cases](../verification/STEP-01-MANUAL-TESTS.md)
+- A-00: The clone is the `main` branch and `installer/Install-Jaws.ps1` is present.
+- A-01: The receipt names the signed-in subscription and tenant.
+- A-02: Resource groups and resources are counted. An empty subscription prints `Resource groups: 0` and `Resources: 0`.
+- A-03: An existing state file is reconciled. A new subscription does not need one.
+- A-04: `Azure writes: 0`, and no file is added under `installer/config/`.
+- A-05: The discovery receipt exists. The test script's `Live Azure read: false` line is not a second Azure read.
+- A-06: Greenfield Step A is not accepted until a real subscription prints `STEP-A DISCOVERY PASS`.

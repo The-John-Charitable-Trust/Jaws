@@ -1,7 +1,7 @@
-# JAWS Installer 0.4.9 - discovery, plan, local package, approved Step B install, and live acceptance
+# JAWS Installer 0.4.10 - greenfield discovery, plan, preflight, package, approved Step B install, and live acceptance
 [CmdletBinding()]
 param(
-    [ValidateSet('Discover','Plan','Package','Install','Accept')][string]$Mode='Discover',
+    [ValidateSet('Discover','Plan','Preflight','Package','Install','Accept')][string]$Mode='Discover',
     [string]$PlanFile,
     [switch]$AzureAware,
     [switch]$BuildContainer,
@@ -182,6 +182,36 @@ if ($Mode -eq 'Plan') {
     }
     return
 }
+if ($Mode -eq 'Preflight') {
+    if (-not $PSBoundParameters.ContainsKey('EnvironmentName') -or -not $PSBoundParameters.ContainsKey('ResourceGroupName') -or -not $PSBoundParameters.ContainsKey('Location')) {
+        throw 'JAWS-STEP-B-016: Preflight requires the same -EnvironmentName, -ResourceGroupName, and -Location used to create the plan.'
+    }
+    Import-Module (Join-Path $PSScriptRoot 'modules/StepBInstall.psm1') -Force
+    $planPath = Join-Path $PSScriptRoot ".local/jaws-stage-b-plan.$EnvironmentName.offline.generated.json"
+    if (-not (Test-Path -LiteralPath $planPath -PathType Leaf)) {
+        throw "JAWS-STEP-B-016: Approved plan not found at $planPath. Run -Mode Plan with the same environment, resource group, and location first."
+    }
+    $saved = Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json
+    if (-not $saved.PSObject.Properties['InstallScope']) {
+        throw 'JAWS-STEP-B-016: The saved plan has no install scope. Re-run Plan with -EnvironmentName, -ResourceGroupName, and -Location.'
+    }
+    $checked = Invoke-JawsStepBPreflight -Scope $saved.InstallScope -InstallerRoot $PSScriptRoot
+    if (-not $checked.Ready) {
+        throw "JAWS-STEP-B-026: Step B preflight is not ready. No Azure writes were attempted. $($checked.Report.Reasons -join ' ')"
+    }
+    Write-Host 'STEP-B PREFLIGHT PASS'
+    Write-Host 'Azure writes: 0'
+    Write-Host "Plan SHA-256: $($checked.Report.PlanSha256)"
+    Write-Host 'Providers: Registered'
+    Write-Host "Resource write: $($checked.Report.ResourceWrite.ToString().ToLowerInvariant())"
+    Write-Host "Role assignment: $($checked.Report.RoleAssignment.ToString().ToLowerInvariant())"
+    Write-Host "Location: $($checked.Report.Location)"
+    Write-Host 'Model quota: deferred'
+    Write-Host 'Policy simulation: not performed'
+    Write-Host 'Authorized writes: bounded'
+    Write-Host "Report: $($checked.ReportPath)"
+    return
+}
 if ($Mode -eq 'Install') {
     if (-not $PSBoundParameters.ContainsKey('EnvironmentName') -or -not $PSBoundParameters.ContainsKey('ResourceGroupName') -or -not $PSBoundParameters.ContainsKey('Location')) {
         throw 'JAWS-STEP-B-016: Install requires the same -EnvironmentName, -ResourceGroupName, and -Location used to create the plan.'
@@ -242,15 +272,40 @@ Import-Module (Join-Path $PSScriptRoot 'modules/ResourceManifest.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'modules/InstallationState.psm1') -Force
 
 # The operator-maintained state is the GOLD COPY. Never overwrite it in Discover.
+Import-Module (Join-Path $PSScriptRoot 'modules/StepADiscovery.psm1') -Force
+$stateFileWasExplicit = $PSBoundParameters.ContainsKey('StateFile')
 if (-not $StateFile) { $StateFile=Join-Path $PSScriptRoot "config/jaws-installation-state.$EnvironmentName.json" }
+if ($stateFileWasExplicit -and -not (Test-Path -LiteralPath $StateFile -PathType Leaf)) {
+    throw "JAWS-STATE-003: No installation state at '$StateFile'. Discover does not create a JAWS state file."
+}
+if (-not (Test-Path -LiteralPath $StateFile -PathType Leaf)) {
+    $discovered = Invoke-JawsStepAGreenfieldDiscovery -EnvironmentName $EnvironmentName -SubscriptionId $SubscriptionId -ResourceGroupName $(if ($PSBoundParameters.ContainsKey('ResourceGroupName')) { $ResourceGroupName } else { '' }) -Location $(if ($PSBoundParameters.ContainsKey('Location')) { $Location } else { '' }) -InstallerRoot $PSScriptRoot -NonInteractive:$NonInteractive
+    $found = $discovered.Receipt
+    Write-Host 'STEP-A DISCOVERY PASS'
+    Write-Host 'Discovery: Greenfield'
+    Write-Host "Subscription source: $($found.SubscriptionSource)"
+    Write-Host "Subscription: $($found.SubscriptionId)"
+    Write-Host "Tenant: $($found.TenantId)"
+    Write-Host "Resource groups: $($found.ResourceGroupCount)"
+    Write-Host "Resources: $($found.ResourceCount)"
+    Write-Host "JAWS candidates: $($found.CandidateCount)"
+    Write-Host 'State file required: false'
+    Write-Host 'State file written: false'
+    Write-Host 'Azure writes: 0'
+    Write-Host "Prepared for Step B: $($found.PreparedForStepB.ToString().ToLowerInvariant())"
+    if ($found.PreparedForStepBReason) { Write-Host "Prepared for Step B reason: $($found.PreparedForStepBReason)" }
+    Write-Host "Next command: $($found.NextCommand)"
+    Write-Host "Receipt: $($discovered.ReceiptPath)"
+    return
+}
 $state=Read-JawsInstallationState -Path $StateFile
-if (-not $state) { throw "JAWS-STATE-003: No installation state at '$StateFile'. A new installation requires Stage B Install mode; Discover cannot invent an installation state." }
+if (-not $state) { throw "JAWS-STATE-003: Installation state at '$StateFile' could not be read. Discover does not replace it." }
 if ($state.EnvironmentName -ine $EnvironmentName) { throw 'JAWS-STATE-002: Environment name does not match the JAWS state.' }
 if ($SubscriptionId -and $SubscriptionId -ine $state.SubscriptionId) { throw 'JAWS-STATE-002: Subscription differs from the authoritative state.' }
 if ($ResourceGroupName -and $ResourceGroupName -ine $state.ResourceGroupName) { throw 'JAWS-STATE-002: Resource group differs from the authoritative state.' }
 $SubscriptionId=[string]$state.SubscriptionId
 $ResourceGroupName=[string]$state.ResourceGroupName
-Write-Host "JAWS Installer v0.4.9 | $Mode | State-first verification" -ForegroundColor Cyan
+Write-Host "JAWS Installer v0.4.10 | $Mode | State-first verification" -ForegroundColor Cyan
 Write-Host "Authoritative state: $StateFile"
 Write-Host "Target: $SubscriptionId | $ResourceGroupName"
 $context=Get-JawsAuthorizedSubscriptions -NonInteractive:$NonInteractive

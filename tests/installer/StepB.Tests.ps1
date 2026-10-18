@@ -34,7 +34,9 @@ Describe 'Step B subscription capture and local package' {
         $plan | Should -Match 'Subscription source:'
         $plan | Should -Match 'STEP-B PLAN PASS'
         $plan | Should -Match 'JAWS-PLAN-012'
-        $entry | Should -Match "ValidateSet\('Discover','Plan','Package','Install','Accept'\)"
+        $entry | Should -Match "ValidateSet\('Discover','Plan','Preflight','Package','Install','Accept'\)"
+        $entry | Should -Match 'STEP-A DISCOVERY PASS'
+        $entry | Should -Match 'STEP-B PREFLIGHT PASS'
         $entry | Should -Match 'STEP-B ACCEPTANCE PASS'
         $entry | Should -Match 'Live Azure read: true'
         $entry | Should -Match 'AcknowledgeStepBInstall'
@@ -44,6 +46,9 @@ Describe 'Step B subscription capture and local package' {
         $installModule | Should -Match 'JAWS-STEP-B-024'
         $installModule | Should -Match 'list-models'
         $installModule | Should -Match 'PrincipalNotFound'
+        $installModule | Should -Match 'JAWS-STEP-B-026'
+        $installModule | Should -Match 'Get-JawsStepBAuthorizedWrites'
+        $installModule | Should -Match 'PolicySimulation'
     }
 
     It 'finds the Supervisor host and scores a local package without a registry push' {

@@ -256,6 +256,171 @@ function Get-JawsStepBRegistryDigest {
     return $Matches[0]
 }
 
+function Get-JawsStepBAuthorizedWrites {
+    @(
+        [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.Resources/resourceGroups'; BoundTo = 'The approved resource group and location only.' },
+        [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.CognitiveServices/accounts'; BoundTo = 'AIServices S0. Custom domain equals the account name.' },
+        [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.CognitiveServices/accounts/projects'; BoundTo = 'System-assigned project identity only.' },
+        [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.CognitiveServices/accounts/deployments'; BoundTo = 'The approved OpenAI model name and version, GlobalStandard, capacity 1. The plan is not changed if that model is absent.' },
+        [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.KeyVault/vaults'; BoundTo = 'RBAC authorization and purge protection.' },
+        [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.ContainerRegistry/registries'; BoundTo = 'Basic SKU, admin disabled, public network enabled.' },
+        [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.Authorization/roleAssignments'; BoundTo = 'AcrPull for this project identity on this registry only.' },
+        [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Foundry hosted agent version'; BoundTo = 'Supervisor version 1, cpu 1, memory 2Gi, image pinned to the registry digest.' }
+    )
+}
+
+function Test-JawsStepBNameAvailable {
+    param($Response)
+    if ($null -eq $Response) { return $false }
+    $value = Get-JawsStepBProperty -Object $Response -Names @('nameAvailable')
+    return ($value -eq $true)
+}
+
+function Invoke-JawsStepBPreflight {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]$Scope,
+        [Parameter(Mandatory)][string]$InstallerRoot
+    )
+    $devState = Join-Path $InstallerRoot 'config/jaws-installation-state.dev.json'
+    $devBefore = Get-Content -LiteralPath $devState -Raw
+    $reasons = [System.Collections.Generic.List[string]]::new()
+    $account = Invoke-JawsStepBAz -Arguments @('account','show','--output','json','--only-show-errors')
+    if ([string]$account.id -ine [string]$Scope.SubscriptionId) {
+        $reasons.Add('JAWS-STEP-B-019: Azure CLI subscription differs from the approved plan. Run az account set.')
+    }
+    $sub = [string]$Scope.SubscriptionId
+    $rg = [string]$Scope.ResourceGroupName
+    $user = [string](Get-JawsStepBProperty -Object $account -Names @('user','name'))
+    if ([string]::IsNullOrWhiteSpace($user)) { $reasons.Add('The signed-in account has no user name, so role assignments cannot be checked.') }
+    foreach ($namespace in @('Microsoft.CognitiveServices','Microsoft.KeyVault','Microsoft.ContainerRegistry')) {
+        try {
+            $provider = Invoke-JawsStepBAz -Arguments @('provider','show','--namespace',$namespace,'--subscription',$sub,'--output','json','--only-show-errors')
+            if ([string]$provider.registrationState -ne 'Registered') {
+                $reasons.Add("$namespace registration is '$([string]$provider.registrationState)'. Run az provider register --namespace $namespace --subscription $sub and wait until it is Registered. Preflight does not register providers.")
+            }
+        } catch {
+            $reasons.Add("Could not read provider ${namespace}. $($_.Exception.Message)")
+        }
+    }
+    $locations = @()
+    try {
+        $locations = @(Invoke-JawsStepBAz -Arguments @('account','list-locations','--subscription',$sub,'--output','json','--only-show-errors'))
+    } catch {
+        $reasons.Add("Could not list subscription locations. $($_.Exception.Message)")
+    }
+    $locationOk = @($locations | Where-Object { $_ -and [string]$_.name -eq [string]$Scope.Location }).Count -eq 1
+    if (-not $locationOk) { $reasons.Add("Location '$([string]$Scope.Location)' is not enabled for this subscription.") }
+    $canWrite = $false
+    $canAssign = $false
+    if (-not [string]::IsNullOrWhiteSpace($user)) {
+        try {
+            $assignments = @(Invoke-JawsStepBAz -Arguments @('role','assignment','list','--assignee',$user,'--scope',"/subscriptions/$sub",'--include-inherited','--output','json','--only-show-errors'))
+            foreach ($item in $assignments) {
+                if ($null -eq $item) { continue }
+                $role = [string]$item.roleDefinitionName
+                if ($role -in @('Owner','Contributor')) { $canWrite = $true }
+                if ($role -in @('Owner','User Access Administrator','Role Based Access Control Administrator')) { $canAssign = $true }
+            }
+        } catch {
+            $reasons.Add("Could not read role assignments for $user. $($_.Exception.Message)")
+        }
+    }
+    if (-not $canWrite) { $reasons.Add('No Owner or Contributor assignment was found at this subscription. Install cannot create the resource group or foundation.') }
+    if (-not $canAssign) { $reasons.Add('No Owner, User Access Administrator, or Role Based Access Control Administrator assignment was found. Contributor can create resources and still cannot assign AcrPull.') }
+    $group = Invoke-JawsStepBAz -AllowMissing -Arguments @('group','show','--subscription',$sub,'--name',$rg,'--output','json','--only-show-errors')
+    if ($null -ne $group -and [string]$group.location -ine [string]$Scope.Location) {
+        $reasons.Add("Resource group $rg already exists in '$([string]$group.location)'.")
+    }
+    $local = Join-Path $InstallerRoot '.local'
+    if (-not (Test-Path -LiteralPath $local)) { New-Item -ItemType Directory -Path $local | Out-Null }
+    $foundry = Invoke-JawsStepBAz -AllowMissing -Arguments @('cognitiveservices','account','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.FoundryAccountName,'--output','json','--only-show-errors')
+    if ($null -eq $foundry) {
+        $bodyFile = Join-Path $local "jaws-step-b-name.$($Scope.EnvironmentName).json"
+        @{ subdomainName = [string]$Scope.FoundryAccountName; type = 'Microsoft.CognitiveServices/accounts'; kind = 'AIServices' } | ConvertTo-Json -Compress | Set-Content -LiteralPath $bodyFile -Encoding ascii
+        try {
+            $check = Invoke-JawsStepBAz -Arguments @('rest','--method','POST','--url',"https://management.azure.com/subscriptions/$sub/providers/Microsoft.CognitiveServices/checkDomainAvailability?api-version=2024-10-01",'--body',"@$bodyFile",'--output','json','--only-show-errors')
+            $domainOk = (Get-JawsStepBProperty -Object $check -Names @('isSubdomainAvailable')) -eq $true
+            if (-not $domainOk) { $reasons.Add("Foundry custom domain '$($Scope.FoundryAccountName)' is not available.") }
+        } catch {
+            $reasons.Add("Could not check Foundry custom domain availability. $($_.Exception.Message)")
+        }
+        $skuFile = Join-Path $local "jaws-step-b-sku.$($Scope.EnvironmentName).json"
+        @{ kind = 'AIServices'; skus = @('S0'); type = 'Microsoft.CognitiveServices/accounts' } | ConvertTo-Json -Compress | Set-Content -LiteralPath $skuFile -Encoding ascii
+        try {
+            $sku = Invoke-JawsStepBAz -Arguments @('rest','--method','POST','--url',"https://management.azure.com/subscriptions/$sub/providers/Microsoft.CognitiveServices/locations/$([string]$Scope.Location)/checkSkuAvailability?api-version=2024-10-01",'--body',"@$skuFile",'--output','json','--only-show-errors')
+            $skuValues = @()
+            if ($sku -and $sku.PSObject.Properties['value']) { $skuValues = @($sku.value) } else { $skuValues = @($sku) }
+            $s0 = @($skuValues | Where-Object { $_ -and ([string]$_.skuName -eq 'S0') -and ($_.skuAvailable -eq $true) })
+            if ($s0.Count -lt 1) { $reasons.Add("AIServices S0 is not available in $([string]$Scope.Location).") }
+        } catch {
+            $reasons.Add("Could not check AIServices S0 availability. $($_.Exception.Message)")
+        }
+    } elseif (-not (Test-JawsStepBOwned -Resource $foundry -EnvironmentName $Scope.EnvironmentName)) {
+        $reasons.Add('Foundry account already exists and is not owned by this installer.')
+    }
+    $vault = Invoke-JawsStepBAz -AllowMissing -Arguments @('keyvault','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.KeyVaultName,'--output','json','--only-show-errors')
+    if ($null -eq $vault) {
+        $bodyFile = Join-Path $local "jaws-step-b-vault-name.$($Scope.EnvironmentName).json"
+        @{ name = [string]$Scope.KeyVaultName; type = 'Microsoft.KeyVault/vaults' } | ConvertTo-Json -Compress | Set-Content -LiteralPath $bodyFile -Encoding ascii
+        try {
+            $check = Invoke-JawsStepBAz -Arguments @('rest','--method','POST','--url',"https://management.azure.com/subscriptions/$sub/providers/Microsoft.KeyVault/checkNameAvailability?api-version=2022-07-01",'--body',"@$bodyFile",'--output','json','--only-show-errors')
+            if (-not (Test-JawsStepBNameAvailable $check)) { $reasons.Add("Key Vault name '$($Scope.KeyVaultName)' is not available.") }
+        } catch {
+            $reasons.Add("Could not check Key Vault name availability. $($_.Exception.Message)")
+        }
+    } elseif (-not (Test-JawsStepBOwned -Resource $vault -EnvironmentName $Scope.EnvironmentName)) {
+        $reasons.Add('Key Vault already exists and is not owned by this installer.')
+    }
+    $registry = Invoke-JawsStepBAz -AllowMissing -Arguments @('acr','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.RegistryName,'--output','json','--only-show-errors')
+    if ($null -eq $registry) {
+        try {
+            $check = Invoke-JawsStepBAz -Arguments @('acr','check-name','--name',[string]$Scope.RegistryName,'--output','json','--only-show-errors')
+            if (-not (Test-JawsStepBNameAvailable $check)) { $reasons.Add("Registry name '$($Scope.RegistryName)' is not available.") }
+        } catch {
+            $reasons.Add("Could not check registry name availability. $($_.Exception.Message)")
+        }
+    } elseif (-not (Test-JawsStepBOwned -Resource $registry -EnvironmentName $Scope.EnvironmentName) -or $registry.adminUserEnabled -ne $false) {
+        $reasons.Add('Registry already exists and is not an installer-owned registry with admin disabled.')
+    }
+    $policyCount = $null
+    $policyNote = $null
+    try {
+        $policies = @(Invoke-JawsStepBAz -Arguments @('policy','assignment','list','--scope',"/subscriptions/$sub",'--disable-scope-strict-match','--output','json','--only-show-errors'))
+        $policyCount = @($policies | Where-Object { $null -ne $_ -and $_.PSObject.Properties['name'] }).Count
+    } catch {
+        $policyNote = $_.Exception.Message
+    }
+    $ready = $reasons.Count -eq 0
+    $report = [pscustomobject]@{
+        SchemaVersion = '1.0'
+        Status = $(if ($ready) { 'READY_FOR_BOUNDED_WRITES' } else { 'NOT_READY' })
+        PlanSha256 = [string]$Scope.PlanSha256
+        SubscriptionId = $sub
+        ResourceGroupName = $rg
+        Location = [string]$Scope.Location
+        EnvironmentName = [string]$Scope.EnvironmentName
+        AzureWrites = 0
+        ResourceWrite = [bool]$canWrite
+        RoleAssignment = [bool]$canAssign
+        LocationAccepted = [bool]$locationOk
+        ModelQuota = 'DeferredUntilFoundryAccountExists'
+        ModelBound = "$($Scope.ModelName) $($Scope.ModelVersion) OpenAI GlobalStandard capacity 1"
+        PolicySimulation = 'NotPerformed'
+        PolicyAssignmentCount = $policyCount
+        PolicyReadError = $policyNote
+        AuthorizedWrites = @(Get-JawsStepBAuthorizedWrites)
+        Reasons = @($reasons)
+        AuthorizationScope = 'The plan SHA-256 binds the resource names, subscription, and model. This report binds the read-only permission and provider checks. Neither one authorizes an unbounded mutation or an unbounded cost. Model quota is checked again after the Foundry account exists and before the deployment is created. Azure Policy deny effects are not simulated.'
+    }
+    $reportPath = Join-Path $local "jaws-step-b-preflight.$($Scope.EnvironmentName).generated.json"
+    $report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $reportPath -Encoding utf8
+    if ((Get-Content -LiteralPath $devState -Raw) -ne $devBefore) {
+        throw 'JAWS-STEP-B-022: Step B preflight changed the dev installation state.'
+    }
+    return [pscustomobject]@{ Report = $report; ReportPath = $reportPath; Ready = $ready }
+}
+
 function Invoke-JawsStepBInstall {
     [CmdletBinding()]
     param(
@@ -275,6 +440,10 @@ function Invoke-JawsStepBInstall {
     $devBefore = Get-Content -LiteralPath $devState -Raw
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw 'JAWS-PACKAGE-005: Docker is required before Step B install creates resources.' }
     if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) { throw 'JAWS-PACKAGE-003: .NET SDK not found. Install .NET 10 before Step B install.' }
+    $preflight = Invoke-JawsStepBPreflight -Scope $Scope -InstallerRoot $InstallerRoot
+    if (-not $preflight.Ready) {
+        throw "JAWS-STEP-B-026: Step B preflight is not ready. No Azure writes were attempted. $($preflight.Report.Reasons -join ' ')"
+    }
     $account = Invoke-JawsStepBAz -Arguments @('account','show','--output','json','--only-show-errors')
     if ([string]$account.id -ine [string]$Scope.SubscriptionId) {
         throw 'JAWS-STEP-B-019: Azure CLI subscription differs from the approved plan. Run az account set. No resources were created.'
@@ -417,7 +586,7 @@ function Invoke-JawsStepBInstall {
     $state = [pscustomobject]@{
         SchemaVersion = '1.1'
         Platform = 'JAWS'
-        InstallerVersion = '0.4.9'
+        InstallerVersion = '0.4.10'
         EnvironmentName = [string]$Scope.EnvironmentName
         SubscriptionId = $sub
         ResourceGroupName = $rg
@@ -591,4 +760,4 @@ function Invoke-JawsStepBAccept {
     return [pscustomobject]@{ Report = $report; ReportPath = $reportPath }
 }
 
-Export-ModuleMember -Function New-JawsStepBInstallScope,Get-JawsStepBScopeSha256,Invoke-JawsStepBInstall,Invoke-JawsStepBAccept
+Export-ModuleMember -Function New-JawsStepBInstallScope,Get-JawsStepBScopeSha256,Get-JawsStepBAuthorizedWrites,Invoke-JawsStepBPreflight,Invoke-JawsStepBInstall,Invoke-JawsStepBAccept

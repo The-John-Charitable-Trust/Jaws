@@ -21,6 +21,8 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
+$jawsMilestoneStarted = Get-Date
+Import-Module (Join-Path $PSScriptRoot 'modules/MilestoneResult.psm1') -Force
 # Package is an explicitly local build. It has no Azure login, push or deployment path.
 if ($Mode -eq 'Package') {
     if ($AzureAware -or $SupervisorImage -or $RegistryName -or $PlanFile -or $StateFile) {
@@ -59,6 +61,7 @@ if ($Mode -eq 'Package') {
     if ($packageReport.ContainerBuilt) { Write-Host "Container tag: $($packageReport.ContainerTag)" }
     Write-Host "Output: $($packageReport.OutputPath)"
     Write-Host "Report: $packageReportPath"
+    Write-JawsMilestoneResult -Result PASS -ReadyForNextStep $false -NextStep 'Step B Plan' -EvidencePath $packageReportPath
     return
 }
 if ($BuildContainer) { throw 'JAWS-PACKAGE-008: -BuildContainer applies only to -Mode Package.' }
@@ -179,6 +182,7 @@ if ($Mode -eq 'Plan') {
             Write-Host "Agent: $($planResult.InstallScope.AgentName)"
             Write-Host 'Install authorized: false'
         }
+        Write-JawsMilestoneResult -Result PASS -ReadyForNextStep $true -NextStep 'Step B Preflight' -EvidencePath $outputPath
     }
     return
 }
@@ -197,6 +201,7 @@ if ($Mode -eq 'Preflight') {
     }
     $checked = Invoke-JawsStepBPreflight -Scope $saved.InstallScope -InstallerRoot $PSScriptRoot
     if (-not $checked.Ready) {
+        Write-JawsMilestoneResult -Result FAIL -ReadyForNextStep $false -NextStep 'Step B Install' -EvidencePath $checked.ReportPath
         throw "JAWS-STEP-B-026: Step B preflight is not ready. No Azure writes were attempted. $($checked.Report.Reasons -join ' ')"
     }
     Write-Host 'STEP-B PREFLIGHT PASS'
@@ -210,6 +215,7 @@ if ($Mode -eq 'Preflight') {
     Write-Host 'Policy simulation: not performed'
     Write-Host 'Authorized writes: bounded'
     Write-Host "Report: $($checked.ReportPath)"
+    Write-JawsMilestoneResult -Result PASS -ReadyForNextStep $true -NextStep 'Step B Install' -EvidencePath $checked.ReportPath
     return
 }
 if ($Mode -eq 'Install') {
@@ -225,7 +231,14 @@ if ($Mode -eq 'Install') {
     if (-not $saved.PSObject.Properties['InstallScope']) {
         throw 'JAWS-STEP-B-016: The saved plan has no install scope. Re-run Plan with -EnvironmentName, -ResourceGroupName, and -Location.'
     }
-    $installed = Invoke-JawsStepBInstall -Scope $saved.InstallScope -ApprovedPlanSha256 $ApprovedPlanSha256 -InstallerRoot $PSScriptRoot -AcknowledgeStepBInstall:$AcknowledgeStepBInstall
+    $installEvidence = Join-Path $PSScriptRoot ".local/jaws-step-b-install.$EnvironmentName.generated.json"
+    try {
+        $installed = Invoke-JawsStepBInstall -Scope $saved.InstallScope -ApprovedPlanSha256 $ApprovedPlanSha256 -InstallerRoot $PSScriptRoot -AcknowledgeStepBInstall:$AcknowledgeStepBInstall
+    } catch {
+        Save-JawsMilestoneFailure -Path $installEvidence -Message $_.Exception.Message -Started $jawsMilestoneStarted
+        Write-JawsMilestoneResult -Result FAIL -ReadyForNextStep $false -NextStep 'Step B Accept' -EvidencePath $installEvidence
+        throw
+    }
     $done = $installed.Receipt
     Write-Host 'STEP-B INSTALL PASS'
     Write-Host "Foundry account: $($done.FoundryAccountName)"
@@ -239,6 +252,7 @@ if ($Mode -eq 'Install') {
     Write-Host "Azure writes: $($done.AzureWrites)"
     Write-Host "State: $($installed.StatePath)"
     Write-Host "Receipt: $($installed.ReceiptPath)"
+    Write-JawsMilestoneResult -Result PASS -ReadyForNextStep $true -NextStep 'Step B Accept' -EvidencePath $installed.ReceiptPath
     return
 }
 if ($Mode -eq 'Accept') {
@@ -246,7 +260,14 @@ if ($Mode -eq 'Accept') {
         throw 'JAWS-STEP-B-016: Accept requires the same -EnvironmentName, -ResourceGroupName, and -Location used to install.'
     }
     Import-Module (Join-Path $PSScriptRoot 'modules/StepBInstall.psm1') -Force
-    $accepted = Invoke-JawsStepBAccept -EnvironmentName $EnvironmentName -ResourceGroupName $ResourceGroupName -Location $Location -ModelName $ModelName -ModelVersion $ModelVersion -InstallerRoot $PSScriptRoot
+    $acceptEvidence = Join-Path $PSScriptRoot ".local/jaws-step-b-acceptance.$EnvironmentName.generated.json"
+    try {
+        $accepted = Invoke-JawsStepBAccept -EnvironmentName $EnvironmentName -ResourceGroupName $ResourceGroupName -Location $Location -ModelName $ModelName -ModelVersion $ModelVersion -InstallerRoot $PSScriptRoot
+    } catch {
+        Save-JawsMilestoneFailure -Path $acceptEvidence -Message $_.Exception.Message -Started $jawsMilestoneStarted
+        Write-JawsMilestoneResult -Result FAIL -ReadyForNextStep $false -NextStep 'Step C Validate' -EvidencePath $acceptEvidence
+        throw
+    }
     $live = $accepted.Report
     Write-Host 'STEP-B ACCEPTANCE PASS'
     Write-Host 'Live Azure read: true'
@@ -264,6 +285,7 @@ if ($Mode -eq 'Accept') {
     Write-Host 'Agent status: active'
     Write-Host 'Dev state: unchanged'
     Write-Host "Receipt: $($live.ReceiptPath)"
+    Write-JawsMilestoneResult -Result PASS -ReadyForNextStep $true -NextStep 'Step C Validate' -EvidencePath $accepted.ReportPath
     return
 }
 Import-Module (Join-Path $PSScriptRoot 'modules/AzurePreflight.psm1') -Force
@@ -296,6 +318,7 @@ if (-not (Test-Path -LiteralPath $StateFile -PathType Leaf)) {
     if ($found.PreparedForStepBReason) { Write-Host "Prepared for Step B reason: $($found.PreparedForStepBReason)" }
     Write-Host "Next command: $($found.NextCommand)"
     Write-Host "Receipt: $($discovered.ReceiptPath)"
+    Write-JawsMilestoneResult -Result PASS -ReadyForNextStep ([bool]$found.PreparedForStepB) -NextStep 'Step B Plan' -EvidencePath $discovered.ReceiptPath
     return
 }
 $state=Read-JawsInstallationState -Path $StateFile
@@ -358,3 +381,6 @@ Write-Host "Manifest: $manifestPath"
 Write-Host "Comparison report: $reportPath"
 Write-Host 'JAWS golden state JSON: unchanged (Discover mode).' -ForegroundColor Green
 Write-Host 'Azure writes: 0'
+$readyForStepB = ($EnvironmentName -ne 'dev' -and $ResourceGroupName -ne 'rg-aiops-lab')
+Write-Host 'STEP-A DISCOVERY PASS'
+Write-JawsMilestoneResult -Result PASS -ReadyForNextStep $readyForStepB -NextStep 'Step B Plan' -EvidencePath $reportPath

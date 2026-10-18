@@ -50,6 +50,8 @@ if ($Mode -eq 'Plan') {
     Write-Host 'Can execute: false'
     Write-Host 'Azure writes: 0'
     Write-Host 'Example blueprint: unchanged'
+    Import-Module (Join-Path $installerRoot 'modules/MilestoneResult.psm1') -Force
+    Write-JawsMilestoneResult -Result PASS -ReadyForNextStep $true -NextStep 'Step B Preflight' -EvidencePath $ReportPath
     return
 }
 
@@ -80,6 +82,8 @@ if ($Mode -eq 'Install') {
     Write-Host 'Agent status: active'
     Write-Host "Azure writes: $($receipt.AzureWrites)"
     Write-Host 'Live Azure read: false'
+    Import-Module (Join-Path $installerRoot 'modules/MilestoneResult.psm1') -Force
+    Write-JawsMilestoneResult -Result PASS -ReadyForNextStep $true -NextStep 'Step B Accept' -EvidencePath $ReportPath
     return
 }
 
@@ -130,3 +134,5 @@ Write-Host 'Foundry deployment: false'
 Write-Host ("Container built: " + $(if ($package.ContainerBuilt) {'true'} else {'false'}))
 if ($package.ContainerBuilt) { Write-Host "Container tag: jaws-supervisor:local" }
 Write-Host "Output: $outputPath"
+Import-Module (Join-Path $installerRoot 'modules/MilestoneResult.psm1') -Force
+Write-JawsMilestoneResult -Result PASS -ReadyForNextStep $false -NextStep 'Step B Plan' -EvidencePath $ReportPath

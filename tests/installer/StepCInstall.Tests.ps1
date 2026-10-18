@@ -394,6 +394,10 @@ Describe 'Step C from a Step B environment' {
         $output = & (Join-Path $script:root 'installer/Install-JawsThroughStepC.ps1') -Mode Install -EnvironmentName 'lab1' -AcknowledgeStepCInstall *>&1 | Out-String
         $output | Should -Match 'Step C install: VALIDATED'
         $output | Should -Match 'Customer installation accepted: false'
+        $output | Should -Match 'Result: PASS'
+        $output | Should -Match 'Ready for next step: true'
+        $output | Should -Match 'Next step: Step C inference acceptance'
+        $output | Should -Match 'Evidence: '
         $output | Should -Not -Match 'Live Azure read: true'
         $log = Get-Content -LiteralPath (Join-Path $script:state 'log.txt') -Raw
         $log | Should -Match '/agents/jaws-supervisor-lab1/versions\?api-version=v1'
@@ -417,6 +421,10 @@ Describe 'Step C from a Step B environment' {
         $output | Should -Match 'Step C install: CLOSED'
         $output | Should -Match 'Customer installation accepted: false'
         $output | Should -Match 'Task state: TASK_STATE_COMPLETED'
+        $output | Should -Match 'Result: PASS'
+        $output | Should -Match 'Ready for next step: true'
+        $output | Should -Match 'Next step: Step D Validate'
+        $output | Should -Match 'Evidence: '
         $output | Should -Not -Match 'Live Azure read: true'
         $report = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-step-c-final-acceptance.lab1.generated.json') -Raw | ConvertFrom-Json
         $report.Status | Should -Be 'PASS'

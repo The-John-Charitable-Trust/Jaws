@@ -200,6 +200,10 @@ Describe 'Step B foundation install' {
             $accept | Should -Match 'AcrPull: true'
             $accept | Should -Match 'Agent status: active'
             $accept | Should -Match 'Dev state: unchanged'
+            $accept | Should -Match 'Result: PASS'
+            $accept | Should -Match 'Ready for next step: true'
+            $accept | Should -Match 'Next step: Step C Validate'
+            $accept | Should -Match 'Evidence: '
             $creates = ([regex]::Matches($log, ' create')).Count
             $scored = & (Join-Path $script:root 'installer/Test-JawsStepB.ps1') -Mode Accept *>&1 | Out-String
             $scored | Should -Match 'STEP-B ACCEPTANCE PASS'
@@ -268,7 +272,17 @@ Describe 'Step B foundation install' {
             $env:PATH = $script:stub + [System.IO.Path]::PathSeparator + $env:PATH
             & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Plan -NonInteractive -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus'
             $plan = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-stage-b-plan.lab1.offline.generated.json') -Raw | ConvertFrom-Json
-            { & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Preflight -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' } | Should -Throw '*JAWS-STEP-B-026*'
+            $preflight = ''
+            try {
+                & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Preflight -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' *>&1 | ForEach-Object { $preflight += "$_`n" }
+                throw 'Preflight returned instead of JAWS-STEP-B-026.'
+            } catch {
+                $preflight += $_.Exception.Message
+            }
+            $preflight | Should -Match 'JAWS-STEP-B-026'
+            $preflight | Should -Match 'Result: FAIL'
+            $preflight | Should -Match 'Ready for next step: false'
+            $preflight | Should -Match 'Evidence: '
             $log = Get-Content -LiteralPath (Join-Path $state 'log.txt') -Raw
             $log | Should -Not -Match 'group create'
             $log | Should -Match 'role assignment list'

@@ -18,8 +18,8 @@ These resources are billable. Install does nothing unless `-AcknowledgeStepBInst
 
 - `az account set --subscription <your-subscription-id>` completed.
 - PowerShell 7 at the repository root.
-- .NET SDK 10 and Docker for the install. Check with `dotnet --list-sdks` and `docker version`.
-- Contributor on the subscription or resource group, plus permission to assign AcrPull. Contributor alone cannot assign roles.
+- Azure CLI. Install builds the Supervisor image in the registry with `az acr build` and does not use a local Docker daemon or the .NET SDK.
+- Contributor on the subscription or resource group, plus permission to assign AcrPull. Contributor alone cannot assign roles. The registry build also needs permission to push the image, which Contributor on the registry includes.
 
 ## B1. Plan
 
@@ -83,7 +83,7 @@ Agent status: active
 
 `Test-JawsStepB.ps1 -Mode Install` prints the same install lines and then `Live Azure read: false`. That score checks the receipt file. It does not re-read Azure and it is not acceptance.
 
-The image line ends in `@sha256:` and a 64-character digest. The receipt is `installer/.local/jaws-step-b-install.your-environment.generated.json`. The generated state file is `installer/.local/jaws-installation-state.your-environment.generated.json`. `installer/config/jaws-installation-state.dev.json` is unchanged.
+Install uploads `src/Jaws.Supervisor.Host` and runs `az acr build --platform linux/amd64`. It does not run `docker build`, `docker tag`, or `docker push`. The image line ends in `@sha256:` and a 64-character digest read back from the registry. The receipt is `installer/.local/jaws-step-b-install.your-environment.generated.json`. The generated state file is `installer/.local/jaws-installation-state.your-environment.generated.json`. `installer/config/jaws-installation-state.dev.json` is unchanged.
 
 | Condition | Result |
 | --- | --- |
@@ -93,7 +93,7 @@ The image line ends in `@sha256:` and a 64-character digest. The receipt is `ins
 | Environment `dev` or resource group `rg-aiops-lab` | `JAWS-STEP-B-013` |
 | Existing resource without the installer tags | `JAWS-STEP-B-012`, no adoption |
 | Model quota or unsupported region | `JAWS-STEP-B-MODEL-001` or the provider error from Azure |
-| Docker missing | `JAWS-PACKAGE-005` before resources are created |
+| Registry build fails | `JAWS-STEP-B-021`. Docker is not used. A second run does not build again once Supervisor version 1 is active |
 | Second run | Same receipt, no second Foundry account or Supervisor |
 | Approved model is not offered | `JAWS-STEP-B-MODEL-001` before the deployment is created |
 | Account, project, deployment, vault, or registry stays provisioning | `JAWS-STEP-B-023` |

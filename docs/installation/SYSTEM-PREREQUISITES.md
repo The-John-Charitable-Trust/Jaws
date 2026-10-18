@@ -6,7 +6,11 @@
 - **Git** for source control and **Azure CLI** (`az --version`) for authenticated Azure deployment.
 - **Microsoft Entra access** with permissions appropriate to the targeted JAWS subscription, Foundry project, Container Registry and role assignments. No registry admin user required.
 
-## Build and container prerequisites (Step C and development)
+## Step B image build
+
+Step B Install builds the Supervisor image in Azure Container Registry with `az acr build --platform linux/amd64` and reads the digest back from the registry. That command needs the Azure CLI and permission to push to the registry. It does not need Docker Desktop, WSL 2, or a local .NET SDK.
+
+## Build and container prerequisites (optional local package and development)
 - **.NET SDK 10** (`dotnet --list-sdks`) for JAWS Investigation Host.
 - **WSL 2** installed and updated (`wsl --status`, `wsl --list --verbose`), with a Linux distribution configured at version 2. Linux distro needed for optional interactive development; Docker Desktop can use its own WSL distributions for the engine.
 - **Docker Desktop**, started with its **WSL 2 backend** and **Linux containers**, not Windows containers.

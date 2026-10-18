@@ -48,7 +48,7 @@ Optional check that the Supervisor host publishes before the install spends mone
 .\installer\Test-JawsStepB.ps1 -Mode Install
 ```
 
-**Expected result.** Both commands print:
+**Expected result.** `Install-Jaws.ps1` prints:
 
 ```text
 STEP-B INSTALL PASS
@@ -59,6 +59,8 @@ Agent: jaws-supervisor-your-environment
 Agent version: 1
 Agent status: active
 ```
+
+`Test-JawsStepB.ps1 -Mode Install` prints the same install lines and then `Live Azure read: false`. That score checks the receipt file. It does not re-read Azure and it is not acceptance.
 
 The image line ends in `@sha256:` and a 64-character digest. The receipt is `installer/.local/jaws-step-b-install.your-environment.generated.json`. The generated state file is `installer/.local/jaws-installation-state.your-environment.generated.json`. `installer/config/jaws-installation-state.dev.json` is unchanged.
 
@@ -71,7 +73,41 @@ The image line ends in `@sha256:` and a 64-character digest. The receipt is `ins
 | Model quota or unsupported region | `JAWS-STEP-B-MODEL-001` or the provider error from Azure |
 | Docker missing | `JAWS-PACKAGE-005` before resources are created |
 | Second run | Same receipt, no second Foundry account or Supervisor |
+| Approved model is not offered | `JAWS-STEP-B-MODEL-001` before the deployment is created |
+| Account, project, deployment, vault, or registry stays provisioning | `JAWS-STEP-B-023` |
+| Hosted Supervisor does not become active | `JAWS-STEP-B-018` |
+
+## B4. Accept the foundation
+
+Acceptance re-reads the signed-in subscription. It does not create resources. Run it in the same subscription that received B3.
+
+```powershell
+.\installer\Install-Jaws.ps1 -Mode Accept -EnvironmentName your-environment -ResourceGroupName rg-jaws-your-environment -Location eastus
+.\installer\Test-JawsStepB.ps1 -Mode Accept
+```
+
+**Expected result.** Both commands print:
+
+```text
+STEP-B ACCEPTANCE PASS
+Live Azure read: true
+Azure writes: 0
+Foundry account: jaws-foundry-your-environment
+Foundry provisioning: Succeeded
+Project: jaws-your-environment
+Model: gpt-5-mini 2025-08-07
+Deployment: Succeeded
+Registry admin: false
+AcrPull: true
+Image: jawsacryourenvironment.azurecr.io/jaws/supervisor@sha256:<64 hex characters>
+Agent: jaws-supervisor-your-environment
+Agent version: 1
+Agent status: active
+Dev state: unchanged
+```
+
+The report is `installer/.local/jaws-step-b-acceptance.your-environment.generated.json`. A receipt file whose resources are not in the signed-in subscription throws `JAWS-STEP-B-024` and does not print `STEP-B ACCEPTANCE PASS`.
 
 ## Acceptance
 
-A fresh-subscription receipt has not been archived from an independent Azure run. Until that receipt exists, Step B is implemented and not accepted. The local test uses a stand-in Azure CLI and does not count as that receipt.
+`STEP-B ACCEPTANCE PASS` is the only Step B acceptance line. `STEP-B INSTALL PASS` records the installer receipt. A local stand-in for Azure CLI can exercise the commands, and that exercise is not a fresh-subscription receipt. Step B stays unaccepted until B4 prints `STEP-B ACCEPTANCE PASS` against a real subscription that is not the dev project.

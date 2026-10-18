@@ -26,7 +26,7 @@
       "tests": "tests/installer/StepBInstall.Tests.ps1",
       "microsoftUrl": "https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/deploy-hosted-agent",
       "microsoftTitle": "Foundry hosted agents",
-      "evidence": "Installer and stubbed CLI test pass. No fresh-subscription receipt has been recorded, so Step B is not accepted."
+      "evidence": "Install -Mode Accept re-reads Azure and prints STEP-B ACCEPTANCE PASS only from live resources. A fresh-subscription run has not been recorded, so Step B is not accepted."
     },
     {
       "id": "C",

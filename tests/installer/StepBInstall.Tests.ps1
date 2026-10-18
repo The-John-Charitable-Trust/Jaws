@@ -55,9 +55,13 @@ if args[:2] == ["group", "create"]:
 if args[:3] == ["cognitiveservices", "account", "show"]:
     emit(load("foundry")) if exists("foundry") else missing()
 if args[:3] == ["cognitiveservices", "account", "create"]:
-    payload = {"name": "jaws-foundry-lab1", "kind": "AIServices", "properties": {"provisioningState": "Succeeded"}, "tags": tags}
+    payload = {"name": "jaws-foundry-lab1", "kind": "AIServices", "properties": {"provisioningState": "Succeeded", "customSubDomainName": "jaws-foundry-lab1"}, "tags": tags}
     save("foundry", payload)
     emit(payload)
+if args[:3] == ["cognitiveservices", "account", "list-models"]:
+    if os.environ.get("JAWS_STEPB_STUB_HIDE_MODEL") == "1":
+        emit([])
+    emit([{"format": "OpenAI", "name": "gpt-5-mini", "version": "2025-08-07", "skus": [{"name": "GlobalStandard"}]}])
 if args[:4] == ["cognitiveservices", "account", "project", "show"]:
     emit(load("project")) if exists("project") else missing()
 if args[:4] == ["cognitiveservices", "account", "project", "create"]:
@@ -89,6 +93,14 @@ if args[:3] == ["acr", "manifest", "show-metadata"]:
 if args[:3] == ["role", "assignment", "list"]:
     emit([load("role")] if exists("role") else [])
 if args[:3] == ["role", "assignment", "create"]:
+    attempts = 0
+    if exists("role-attempts"):
+        attempts = load("role-attempts")["n"]
+    attempts += 1
+    save("role-attempts", {"n": attempts})
+    if attempts < 2:
+        print("PrincipalNotFound: principal not found", file=sys.stderr)
+        sys.exit(3)
     payload = {"roleDefinitionName": "AcrPull", "principalId": principal, "scope": "registry"}
     save("role", payload)
     emit(payload)
@@ -134,6 +146,7 @@ Describe 'Step B foundation install' {
             $env:JAWS_STEPB_STUB_STATE = $state
             $env:JAWS_STEPB_STUB_SUB = $script:sub
             $env:JAWS_STEPB_STUB_ENV = 'lab1'
+            $env:JAWS_STEPB_POLL_SECONDS = '0'
             $env:PATH = $script:stub + [System.IO.Path]::PathSeparator + $env:PATH
             $devBefore = Get-Content -LiteralPath (Join-Path $script:root 'installer/config/jaws-installation-state.dev.json') -Raw
             & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Plan -NonInteractive -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus'
@@ -157,11 +170,65 @@ Describe 'Step B foundation install' {
             $log | Should -Not -Match 'jaws-foundry-dev'
             $log | Should -Not -Match 'c52f597b-7753-45b4-a764-67e290dcfd5e'
             (Get-Content -LiteralPath (Join-Path $script:root 'installer/config/jaws-installation-state.dev.json') -Raw) | Should -Be $devBefore
+            $accept = & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Accept -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' *>&1 | Out-String
+            $accept | Should -Match 'STEP-B ACCEPTANCE PASS'
+            $accept | Should -Match 'Live Azure read: true'
+            $accept | Should -Match 'Azure writes: 0'
+            $accept | Should -Match 'Foundry provisioning: Succeeded'
+            $accept | Should -Match 'Deployment: Succeeded'
+            $accept | Should -Match 'Registry admin: false'
+            $accept | Should -Match 'AcrPull: true'
+            $accept | Should -Match 'Agent status: active'
+            $accept | Should -Match 'Dev state: unchanged'
+            $creates = ([regex]::Matches($log, ' create')).Count
+            $scored = & (Join-Path $script:root 'installer/Test-JawsStepB.ps1') -Mode Accept *>&1 | Out-String
+            $scored | Should -Match 'STEP-B ACCEPTANCE PASS'
+            $scored | Should -Match 'Live Azure read: true'
+            $logAfterAccept = Get-Content -LiteralPath (Join-Path $state 'log.txt') -Raw
+            ([regex]::Matches($logAfterAccept, ' create')).Count | Should -Be $creates
+            $empty = Join-Path $script:stub 'empty-state'
+            New-Item -ItemType Directory -Path $empty | Out-Null
+            $env:JAWS_STEPB_STUB_STATE = $empty
+            { & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Accept -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' } | Should -Throw '*JAWS-STEP-B-024*'
+            $emptyLog = Get-Content -LiteralPath (Join-Path $empty 'log.txt') -Raw
+            $emptyLog | Should -Not -Match ' create'
+            $emptyLog | Should -Match 'account show'
         } finally {
             $env:PATH = $savedPath
             $env:JAWS_STEPB_STUB_STATE = $savedState
             $env:JAWS_STEPB_STUB_SUB = $savedSub
             $env:JAWS_STEPB_STUB_ENV = $savedEnv
+            Remove-Item Env:JAWS_STEPB_POLL_SECONDS -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'refuses a model the account does not offer before creating the deployment' {
+        $state = Join-Path $script:stub 'state-no-model'
+        $savedPath = $env:PATH
+        $savedState = $env:JAWS_STEPB_STUB_STATE
+        $savedSub = $env:JAWS_STEPB_STUB_SUB
+        $savedEnv = $env:JAWS_STEPB_STUB_ENV
+        $savedHide = $env:JAWS_STEPB_STUB_HIDE_MODEL
+        try {
+            $env:JAWS_STEPB_STUB_STATE = $state
+            $env:JAWS_STEPB_STUB_SUB = $script:sub
+            $env:JAWS_STEPB_STUB_ENV = 'lab1'
+            $env:JAWS_STEPB_STUB_HIDE_MODEL = '1'
+            $env:JAWS_STEPB_POLL_SECONDS = '0'
+            $env:PATH = $script:stub + [System.IO.Path]::PathSeparator + $env:PATH
+            & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Plan -NonInteractive -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus'
+            $plan = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-stage-b-plan.lab1.offline.generated.json') -Raw | ConvertFrom-Json
+            { & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Install -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' -ApprovedPlanSha256 $plan.PlanSha256 -AcknowledgeStepBInstall } | Should -Throw '*JAWS-STEP-B-MODEL-001*'
+            $log = Get-Content -LiteralPath (Join-Path $state 'log.txt') -Raw
+            $log | Should -Match 'list-models'
+            $log | Should -Not -Match 'deployment create'
+        } finally {
+            $env:PATH = $savedPath
+            $env:JAWS_STEPB_STUB_STATE = $savedState
+            $env:JAWS_STEPB_STUB_SUB = $savedSub
+            $env:JAWS_STEPB_STUB_ENV = $savedEnv
+            if ($null -eq $savedHide) { Remove-Item Env:JAWS_STEPB_STUB_HIDE_MODEL -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_HIDE_MODEL = $savedHide }
+            Remove-Item Env:JAWS_STEPB_POLL_SECONDS -ErrorAction SilentlyContinue
         }
     }
 }

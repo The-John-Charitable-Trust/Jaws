@@ -93,4 +93,7 @@ Write-Host "Delegation classification: $($evidence.Classification)"
 Write-Host "Task state: $taskState"
 Write-Host "Step C acceptance: $status; report: $path"
 Write-Host 'Customer installation accepted: false'
+Import-Module (Join-Path $root 'modules/MilestoneResult.psm1') -Force
+$stepCPassed = ($status -eq 'PASS' -and $taskState -eq 'TASK_STATE_COMPLETED')
+Write-JawsMilestoneResult -Result $(if($stepCPassed){'PASS'}else{'FAIL'}) -ReadyForNextStep $stepCPassed -NextStep $(if($stepCPassed){'Step D Validate'}else{'Step C inference acceptance'}) -EvidencePath $path
 if($status -ne 'PASS'){ throw "JAWS-C-ACCEPT-007: $($evidence.Classification). See tool output in acceptance report; Step C not closed." }

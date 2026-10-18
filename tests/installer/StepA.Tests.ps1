@@ -60,6 +60,10 @@ Describe 'Step A greenfield discovery' {
             $output | Should -Match 'State file written: false'
             $output | Should -Match 'Azure writes: 0'
             $output | Should -Match 'Prepared for Step B: true'
+            $output | Should -Match 'Result: PASS'
+            $output | Should -Match 'Ready for next step: true'
+            $output | Should -Match 'Next step: Step B Plan'
+            $output | Should -Match 'Evidence: '
             $log = Get-Content -LiteralPath (Join-Path $state 'log.txt') -Raw
             $log | Should -Match 'group list'
             $log | Should -Match 'resource list'
@@ -69,6 +73,8 @@ Describe 'Step A greenfield discovery' {
             $scored = & (Join-Path $script:root 'installer/Test-JawsStepA.ps1') -ReportPath (Join-Path $script:root 'installer/.local/jaws-step-a-discovery.lab1.generated.json') *>&1 | Out-String
             $scored | Should -Match 'STEP-A DISCOVERY PASS'
             $scored | Should -Match 'Live Azure read: false'
+            $scored | Should -Match 'Result: PASS'
+            $scored | Should -Match 'Evidence: '
         } finally {
             $env:PATH = $savedPath
             if ($null -eq $savedState) { Remove-Item Env:JAWS_STEPA_STUB_STATE -ErrorAction SilentlyContinue } else { $env:JAWS_STEPA_STUB_STATE = $savedState }

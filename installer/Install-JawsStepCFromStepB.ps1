@@ -210,7 +210,13 @@ if($script:corrections.Count -gt 0){ Write-Host ("Corrections: {0}" -f ($script:
 Write-Host "Supervisor version posted: $(@($script:corrections.ToArray() | Where-Object { $_ -eq 'PublishSupervisorRoute' }).Count -gt 0)"
 Write-Host 'Customer installation accepted: false'
 Write-Host "Receipt: $receiptPath"
-if($status -eq 'VALIDATED'){
+Import-Module (Join-Path $root 'modules/MilestoneResult.psm1') -Force
+if($status -eq 'CLOSED'){
+    Write-JawsMilestoneResult -Result PASS -ReadyForNextStep $true -NextStep 'Step D Validate' -EvidencePath $receiptPath
+} elseif($status -eq 'VALIDATED'){
     Write-Host "Non-billable Step C gates passed. Re-run .\installer\Install-JawsThroughStepC.ps1 -Mode Validate -EnvironmentName $($ctx.EnvironmentName) -AcknowledgeInferenceCharges to run the Supervisor acceptance call."
+    Write-JawsMilestoneResult -Result PASS -ReadyForNextStep $true -NextStep 'Step C inference acceptance' -EvidencePath $receiptPath
+} else {
+    Write-JawsMilestoneResult -Result FAIL -ReadyForNextStep $false -NextStep 'Step C Validate' -EvidencePath $receiptPath
 }
 if($failed){ throw $failed.Exception.Message }

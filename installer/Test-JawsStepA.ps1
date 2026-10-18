@@ -36,3 +36,5 @@ Write-Host 'Azure writes: 0'
 Write-Host "Prepared for Step B: $($receipt.PreparedForStepB.ToString().ToLowerInvariant())"
 Write-Host 'Live Azure read: false'
 Write-Host "Receipt: $ReportPath"
+Import-Module (Join-Path $installerRoot 'modules/MilestoneResult.psm1') -Force
+Write-JawsMilestoneResult -Result PASS -ReadyForNextStep ([bool]$receipt.PreparedForStepB) -NextStep 'Step B Plan' -EvidencePath $ReportPath

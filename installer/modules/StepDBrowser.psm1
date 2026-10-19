@@ -508,6 +508,13 @@ function Test-JawsPublishedSupervisorBrowserImage {
     return ($Image -cmatch $pattern -and $Image -cne $VersionOneImage)
 }
 
+function Test-JawsBrowserToolName {
+    param([string]$Name,[Parameter(Mandatory)][string]$Operation)
+    if ([string]::IsNullOrWhiteSpace($Name)) { return $false }
+    if ($Name -ceq $Operation) { return $true }
+    return ($Name.EndsWith(".$Operation") -or $Name.EndsWith("_$Operation"))
+}
+
 function Get-JawsBrowserResponseCalls {
     param($Response)
     $items = @()
@@ -725,8 +732,8 @@ function Invoke-JawsBrowserPrivatePath {
     } | ConvertTo-Json -Depth 6 -Compress
     $response = Invoke-JawsBrowserSupervisorResponse -Url $url -Body $body -FailureCode 'JAWS-STEP-D-040'
     $calls = @(Get-JawsBrowserResponseCalls -Response $response)
-    $opens = @($calls | Where-Object { $_.Name -eq 'browser_open' })
-    $navigates = @($calls | Where-Object { $_.Name -eq 'browser_navigate' })
+    $opens = @($calls | Where-Object { Test-JawsBrowserToolName -Name $_.Name -Operation 'browser_open' })
+    $navigates = @($calls | Where-Object { Test-JawsBrowserToolName -Name $_.Name -Operation 'browser_navigate' })
     $openText = ((@($opens | ForEach-Object { $_.Output })) -join "`n")
     $proven = ($opens.Count -ge 1 -and $navigates.Count -eq 0 -and $openText -match 'sessionId' -and $openText -notmatch 'browser_unreachable')
     $path = Get-JawsBrowserPrivatePathReceiptPath -InstallerRoot $InstallerRoot -EnvironmentName $EnvironmentName
@@ -794,7 +801,7 @@ function Invoke-JawsBrowserCapability {
     $supervisor = [string]$stepB.AgentName
     $model = [string]$stepB.ModelDeploymentName
     $invokeUrl = "$endpoint/agents/$supervisor/endpoint/protocols/openai/responses?api-version=v1"
-    $prompt = "Navigate to $Url with browser_navigate, extract one value, and include the marker EXTRACTED_VALUE. Then try https://blocked.invalid/not-allowed, which is not on the allow-list, and include allow_list_rejected. Do not log a password."
+    $prompt = "Call browser_open once and use the session it returns. Navigate to $Url with browser_navigate, extract one value, and include the marker EXTRACTED_VALUE. Then navigate to https://blocked.invalid/not-allowed, which is not on the allow-list, and include allow_list_rejected. Then call browser_close. Do not log a password."
     $body = @{ model = $model; input = $prompt; stream = $false; store = $false } | ConvertTo-Json -Depth 6 -Compress
     $response = Invoke-JawsBrowserSupervisorResponse -Url $invokeUrl -Body $body -FailureCode 'JAWS-STEP-D-042'
     $calls = @(Get-JawsBrowserResponseCalls -Response $response)

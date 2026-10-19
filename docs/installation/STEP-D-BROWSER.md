@@ -58,7 +58,7 @@ Expected: `STEP-D BROWSER IMAGE PASS`, `Supervisor image rebuilt: true`, `Superv
 
 `Test-JawsBrowserPrivatePath.ps1` makes one Foundry responses call. The prompt opens a session and closes it. It does not navigate. The call is the Foundry tool path, which is the path that can reach the internal Container App. An operator laptop cannot prove that path.
 
-The command refuses to run until the image receipt says the Supervisor image was rebuilt and differs from version 1 (`JAWS-STEP-D-036`). Without `-AcknowledgeBrowserPrivatePath` it throws `JAWS-STEP-D-037`. A pass requires a `browser_open` result that contains a session id and does not contain `browser_unreachable`, and it requires that the response did not call `browser_navigate`. Anything else is `JAWS-STEP-D-040` and stops the capability path.
+The command refuses to run until the image receipt says the Supervisor image was rebuilt and differs from version 1 (`JAWS-STEP-D-036`). Without `-AcknowledgeBrowserPrivatePath` it throws `JAWS-STEP-D-037`. A pass requires a browser-open result that contains a session id and does not contain `browser_unreachable`, and it requires that the response did not call browser navigate. Foundry names the OpenAPI tool `jaws-browser.browser_open`; a bare `browser_open` name and a `___` prefixed name also pass. Anything else is `JAWS-STEP-D-040` and stops the capability path.
 
 Expected on a pass: `STEP-D PRIVATE PATH PASS`, `Navigation attempted: false`, `Customer installation accepted: false`, `Ready for next step: true`, and `Next step: Set-JawsBrowserAllowList.ps1, then Test-JawsBrowserCapability.ps1`. Evidence: `installer/.local/jaws-step-d-browser-private-path.<environment>.generated.json`. A stand-in is not a live Foundry receipt.
 
@@ -77,7 +77,7 @@ Expected: `Browser allow-list: Add` or `Remove`, `Azure writes: 1`, and `Custome
 
 `Test-JawsBrowserCapability.ps1` spends model and browser usage. It requires the private-path receipt (`JAWS-STEP-D-041` otherwise) and `-Url` already on the allow-list (`JAWS-STEP-D-039` otherwise). Without `-AcknowledgeBrowserCapability` it throws `JAWS-STEP-D-038`.
 
-The prompt asks the Supervisor to navigate to that URL, extract a value, and try one URL that is not on the list. A pass requires the tool output to contain both `EXTRACTED_VALUE` and `allow_list_rejected`. Otherwise the command throws `JAWS-STEP-D-042`.
+The prompt asks the Supervisor to open a session, navigate to that URL, extract a value, and try one URL that is not on the list. Navigate needs the session from browser open. A pass requires the tool output to contain both `EXTRACTED_VALUE` and `allow_list_rejected`. Otherwise the command throws `JAWS-STEP-D-042`.
 
 Expected on a pass: `STEP-D BROWSER CAPABILITY PASS`, `Customer installation accepted: false`, `Ready for next step: false`, and `Next step: Step E is not installable`. Evidence: `installer/.local/jaws-step-d-browser-capability.<environment>.generated.json`. The receipt sets `LiveNavigationClaimed`, `VaultLoginClaimed`, and `SignatureValidationClaimed` to false. A stand-in that prints those markers is not a live page load.
 

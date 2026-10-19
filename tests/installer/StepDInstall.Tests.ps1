@@ -90,7 +90,12 @@ if method == "post" and "/agents?api-version=v1" in url and "/versions" not in u
 if method == "get" and "/agents/" in url and "/versions/" not in url:
     name = url.split("/agents/")[1].split("?")[0]
     latest = world.get("latest", {}).get(name, "1")
-    emit({"name": name, "versions": {"latest": latest}})
+    if os.environ.get("JAWS_STEPD_STUB_LATEST_STRING") == "1":
+        latest_value = str(latest)
+    else:
+        version_value = int(latest) if str(latest).isdigit() else latest
+        latest_value = {"agent_guid": "00000000-0000-0000-0000-000000000001", "version": version_value}
+    emit({"name": name, "versions": {"latest": latest_value}})
 if method == "get" and "/versions/" in url and "/toolboxes/" not in url:
     name = url.split("/agents/")[1].split("/versions/")[0]
     version = url.split("/versions/")[1].split("?")[0]
@@ -556,6 +561,8 @@ Describe 'Step D installer' {
         ([regex]::Matches($log, 'containerapp create')).Count | Should -Be 1
         ([regex]::Matches($log, 'acr build')).Count | Should -Be 1
         ([regex]::Matches($log, 'Key Vault Secrets Officer')).Count | Should -Be 1
+        $log | Should -Match 'jaws-supervisor-lab1/versions/2\?api-version=v1'
+        $log | Should -Not -Match 'agent_guid'
         (Get-Content -LiteralPath (Join-Path $script:root 'installer/config/jaws-installation-state.dev.json') -Raw) | Should -Be $script:devBefore
         $catalog = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-specialist-catalog.lab1.generated.json') -Raw | ConvertFrom-Json
         @($catalog.Specialists)[0].ComputeEnvironmentId | Should -Be 'jaws-vm-specialist-lab1'
@@ -637,6 +644,15 @@ Describe 'Step D installer' {
         InModuleScope StepDBrowser -Parameters @{ Ansi = $ansi } {
             $parsed = ConvertFrom-JawsBrowserJson ("{`"digest`":`"sha256:abc`"}" + $Ansi)
             $parsed.digest | Should -Be 'sha256:abc'
+        }
+    }
+
+    It 'reads versions.latest as a version object or a version string' {
+        InModuleScope StepDBrowser {
+            $asObject = [pscustomobject]@{ versions = [pscustomobject]@{ latest = [pscustomobject]@{ agent_guid = 'abc'; version = 3 } } }
+            Get-JawsBrowserLatestVersion $asObject | Should -Be '3'
+            $asString = [pscustomobject]@{ versions = [pscustomobject]@{ latest = '2' } }
+            Get-JawsBrowserLatestVersion $asString | Should -Be '2'
         }
     }
 

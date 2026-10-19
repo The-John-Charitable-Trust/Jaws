@@ -4,7 +4,7 @@ Step B creates the foundation for one environment in the subscription already se
 
 - resource group
 - Foundry account and project, with a system-assigned project identity
-- model deployment
+- model deployment, GlobalStandard capacity 1, with quota mode Static unless Install is given `-QuotaMode Dynamic`
 - Key Vault with RBAC and purge protection
 - Basic registry with admin disabled
 - AcrPull for the project identity
@@ -28,7 +28,7 @@ These resources are billable. Install does nothing unless `-AcknowledgeStepBInst
 .\installer\Test-JawsStepB.ps1 -Mode Plan -ReportPath .\installer\.local\jaws-stage-b-plan.your-environment.offline.generated.json
 ```
 
-**Expected result.** Both commands print `STEP-B PLAN PASS`, `Subscription source: AzureCli`, `Install authorized: false`, and `Plan SHA-256`. Azure writes stay 0. The report is `installer/.local/jaws-stage-b-plan.your-environment.offline.generated.json`. The digest binds the subscription, names, and model. It does not authorize every mutation or an open-ended cost.
+**Expected result.** Both commands print `STEP-B PLAN PASS`, `Subscription source: AzureCli`, `Install authorized: false`, `Quota mode: Static`, and `Plan SHA-256`. Azure writes stay 0. The report is `installer/.local/jaws-stage-b-plan.your-environment.offline.generated.json`. The digest binds the subscription, names, and model. It does not include the quota mode, and it does not authorize every mutation or an open-ended cost. Pass `-QuotaMode Dynamic` on Plan to print that choice before Install. The value used at Install is the one that is applied.
 
 ## B1a. Preflight
 
@@ -69,6 +69,14 @@ Optional check that the Supervisor host publishes before the install spends mone
 .\installer\Test-JawsStepB.ps1 -Mode Install
 ```
 
+`-QuotaMode` is `Static` or `Dynamic`. The default is `Static`, which leaves dynamic quota off. The deployment is still GlobalStandard capacity 1 (1,000 tokens per minute). Requests above that rate are refused. `Dynamic` does not change the plan digest or the capacity. After the deployment exists, Install sets `properties.dynamicThrottlingEnabled` to true with `az rest --method patch` and API version `2023-10-01-preview`. Azure may then serve more than the capacity-1 rate when it has spare capacity. Those extra tokens are billed at the normal rate, and dynamic quota has no throughput ceiling. Turning the property on has no separate fee. Use the same plan digest to change an existing deployment:
+
+```powershell
+.\installer\Install-Jaws.ps1 -Mode Install -EnvironmentName your-environment -ResourceGroupName rg-jaws-your-environment -Location eastus -ApprovedPlanSha256 <plan-sha> -QuotaMode Dynamic -AcknowledgeStepBInstall
+```
+
+A second Install does not patch when the deployment already matches the chosen mode. It also does not build the Supervisor image again once version 1 is active. `Static` on a deployment that already has dynamic quota on sets the property back to false.
+
 **Expected result.** `Install-Jaws.ps1` prints:
 
 ```text
@@ -76,10 +84,13 @@ STEP-B INSTALL PASS
 Foundry account: jaws-foundry-your-environment
 Project: jaws-your-environment
 Model: gpt-5-mini 2025-08-07
+Quota mode: Static
 Agent: jaws-supervisor-your-environment
 Agent version: 1
 Agent status: active
 ```
+
+`Quota mode: Dynamic` replaces that line when Install was given `-QuotaMode Dynamic`. Microsoft documents the property at [Azure OpenAI dynamic quota](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/dynamic-quota).
 
 `Test-JawsStepB.ps1 -Mode Install` prints the same install lines and then `Live Azure read: false`. That score checks the receipt file. It does not re-read Azure and it is not acceptance.
 
@@ -92,7 +103,8 @@ Install uploads `src/Jaws.Supervisor.Host` and runs `az acr build --platform lin
 | Plan digest differs | `JAWS-STEP-B-011`, no Azure writes |
 | Environment `dev` or resource group `rg-aiops-lab` | `JAWS-STEP-B-013` |
 | Existing resource without the installer tags | `JAWS-STEP-B-012`, no adoption |
-| Model quota or unsupported region | `JAWS-STEP-B-MODEL-001` or the provider error from Azure |
+| Model quota or unsupported region | `JAWS-STEP-B-MODEL-001`. A quota refusal prints `Issue`, `Action`, and `Quota request: https://aka.ms/oai/stuquotarequest`. Dynamic quota cannot create the deployment when Azure has no quota for capacity 1 |
+| Requested quota mode is not recorded | `JAWS-STEP-B-MODEL-002`. Capacity stays GlobalStandard 1 |
 | Registry build fails | `JAWS-STEP-B-021`. Docker is not used. A second run does not build again once Supervisor version 1 is active |
 | Second run | Same receipt, no second Foundry account or Supervisor |
 | Approved model is not offered | `JAWS-STEP-B-MODEL-001` before the deployment is created |
@@ -118,6 +130,7 @@ Foundry account: jaws-foundry-your-environment
 Foundry provisioning: Succeeded
 Project: jaws-your-environment
 Model: gpt-5-mini 2025-08-07
+Quota mode: Static
 Deployment: Succeeded
 Registry admin: false
 AcrPull: true

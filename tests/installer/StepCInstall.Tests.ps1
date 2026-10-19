@@ -458,7 +458,9 @@ Describe 'Step C from a Step B environment' {
         $output = & (Join-Path $script:root 'installer/Install-JawsThroughStepC.ps1') -Mode Install -EnvironmentName 'lab1' -AcknowledgeStepCInstall -AcknowledgeInferenceCharges *>&1 | Out-String
         $output | Should -Match 'Supervisor model rate limit \(attempt 1 of 3\)'
         $output | Should -Match 'Issue: server_error: Model deployment rate limit exceeded'
-        $output | Should -Match 'Quota request: https://aka.ms/oai/stuquotarequest'
+        $output | Should -Match '-QuotaMode Dynamic'
+        $output | Should -Match 'wait for the limit to reset'
+        $output | Should -Not -Match 'Quota request:'
         $output | Should -Match 'Step C install: CLOSED'
         $output | Should -Match 'Task state: TASK_STATE_COMPLETED'
         $log = Get-Content -LiteralPath (Join-Path $script:state 'log.txt') -Raw
@@ -483,8 +485,10 @@ Describe 'Step C from a Step B environment' {
         $output | Should -Match 'JAWS-C-ACCEPT-010'
         $output | Should -Not -Match 'JAWS-C-ACCEPT-007'
         $output | Should -Match 'Issue: server_error: Model deployment rate limit exceeded'
-        $output | Should -Match 'Action: The Investigation task is not the failure'
-        $output | Should -Match 'Quota request: https://aka.ms/oai/stuquotarequest'
+        $output | Should -Match 'Action: The model deployment rate limit stopped acceptance'
+        $output | Should -Match '-QuotaMode Dynamic'
+        $output | Should -Match 'wait for the limit to reset'
+        $output | Should -Not -Match 'Quota request:'
         $output | Should -Match 'Result: FAIL'
         $log = Get-Content -LiteralPath (Join-Path $script:state 'log.txt') -Raw
         ([regex]::Matches($log, '/protocols/openai/responses')).Count | Should -Be 3
@@ -492,8 +496,9 @@ Describe 'Step C from a Step B environment' {
         $report.Status | Should -Be 'FAIL'
         $report.ResponseErrorCode | Should -Be 'server_error'
         $report.ResponseErrorMessage | Should -Match 'rate limit'
-        $report.QuotaRequest | Should -Be 'https://aka.ms/oai/stuquotarequest'
-        $report.OperatorAction | Should -Match 'request more quota'
+        $report.QuotaRequest | Should -Be ''
+        $report.OperatorAction | Should -Match '-QuotaMode Dynamic'
+        $report.OperatorAction | Should -Match 'wait for the limit to reset'
         $report.RateLimitAttempts | Should -Be 3
         $report.TaskState | Should -Be 'TASK_STATE_COMPLETED'
         $report.CustomerInstallationAccepted | Should -BeFalse

@@ -49,8 +49,15 @@ function Test-JawsSupervisorRateLimit($Response) {
  $message=[string](Get-JawsField $errorObject 'message')
  return ($message -match '(?i)rate limit' -or $code -match '(?i)rate.?limit|^429$')
 }
+function Get-JawsRateLimitOperatorAction {
+ param([switch]$DevProject)
+ if($DevProject){
+  return 'The model deployment rate limit stopped acceptance. Switch the dev gpt-5-mini deployment to dynamic quota in Foundry (Step B Install refuses dev), or wait for the limit to reset and retry this acceptance. Capacity stays GlobalStandard 1.'
+ }
+ return 'The model deployment rate limit stopped acceptance. Switch to dynamic quota by re-running Step B Install with -QuotaMode Dynamic, or wait for the limit to reset and retry this acceptance. Capacity stays GlobalStandard 1.'
+}
 function Invoke-JawsSupervisorAcceptanceResponse {
- param([Parameter(Mandatory)][string]$Url,[Parameter(Mandatory)][string]$Body)
+ param([Parameter(Mandatory)][string]$Url,[Parameter(Mandatory)][string]$Body,[switch]$DevProject)
  $attempts=3
  $wait=60
  if($env:JAWS_STEPC_RATE_LIMIT_WAIT_SECONDS -match '^\d+$'){ $wait=[int]$env:JAWS_STEPC_RATE_LIMIT_WAIT_SECONDS }
@@ -72,19 +79,19 @@ function Invoke-JawsSupervisorAcceptanceResponse {
   $issueMessage=[string](Get-JawsField $errorObject 'message')
   $issue=if($issueCode -and $issueMessage){"${issueCode}: $issueMessage"}elseif($issueMessage){$issueMessage}else{'Model deployment rate limit exceeded.'}
   Write-Host "Supervisor model rate limit (attempt $attempt of $attempts). Waiting $wait seconds."
-  Write-JawsOperatorIssue -Issue $issue -Action "Waiting $wait seconds, then retrying ($attempt of $attempts). If the limit remains, request more quota for this model and region. The deployment is GlobalStandard capacity 1, and its request rate follows that quota." -QuotaRequest
+  Write-JawsOperatorIssue -Issue $issue -Action "Waiting $wait seconds, then retrying ($attempt of $attempts). $(Get-JawsRateLimitOperatorAction -DevProject:$DevProject)"
   if($wait -gt 0){ Start-Sleep -Seconds $wait }
  }
  throw 'JAWS-C-ACCEPT-006: Supervisor invocation produced no response.'
 }
-function Get-JawsRateLimitAcceptanceFailure($Response) {
+function Get-JawsRateLimitAcceptanceFailure {
+ param($Response,[switch]$DevProject)
  $errorObject=Get-JawsField $Response 'error'
  $code=[string](Get-JawsField $errorObject 'code')
  $message=[string](Get-JawsField $errorObject 'message')
  $issue=if($code -and $message){"${code}: $message"}elseif($message){$message}else{'Model deployment rate limit exceeded.'}
- $attempts=[int](Get-JawsField $Response 'JawsRateLimitAttempts')
- $action="The Investigation task is not the failure. Acceptance tried $attempts times. Retry after the rate-limit window. If it fails again, request more quota for this model and region. The Step B deployment is GlobalStandard capacity 1."
- Write-JawsOperatorIssue -Issue $issue -Action $action -QuotaRequest
- return "JAWS-C-ACCEPT-010: $issue $action Quota request: $(Get-JawsQuotaRequestUrl)"
+ $action=Get-JawsRateLimitOperatorAction -DevProject:$DevProject
+ Write-JawsOperatorIssue -Issue $issue -Action $action
+ return "JAWS-C-ACCEPT-010: $issue $action"
 }
-Export-ModuleMember -Function Get-JawsField,Get-JawsDelegationEvidence,Test-JawsSupervisorRateLimit,Invoke-JawsSupervisorAcceptanceResponse,Get-JawsRateLimitAcceptanceFailure
+Export-ModuleMember -Function Get-JawsField,Get-JawsDelegationEvidence,Test-JawsSupervisorRateLimit,Get-JawsRateLimitOperatorAction,Invoke-JawsSupervisorAcceptanceResponse,Get-JawsRateLimitAcceptanceFailure

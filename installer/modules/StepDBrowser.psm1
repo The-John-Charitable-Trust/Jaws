@@ -78,6 +78,15 @@ function Get-JawsBrowserProperty {
     return $current
 }
 
+function Get-JawsBrowserToolboxServer {
+    param($Version)
+    $tools = @(Get-JawsBrowserProperty $Version @('tools')) | Where-Object { $_ }
+    $tool = $tools | Select-Object -First 1
+    $servers = @(Get-JawsBrowserProperty $tool @('openapi','spec','servers')) | Where-Object { $_ }
+    $server = $servers | Select-Object -First 1
+    return [string](Get-JawsBrowserProperty $server @('url'))
+}
+
 function Get-JawsBrowserLatestVersion {
     param($Summary)
     $latestObj = Get-JawsBrowserProperty $Summary @('versions','latest')
@@ -173,6 +182,41 @@ function New-JawsBrowserOpenApiBody {
     }
 }
 
+function Publish-JawsBrowserToolboxVersion {
+    param($Context,[Parameter(Mandatory)][string]$ToolboxName,[Parameter(Mandatory)][string]$ServerUrl,[Parameter(Mandatory)][string]$InstallerRoot)
+    $base = "$($Context.Endpoint)/toolboxes/$ToolboxName"
+    $toolbox = Invoke-JawsBrowserAz -AllowMissing -Arguments @('rest','--method','GET','--url',"$base`?api-version=v1",'--resource','https://ai.azure.com','--output','json','--only-show-errors')
+    $current = [string](Get-JawsBrowserProperty $toolbox @('default_version'))
+    if (-not [string]::IsNullOrWhiteSpace($current)) {
+        $existing = Invoke-JawsBrowserAz -AllowMissing -Arguments @('rest','--method','GET','--url',"$base/versions/${current}?api-version=v1",'--resource','https://ai.azure.com','--output','json','--only-show-errors')
+        if ((Get-JawsBrowserToolboxServer $existing) -ceq $ServerUrl) {
+            return [pscustomobject]@{ Version = $current; AzureWrites = 0 }
+        }
+    }
+    $body = New-JawsBrowserOpenApiBody -Endpoint $ServerUrl
+    $local = Join-Path $InstallerRoot '.local'
+    if (-not (Test-Path -LiteralPath $local)) { New-Item -ItemType Directory -Path $local | Out-Null }
+    $bodyFile = Join-Path $local "jaws-browser-toolbox.$($Context.EnvironmentName).json"
+    [IO.File]::WriteAllText($bodyFile, ($body | ConvertTo-Json -Depth 20 -Compress), [Text.UTF8Encoding]::new($false))
+    $created = Invoke-JawsBrowserAz -Arguments @('rest','--method','POST','--url',"$base/versions?api-version=v1",'--resource','https://ai.azure.com','--body',"@$bodyFile",'--output','json','--only-show-errors')
+    $writes = 1
+    $createdVersion = [string](Get-JawsBrowserProperty $created @('version'))
+    if ([string]::IsNullOrWhiteSpace($createdVersion)) { $createdVersion = '1' }
+    $record = Invoke-JawsBrowserAz -Arguments @('rest','--method','GET','--url',"$base`?api-version=v1",'--resource','https://ai.azure.com','--output','json','--only-show-errors')
+    $defaultNow = [string](Get-JawsBrowserProperty $record @('default_version'))
+    if ($defaultNow -cne $createdVersion) {
+        $patchFile = Join-Path $local "jaws-browser-toolbox-default.$($Context.EnvironmentName).json"
+        [IO.File]::WriteAllText($patchFile, ('{"default_version":"' + $createdVersion + '"}'), [Text.UTF8Encoding]::new($false))
+        $promoted = Invoke-JawsBrowserAz -Arguments @('rest','--method','PATCH','--url',"$base`?api-version=v1",'--resource','https://ai.azure.com','--body',"@$patchFile",'--output','json','--only-show-errors')
+        $writes++
+        $defaultNow = [string](Get-JawsBrowserProperty $promoted @('default_version'))
+        if ($defaultNow -cne $createdVersion) {
+            throw "JAWS-STEP-D-030: Browser toolbox default version is '$defaultNow' after promotion. Expected '$createdVersion'."
+        }
+    }
+    return [pscustomobject]@{ Version = $createdVersion; AzureWrites = $writes }
+}
+
 function Install-JawsStepDBrowser {
     [CmdletBinding()]
     param(
@@ -193,29 +237,26 @@ function Install-JawsStepDBrowser {
     $sub = [string]$Context.SubscriptionId
     $rg = [string]$Context.ResourceGroupName
     $location = [string]$Context.Location
-    foreach ($namespace in @('Microsoft.App','Microsoft.Network')) {
-        $provider = Invoke-JawsBrowserAz -Arguments @('provider','show','--namespace',$namespace,'--subscription',$sub,'--output','json','--only-show-errors')
-        if ([string]$provider.registrationState -ne 'Registered') {
-            throw "JAWS-STEP-D-030: $namespace is not registered. Run az provider register --namespace $namespace and wait until it is Registered. Browser control was not provisioned."
-        }
+    $provider = Invoke-JawsBrowserAz -Arguments @('provider','show','--namespace','Microsoft.App','--subscription',$sub,'--output','json','--only-show-errors')
+    if ([string]$provider.registrationState -ne 'Registered') {
+        throw 'JAWS-STEP-D-030: Microsoft.App is not registered. Run az provider register --namespace Microsoft.App and wait until it is Registered. Browser control was not provisioned.'
     }
     $account = Invoke-JawsBrowserAz -Arguments @('account','show','--output','json','--only-show-errors')
     $tenant = [string](Get-JawsBrowserProperty $account @('tenantId'))
-    $vnet = Invoke-JawsBrowserAz -AllowMissing -Arguments @('network','vnet','show','--subscription',$sub,'--resource-group',$rg,'--name',$names.VnetName,'--output','json','--only-show-errors')
-    if ($null -eq $vnet) {
-        $vnet = Invoke-JawsBrowserAz -Arguments @('network','vnet','create','--subscription',$sub,'--resource-group',$rg,'--name',$names.VnetName,'--location',$location,'--address-prefix','10.42.0.0/16','--output','json','--only-show-errors')
-        $writes++
-    }
-    $subnet = Invoke-JawsBrowserAz -AllowMissing -Arguments @('network','vnet','subnet','show','--subscription',$sub,'--resource-group',$rg,'--vnet-name',$names.VnetName,'--name',$names.SubnetName,'--output','json','--only-show-errors')
-    if ($null -eq $subnet) {
-        $subnet = Invoke-JawsBrowserAz -Arguments @('network','vnet','subnet','create','--subscription',$sub,'--resource-group',$rg,'--vnet-name',$names.VnetName,'--name',$names.SubnetName,'--address-prefixes','10.42.0.0/23','--delegations','Microsoft.App/environments','--output','json','--only-show-errors')
-        $writes++
-    }
-    $subnetId = [string](Get-JawsBrowserProperty $subnet @('id'))
-    if ([string]::IsNullOrWhiteSpace($subnetId)) { $subnetId = "/subscriptions/$sub/resourceGroups/$rg/providers/Microsoft.Network/virtualNetworks/$($names.VnetName)/subnets/$($names.SubnetName)" }
     $environment = Invoke-JawsBrowserAz -AllowMissing -Arguments @('containerapp','env','show','--subscription',$sub,'--resource-group',$rg,'--name',$names.EnvironmentName,'--output','json','--only-show-errors')
+    $app = Invoke-JawsBrowserAz -AllowMissing -Arguments @('containerapp','show','--subscription',$sub,'--resource-group',$rg,'--name',$names.AppName,'--output','json','--only-show-errors')
+    if ((Get-JawsBrowserProperty $environment @('properties','vnetConfiguration','internal')) -eq $true) {
+        if ($null -ne $app) {
+            $null = Invoke-JawsBrowserAz -Arguments @('containerapp','delete','--subscription',$sub,'--resource-group',$rg,'--name',$names.AppName,'--yes','--output','json','--only-show-errors')
+            $writes++
+            $app = $null
+        }
+        $null = Invoke-JawsBrowserAz -Arguments @('containerapp','env','delete','--subscription',$sub,'--resource-group',$rg,'--name',$names.EnvironmentName,'--yes','--output','json','--only-show-errors')
+        $writes++
+        $environment = $null
+    }
     if ($null -eq $environment) {
-        $environment = Invoke-JawsBrowserAz -Arguments @('containerapp','env','create','--subscription',$sub,'--resource-group',$rg,'--name',$names.EnvironmentName,'--location',$location,'--internal-only','true','--infrastructure-subnet-resource-id',$subnetId,'--output','json','--only-show-errors')
+        $environment = Invoke-JawsBrowserAz -Arguments @('containerapp','env','create','--subscription',$sub,'--resource-group',$rg,'--name',$names.EnvironmentName,'--location',$location,'--output','json','--only-show-errors')
         $writes++
     }
     $packageRoot = Split-Path -Parent $InstallerRoot
@@ -236,7 +277,6 @@ function Install-JawsStepDBrowser {
         throw 'JAWS-STEP-D-030: The browser image digest was not returned. The Container App was not created.'
     }
     $pinnedImage = "$($Context.RegistryName).azurecr.io/jaws/browser@$digest"
-    $app = Invoke-JawsBrowserAz -AllowMissing -Arguments @('containerapp','show','--subscription',$sub,'--resource-group',$rg,'--name',$names.AppName,'--output','json','--only-show-errors')
     $allowPath = Get-JawsBrowserAllowListPath -InstallerRoot $InstallerRoot -EnvironmentName $Context.EnvironmentName
     if (-not (Test-Path -LiteralPath $allowPath -PathType Leaf)) {
         Save-JawsBrowserAllowList -Path $allowPath -Urls @()
@@ -256,16 +296,15 @@ function Install-JawsStepDBrowser {
     if ($null -eq $app) {
         $app = Invoke-JawsBrowserAz -Arguments (@(
             'containerapp','create','--subscription',$sub,'--resource-group',$rg,'--name',$names.AppName,
-            '--environment',$names.EnvironmentName,'--image',$pinnedImage,'--ingress','internal','--target-port','8089',
+            '--environment',$names.EnvironmentName,'--image',$pinnedImage,'--ingress','external','--target-port','8089',
             '--system-assigned','--min-replicas','0','--max-replicas','3','--cpu','1.0','--memory','2.0Gi',
             '--registry-server',"$($Context.RegistryName).azurecr.io",'--registry-identity','system','--output','json','--only-show-errors',
             '--env-vars') + $envVars)
         $writes++
-    } else {
-        $external = Get-JawsBrowserProperty $app @('properties','configuration','ingress','external')
-        if ($external -eq $true) {
-            throw 'JAWS-STEP-D-030: The browser Container App has public ingress. It was not changed.'
-        }
+    } elseif ((Get-JawsBrowserProperty $app @('properties','configuration','ingress','external')) -ne $true) {
+        $null = Invoke-JawsBrowserAz -Arguments @('containerapp','ingress','enable','--subscription',$sub,'--resource-group',$rg,'--name',$names.AppName,'--type','external','--target-port','8089','--output','json','--only-show-errors')
+        $writes++
+        $app = Invoke-JawsBrowserAz -Arguments @('containerapp','show','--subscription',$sub,'--resource-group',$rg,'--name',$names.AppName,'--output','json','--only-show-errors')
     }
     $principal = [string](Get-JawsBrowserProperty $app @('identity','principalId'))
     if ([string]::IsNullOrWhiteSpace($principal)) {
@@ -308,20 +347,13 @@ function Install-JawsStepDBrowser {
         $writes++
     }
     $fqdn = [string](Get-JawsBrowserProperty $app @('properties','configuration','ingress','fqdn'))
-    if ([string]::IsNullOrWhiteSpace($fqdn)) { throw 'JAWS-STEP-D-030: The browser Container App did not return an internal endpoint.' }
-    $endpoint = "https://$fqdn"
-    $toolboxUrl = "$($Context.Endpoint)/toolboxes/$($names.ToolboxName)/versions?api-version=v1"
-    $toolbox = Invoke-JawsBrowserAz -AllowMissing -Arguments @('rest','--method','GET','--url',"$($Context.Endpoint)/toolboxes/$($names.ToolboxName)?api-version=v1",'--resource','https://ai.azure.com','--output','json','--only-show-errors')
-    $toolsetVersion = [string](Get-JawsBrowserProperty $toolbox @('default_version'))
-    if ([string]::IsNullOrWhiteSpace($toolsetVersion)) {
-        $body = New-JawsBrowserOpenApiBody -Endpoint $endpoint
-        $bodyFile = Join-Path $InstallerRoot ".local/jaws-browser-toolbox.$($Context.EnvironmentName).json"
-        $body | ConvertTo-Json -Depth 20 -Compress | Set-Content -LiteralPath $bodyFile -Encoding utf8
-        $created = Invoke-JawsBrowserAz -Arguments @('rest','--method','POST','--url',$toolboxUrl,'--resource','https://ai.azure.com','--body',"@$bodyFile",'--output','json','--only-show-errors')
-        $writes++
-        $toolsetVersion = [string](Get-JawsBrowserProperty $created @('version'))
-        if ([string]::IsNullOrWhiteSpace($toolsetVersion)) { $toolsetVersion = '1' }
+    if ([string]::IsNullOrWhiteSpace($fqdn) -or $fqdn -match '\.internal\.') {
+        throw 'JAWS-STEP-D-030: The browser Container App did not return a public endpoint Foundry can reach.'
     }
+    $endpoint = "https://$fqdn"
+    $toolbox = Publish-JawsBrowserToolboxVersion -Context $Context -ToolboxName $names.ToolboxName -ServerUrl $endpoint -InstallerRoot $InstallerRoot
+    $writes += $toolbox.AzureWrites
+    $toolsetVersion = $toolbox.Version
     $supervisor = Publish-JawsBrowserSupervisorVersion -Context $Context -ToolboxName $names.ToolboxName
     $writes += $supervisor.AzureWrites
     return [pscustomobject]@{
@@ -446,12 +478,18 @@ function Confirm-JawsStepDBrowser {
     $external = Get-JawsBrowserProperty $app @('properties','configuration','ingress','external')
     $fqdn = [string](Get-JawsBrowserProperty $app @('properties','configuration','ingress','fqdn'))
     if ($null -eq $app) { $reasons += 'browser Container App is missing' }
-    elseif ($external -eq $true) { $reasons += 'browser Container App has public ingress' }
+    elseif ($external -ne $true) { $reasons += 'browser Container App is not reachable from Foundry' }
+    elseif ($fqdn -match '\.internal\.') { $reasons += 'browser endpoint is an internal Container Apps name' }
     elseif ("https://$fqdn" -cne [string]$InstallReceipt.PlaywrightServiceEndpoint) { $reasons += 'browser endpoint differs from the install receipt' }
     $toolbox = Invoke-JawsBrowserAz -AllowMissing -Arguments @('rest','--method','GET','--url',"$($Context.Endpoint)/toolboxes/$($names.ToolboxName)?api-version=v1",'--resource','https://ai.azure.com','--output','json','--only-show-errors')
     $version = [string](Get-JawsBrowserProperty $toolbox @('default_version'))
     if ([string]::IsNullOrWhiteSpace($version)) { $reasons += 'browser toolbox is missing' }
     elseif ($version -cne [string]$InstallReceipt.BrowserToolsetVersion) { $reasons += 'browser toolset version differs from the install receipt' }
+    else {
+        $versionDoc = Invoke-JawsBrowserAz -AllowMissing -Arguments @('rest','--method','GET','--url',"$($Context.Endpoint)/toolboxes/$($names.ToolboxName)/versions/${version}?api-version=v1",'--resource','https://ai.azure.com','--output','json','--only-show-errors')
+        $server = Get-JawsBrowserToolboxServer $versionDoc
+        if ($server -cne [string]$InstallReceipt.PlaywrightServiceEndpoint) { $reasons += 'browser toolbox points at a different endpoint' }
+    }
     $summary = Invoke-JawsBrowserAz -Arguments @('rest','--method','GET','--url',"$($Context.Endpoint)/agents/$($Context.SupervisorAgent)?api-version=v1",'--resource','https://ai.azure.com','--output','json','--only-show-errors')
     $latest = Get-JawsBrowserLatestVersion $summary
     $routed = Invoke-JawsBrowserAz -Arguments @('rest','--method','GET','--url',"$($Context.Endpoint)/agents/$($Context.SupervisorAgent)/versions/${latest}?api-version=v1",'--resource','https://ai.azure.com','--output','json','--only-show-errors')

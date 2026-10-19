@@ -61,7 +61,7 @@ def body_text():
 
 method = flag("--method").lower()
 url = flag("--url")
-if method == "get" and "/versions/1" in url:
+if method == "get" and "/versions/1" in url and "/toolboxes/" not in url:
     if "jaws-investigation-dev" in url:
         if dev_missing:
             missing()
@@ -187,6 +187,17 @@ if method == "post" and "/protocols/openai/responses" in url:
             {"type": "function_call_output", "call_id": "call_close", "output": "closed"},
         ],
     })
+if method == "get" and "/toolboxes/jaws-browser-tools/versions/" in url:
+    version = url.split("/versions/")[1].split("?")[0]
+    stored = world.get("toolbox-versions", {}).get(version)
+    if not stored:
+        missing()
+    emit(stored)
+if method == "patch" and "/toolboxes/jaws-browser-tools" in url and "/versions/" not in url:
+    body = json.loads(body_text())
+    world.setdefault("toolbox", {})["default_version"] = str(body["default_version"])
+    save()
+    emit(world["toolbox"])
 if method == "get" and "/toolboxes/jaws-browser-tools" in url:
     toolbox = world.get("toolbox")
     if not toolbox:
@@ -199,13 +210,21 @@ if method == "post" and "/toolboxes/jaws-browser-tools/versions" in url:
         print("browser toolbox audience mismatch", file=sys.stderr)
         sys.exit(2)
     server = body["tools"][0]["openapi"]["spec"]["servers"][0]["url"]
-    if not server.startswith("https://") or ".internal." not in server:
-        print("browser toolbox must use the internal endpoint", file=sys.stderr)
+    if not server.startswith("https://") or ".internal." in server:
+        print("browser toolbox must use the public endpoint", file=sys.stderr)
         sys.exit(2)
-    toolbox = {"name": "jaws-browser-tools", "default_version": "1", "version": "1"}
+    versions = world.setdefault("toolbox-versions", {})
+    numeric = [int(key) for key in versions if str(key).isdigit()]
+    version = str(max(numeric + [0]) + 1)
+    doc = {"name": "jaws-browser-tools", "version": version, "tools": body["tools"]}
+    versions[version] = doc
+    toolbox = world.get("toolbox") or {"name": "jaws-browser-tools"}
+    if version == "1":
+        toolbox["default_version"] = "1"
+    toolbox["version"] = version
     world["toolbox"] = toolbox
     save()
-    emit(toolbox)
+    emit(doc)
 if args[:2] == ["provider", "show"]:
     emit({"namespace": flag("--namespace"), "registrationState": "Registered"})
 if args[:2] == ["account", "show"]:
@@ -229,11 +248,18 @@ if args[:4] == ["network", "vnet", "subnet", "create"]:
     emit(world["subnet"])
 if args[:3] == ["containerapp", "env", "show"]:
     emit(world["cae"]) if "cae" in world else missing()
-if args[:3] == ["containerapp", "env", "create"]:
-    if flag("--internal-only") != "true":
-        print("container app environment must be internal-only", file=sys.stderr)
+if args[:3] == ["containerapp", "env", "delete"]:
+    if "--yes" not in args:
+        print("environment delete requires --yes", file=sys.stderr)
         sys.exit(2)
-    world["cae"] = {"name": flag("--name")}
+    world.pop("cae", None)
+    save()
+    emit({})
+if args[:3] == ["containerapp", "env", "create"]:
+    if "--internal-only" in args or "--infrastructure-subnet-resource-id" in args:
+        print("browser environment must be external", file=sys.stderr)
+        sys.exit(2)
+    world["cae"] = {"name": flag("--name"), "properties": {"vnetConfiguration": {"internal": False}}}
     save()
     emit(world["cae"])
 if args[:2] == ["acr", "repository"] and "show" in args[:4]:
@@ -260,11 +286,31 @@ if args[:2] == ["acr", "build"]:
         sys.exit(0)
     print("dockerfile path is required", file=sys.stderr)
     sys.exit(2)
+if args[:2] == ["containerapp", "delete"]:
+    if "--yes" not in args:
+        print("container app delete requires --yes", file=sys.stderr)
+        sys.exit(2)
+    world.pop("app", None)
+    save()
+    emit({})
+if args[:3] == ["containerapp", "ingress", "enable"]:
+    if flag("--type") != "external":
+        print("ingress type must be external", file=sys.stderr)
+        sys.exit(2)
+    app = world.get("app")
+    if not app:
+        missing()
+    ingress = app.setdefault("properties", {}).setdefault("configuration", {}).setdefault("ingress", {})
+    ingress["external"] = True
+    fqdn = ingress.get("fqdn", flag("--name") + ".example.com")
+    ingress["fqdn"] = fqdn.replace(".internal.", ".")
+    save()
+    emit(ingress)
 if args[:2] == ["containerapp", "show"]:
     emit(world["app"]) if "app" in world else missing()
 if args[:2] == ["containerapp", "create"]:
-    if flag("--ingress") != "internal":
-        print("ingress must be internal", file=sys.stderr)
+    if flag("--ingress") != "external":
+        print("ingress must be external", file=sys.stderr)
         sys.exit(2)
     if flag("--min-replicas") != "0" or flag("--max-replicas") != "3":
         print("browser replica bounds must be 0 and 3", file=sys.stderr)
@@ -276,7 +322,7 @@ if args[:2] == ["containerapp", "create"]:
     world["app"] = {
         "name": flag("--name"),
         "identity": {"principalId": "44444444-4444-4444-4444-444444444444"},
-        "properties": {"configuration": {"ingress": {"external": False, "fqdn": flag("--name") + ".internal.example"}}},
+        "properties": {"configuration": {"ingress": {"external": True, "fqdn": flag("--name") + ".example.com"}}},
     }
     save()
     emit(world["app"])
@@ -434,7 +480,13 @@ Describe 'Step D installer' {
             'jaws-step-d-browser-capability.cap1.generated.json',
             'jaws-browser-allow-list.cap1.json',
             'jaws-specialist-catalog.cap1.generated.json',
-            'jaws-specialist-catalog.cap2.generated.json'
+            'jaws-specialist-catalog.cap2.generated.json',
+            'jaws-step-b-install.reach1.generated.json',
+            'jaws-step-c-final-acceptance.reach1.generated.json',
+            'jaws-step-d-install.reach1.generated.json',
+            'jaws-step-d-acceptance.reach1.generated.json',
+            'jaws-specialist-catalog.reach1.generated.json',
+            'jaws-browser-allow-list.reach1.json'
         )) {
             $path = Join-Path $local $name
             if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path }
@@ -540,9 +592,10 @@ Describe 'Step D installer' {
         $agentPost = [regex]::Escape('/agents?api-version=v1')
         ([regex]::Matches($log, $agentPost)).Count | Should -Be 1
         $log | Should -Match 'containerapp env create'
-        $log | Should -Match '--internal-only true'
+        $log | Should -Not -Match '--internal-only'
+        $log | Should -Not -Match 'containerapp env delete'
         $log | Should -Match 'containerapp create'
-        $log | Should -Match '--ingress internal'
+        $log | Should -Match '--ingress external'
         $log | Should -Match 'src/Jaws\.Browser\.Host/Dockerfile'
         $log | Should -Match 'acr build .*--no-logs'
         $log | Should -Match 'ad signed-in-user show'
@@ -555,7 +608,8 @@ Describe 'Step D installer' {
         $receipt = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-step-d-install.lab1.generated.json') -Raw | ConvertFrom-Json
         $receipt.BrowserToolboxName | Should -Be 'jaws-browser-tools'
         $receipt.BrowserToolsetVersion | Should -Be '1'
-        $receipt.PlaywrightServiceEndpoint | Should -Match '^https://.+\.internal\.'
+        $receipt.PlaywrightServiceEndpoint | Should -Match '^https://'
+        $receipt.PlaywrightServiceEndpoint | Should -Not -Match '\.internal\.'
         $receipt.CredentialScopeId | Should -Match '/secrets/jaws-browser-credentials$'
         $receipt.SupervisorV1Unchanged | Should -BeTrue
         @($receipt.BrowserAgents) | Should -Contain 'jaws-supervisor-lab1'
@@ -586,6 +640,33 @@ Describe 'Step D installer' {
         $report.CustomerInstallationAccepted | Should -BeFalse
         $report.FreshSubscriptionReceiptArchived | Should -BeFalse
         $report.AzureWrites | Should -Be 0
+    }
+
+    It 'replaces an internal browser environment with a public endpoint and promotes the toolbox' {
+        Write-StepDAcceptance 'reach1'
+        Write-StepDReceipt -EnvironmentName 'reach1' -FoundryAccountName 'jaws-foundry-reach1' -ProjectName 'jaws-reach1' -AgentName 'jaws-supervisor-reach1'
+        @'
+{"agents":{},"cae":{"name":"jaws-br-env-reach1","properties":{"vnetConfiguration":{"internal":true}}},"app":{"name":"jaws-br-reach1","identity":{"principalId":"44444444-4444-4444-4444-444444444444"},"properties":{"configuration":{"ingress":{"external":false,"fqdn":"jaws-br-reach1.internal.example"}}}},"toolbox":{"name":"jaws-browser-tools","default_version":"1"},"toolbox-versions":{"1":{"name":"jaws-browser-tools","version":"1","tools":[{"openapi":{"spec":{"servers":[{"url":"https://jaws-br-reach1.internal.example"}]}}}]}}}
+'@ | Set-Content -LiteralPath (Join-Path $script:state 'world.json') -Encoding utf8
+        $output = & (Join-Path $script:root 'installer/Install-JawsStepD.ps1') -Mode Install -EnvironmentName 'reach1' -AcknowledgeStepDInstall *>&1 | Out-String
+        $output | Should -Match 'STEP-D INSTALL PASS'
+        $log = Get-Content -LiteralPath (Join-Path $script:state 'log.txt') -Raw
+        $log.IndexOf('containerapp delete') | Should -BeLessThan $log.IndexOf('containerapp env delete')
+        $log.IndexOf('containerapp env delete') | Should -BeLessThan $log.IndexOf('containerapp env create')
+        $log | Should -Match '--ingress external'
+        $log | Should -Match 'rest --method PATCH'
+        $receipt = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-step-d-install.reach1.generated.json') -Raw | ConvertFrom-Json
+        $receipt.PlaywrightServiceEndpoint | Should -Be 'https://jaws-br-reach1.example.com'
+        $receipt.BrowserToolsetVersion | Should -Be '2'
+        $world = Get-Content -LiteralPath (Join-Path $script:state 'world.json') -Raw | ConvertFrom-Json
+        [string]$world.toolbox.default_version | Should -Be '2'
+        [string]$world.'toolbox-versions'.'2'.tools[0].openapi.spec.servers[0].url | Should -Be 'https://jaws-br-reach1.example.com'
+        $accept = & (Join-Path $script:root 'installer/Install-JawsStepD.ps1') -Mode Accept -EnvironmentName 'reach1' *>&1 | Out-String
+        $accept | Should -Match 'STEP-D ACCEPTANCE PASS'
+        & (Join-Path $script:root 'installer/Install-JawsStepD.ps1') -Mode Install -EnvironmentName 'reach1' -AcknowledgeStepDInstall | Out-Null
+        $log = Get-Content -LiteralPath (Join-Path $script:state 'log.txt') -Raw
+        ([regex]::Matches($log, 'containerapp env delete')).Count | Should -Be 1
+        ([regex]::Matches($log, 'rest --method PATCH')).Count | Should -Be 1
     }
 
     It 'binds the existing dev specialist and does not post a second agent' {

@@ -315,7 +315,7 @@ function Install-JawsFoundryPrivateNetwork {
                 throw 'JAWS-STEP-D-044: Foundry is injected into a different subnet. It was not replaced.'
             }
         } else {
-            $null = Invoke-JawsBrowserAz -Arguments @('cognitiveservices','account','delete','--subscription',$sub,'--resource-group',$rg,'--name',$accountName,'--yes','--output','json','--only-show-errors')
+            $null = Invoke-JawsBrowserAz -Arguments @('cognitiveservices','account','delete','--subscription',$sub,'--resource-group',$rg,'--name',$accountName,'--output','json','--only-show-errors')
             $writes++
             $null = Invoke-JawsBrowserAz -Arguments @('cognitiveservices','account','purge','--subscription',$sub,'--resource-group',$rg,'--name',$accountName,'--location',[string]$receipt.Location,'--output','json','--only-show-errors')
             $writes++

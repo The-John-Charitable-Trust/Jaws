@@ -48,6 +48,17 @@ try {
             Write-Host "Browser toolset version: $($receipt.BrowserToolsetVersion)"
             Write-Host 'Supervisor image rebuilt: false'
             Write-Host 'Browser tools on this image: pending a Supervisor image built from this host'
+            $allowPath = Join-Path $root ".local/jaws-browser-allow-list.$EnvironmentName.json"
+            $allowCount = 0
+            if (Test-Path -LiteralPath $allowPath -PathType Leaf) {
+                $allowFile = Get-Content -LiteralPath $allowPath -Raw | ConvertFrom-Json
+                if ($allowFile.PSObject.Properties['Urls'] -and $null -ne $allowFile.Urls) { $allowCount = @($allowFile.Urls).Count }
+            }
+            if ($allowCount -eq 0) {
+                Write-Host 'Browser allow-list: empty. No navigation will succeed until an operator adds a URL.'
+            } else {
+                Write-Host "Browser allow-list entries: $allowCount"
+            }
         }
         if ($receipt.PSObject.Properties['SupervisorV1Unchanged'] -and $receipt.SupervisorV1Unchanged -eq $true) {
             Write-Host 'Supervisor version 1 unchanged: true'

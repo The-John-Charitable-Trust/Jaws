@@ -35,14 +35,13 @@ The Investigation prompt planner is the Step C planning callee. It does not rece
 
 Install, after `-AcknowledgeStepDInstall`, creates:
 
-- virtual network `jaws-br-vnet-<environment>` (`10.42.0.0/16`) and subnet `jaws-br-apps` (`10.42.0.0/23`), delegated to `Microsoft.App/environments`
-- an internal-only Container Apps environment and Container App `jaws-br-<environment>`
+- a Container Apps environment with a public HTTPS endpoint and Container App `jaws-br-<environment>`
 - image `jaws/browser:step-d`, built with `az acr build` and pinned to the registry digest
 - Key Vault secrets `jaws-browser-allow-list` and `jaws-browser-credentials`
 - Foundry toolbox `jaws-browser-tools`, authenticated as managed identity audience `api://jaws-browser`
 - one later Supervisor version that names the toolbox and keeps the Step B digest
 
-The Container App has no public ingress. Ingress is internal on port 8089. Scale is minimum 0 and maximum 3 replicas. Before the two secrets are written, Install grants the signed-in account Key Vault Secrets Officer on the vault when that assignment is missing. Step B creates the vault with RBAC authorization and does not grant this data-plane role. The app identity receives Key Vault Secrets User on those two secrets and AcrPull on the registry. The container environment includes `JAWS_BROWSER_TENANT_ID` from the signed-in tenant.
+Foundry's tool calls leave Microsoft's network, so the browser API is a public HTTPS name on port 8089. The bearer token for audience `api://jaws-browser` is the boundary. The allow-list still starts empty, and a vault password is filled only after the token signature is validated. Scale is minimum 0 and maximum 3 replicas. An environment created earlier with internal ingress cannot be switched in place. Install deletes that app and environment and creates the public one, then posts a toolbox version whose server URL is the public name and promotes it. Before the two secrets are written, Install grants the signed-in account Key Vault Secrets Officer on the vault when that assignment is missing. Step B creates the vault with RBAC authorization and does not grant this data-plane role. The app identity receives Key Vault Secrets User on those two secrets and AcrPull on the registry. The container environment includes `JAWS_BROWSER_TENANT_ID` from the signed-in tenant.
 
 The install receipt records `PlaywrightServiceEndpoint`, `BrowserToolsetVersion`, and `CredentialScopeId`. A passing Install prints `Supervisor image rebuilt: false` and either `Browser allow-list: empty. No navigation will succeed until an operator adds a URL.` or the current entry count. Install does not rebuild the Supervisor image.
 
@@ -56,7 +55,7 @@ Expected: `STEP-D BROWSER IMAGE PASS`, `Supervisor image rebuilt: true`, `Superv
 
 ## Private path
 
-`Test-JawsBrowserPrivatePath.ps1` makes one Foundry responses call. The prompt opens a session and closes it. It does not navigate. The call is the Foundry tool path, which is the path that can reach the internal Container App. An operator laptop cannot prove that path.
+`Test-JawsBrowserPrivatePath.ps1` makes one Foundry responses call. The prompt opens a session and closes it. It does not navigate. Foundry calls the public browser API with the toolbox token. A pass proves that call reached the browser. It does not prove a page load.
 
 The command refuses to run until the image receipt says the Supervisor image was rebuilt and differs from version 1 (`JAWS-STEP-D-036`). Without `-AcknowledgeBrowserPrivatePath` it throws `JAWS-STEP-D-037`. A pass requires a browser-open result that contains a session id and does not contain `browser_unreachable`, and it requires that the response did not call browser navigate. Foundry names the OpenAPI tool `jaws-browser.browser_open`; a bare `browser_open` name and a `___` prefixed name also pass. Anything else is `JAWS-STEP-D-040` and stops the capability path.
 

@@ -119,7 +119,9 @@ if method == "get" and "/versions/" in url and "/toolboxes/" not in url:
 if method == "post" and "/versions?api-version=v1" in url and "/toolboxes/" not in url:
     name = url.split("/agents/")[1].split("/versions")[0]
     body = json.loads(body_text())
-    version = "2"
+    versions = world.setdefault("versions", {}).setdefault(name, {})
+    numeric = [int(key) for key in versions if str(key).isdigit()]
+    version = str(max(numeric + [1]) + 1)
     payload = {
         "name": name,
         "status": "active",
@@ -127,10 +129,53 @@ if method == "post" and "/versions?api-version=v1" in url and "/toolboxes/" not 
         "version": version,
         "definition": body["definition"],
     }
-    world.setdefault("versions", {}).setdefault(name, {})[version] = payload
+    versions[version] = payload
     world.setdefault("latest", {})[name] = version
     save()
     emit(payload)
+if method == "post" and "/protocols/openai/responses" in url:
+    world["last-response-body"] = body_text()
+    save()
+    mode = os.environ.get("JAWS_STEPD_STUB_BROWSER_CALL", "private-ok")
+    if mode == "unreachable":
+        emit({
+            "id": "resp_unreachable",
+            "status": "completed",
+            "output": [
+                {"type": "function_call", "name": "browser_open", "call_id": "call_open"},
+                {"type": "function_call_output", "call_id": "call_open", "output": "browser_unreachable"},
+            ],
+        })
+    if mode == "capability":
+        emit({
+            "id": "resp_capability",
+            "status": "completed",
+            "output": [
+                {"type": "function_call", "name": "browser_navigate", "call_id": "call_nav"},
+                {"type": "function_call_output", "call_id": "call_nav", "output": "EXTRACTED_VALUE=42"},
+                {"type": "function_call", "name": "browser_navigate", "call_id": "call_deny"},
+                {"type": "function_call_output", "call_id": "call_deny", "output": "allow_list_rejected"},
+            ],
+        })
+    if mode == "missing-markers":
+        emit({
+            "id": "resp_missing",
+            "status": "completed",
+            "output": [
+                {"type": "function_call", "name": "browser_navigate", "call_id": "call_nav"},
+                {"type": "function_call_output", "call_id": "call_nav", "output": "page loaded"},
+            ],
+        })
+    emit({
+        "id": "resp_private",
+        "status": "completed",
+        "output": [
+            {"type": "function_call", "name": "browser_open", "call_id": "call_open"},
+            {"type": "function_call_output", "call_id": "call_open", "output": "{\"sessionId\":\"abc123\",\"requested_by\":\"jaws-supervisor-cap1\"}"},
+            {"type": "function_call", "name": "browser_close", "call_id": "call_close"},
+            {"type": "function_call_output", "call_id": "call_close", "output": "closed"},
+        ],
+    })
 if method == "get" and "/toolboxes/jaws-browser-tools" in url:
     toolbox = world.get("toolbox")
     if not toolbox:
@@ -179,18 +224,26 @@ if args[:3] == ["containerapp", "env", "create"]:
     save()
     emit(world["cae"])
 if args[:2] == ["acr", "repository"] and "show" in args[:4]:
+    image = flag("--image")
+    if image.startswith("jaws/supervisor:"):
+        emit(world["supervisor-image"]) if "supervisor-image" in world else missing()
     emit(world["browser-image"]) if "browser-image" in world else missing()
 if args[:2] == ["acr", "build"]:
     file_arg = flag("--file").replace("\\", "/")
-    if not file_arg.endswith("src/Jaws.Browser.Host/Dockerfile"):
-        print("browser dockerfile path is required", file=sys.stderr)
-        sys.exit(2)
+    image = flag("--image")
     if flag("--platform") != "linux/amd64":
         print("platform must be linux/amd64", file=sys.stderr)
         sys.exit(2)
-    world["browser-image"] = {"digest": "sha256:" + ("b" * 64)}
-    save()
-    sys.exit(0)
+    if file_arg.endswith("src/Jaws.Browser.Host/Dockerfile"):
+        world["browser-image"] = {"digest": "sha256:" + ("b" * 64)}
+        save()
+        sys.exit(0)
+    if file_arg.endswith("src/Jaws.Supervisor.Host/Dockerfile") and image.startswith("jaws/supervisor:browser-"):
+        world["supervisor-image"] = {"digest": "sha256:" + ("c" * 64)}
+        save()
+        sys.exit(0)
+    print("dockerfile path is required", file=sys.stderr)
+    sys.exit(2)
 if args[:2] == ["containerapp", "show"]:
     emit(world["app"]) if "app" in world else missing()
 if args[:2] == ["containerapp", "create"]:
@@ -321,6 +374,13 @@ Describe 'Step D catalog' {
         }
         $approved.Specialists = @($approved.Specialists) + $prompt
         { Test-JawsStepDCatalog -Catalog $approved } | Should -Not -Throw
+
+        $foreignBrowser = New-JawsStepDCatalog -EnvironmentName 'lab1' -AgentName $agent -Image $image -IncludeBrowserTools
+        $foreignBrowser.Specialists = @($foreignBrowser.Specialists) + [pscustomobject]@{
+            Id = 'network'; Kind = 'prompt'; FoundryAgentName = 'jaws-network-lab1'; ComputeEnvironmentId = $agent
+            AllowedTools = @('vm.get','browser_navigate'); WritesRequireApproval = $true; ApprovalWorkflow = 'approve-vm-change'
+        }
+        { Test-JawsStepDCatalog -Catalog $foreignBrowser } | Should -Throw '*JAWS-STEP-D-034*'
     }
 
     It 'refuses an exact dev resource name and accepts a name that only contains that text' {
@@ -344,9 +404,21 @@ Describe 'Step D installer' {
         $local = Join-Path $script:root 'installer/.local'
         foreach ($name in @(
             'jaws-step-b-install.dev2.generated.json',
+            'jaws-step-b-install.cap1.generated.json',
+            'jaws-step-b-install.cap2.generated.json',
             'jaws-step-c-final-acceptance.dev2.generated.json',
+            'jaws-step-c-final-acceptance.cap1.generated.json',
+            'jaws-step-c-final-acceptance.cap2.generated.json',
             'jaws-step-c-final-acceptance.lab9.generated.json',
-            'jaws-step-d-validate.lab9.generated.json'
+            'jaws-step-d-validate.lab9.generated.json',
+            'jaws-step-d-install.cap1.generated.json',
+            'jaws-step-d-install.cap2.generated.json',
+            'jaws-step-d-browser-image.cap1.generated.json',
+            'jaws-step-d-browser-private-path.cap1.generated.json',
+            'jaws-step-d-browser-capability.cap1.generated.json',
+            'jaws-browser-allow-list.cap1.json',
+            'jaws-specialist-catalog.cap1.generated.json',
+            'jaws-specialist-catalog.cap2.generated.json'
         )) {
             $path = Join-Path $local $name
             if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path }
@@ -362,10 +434,12 @@ Describe 'Step D installer' {
         $script:savedMissing = $env:JAWS_STEPD_STUB_DEV_MISSING
         $script:savedAgentMissing = $env:JAWS_STEPD_STUB_MISSING
         $script:savedPoll = $env:JAWS_STEPD_POLL_SECONDS
+        $script:savedBrowserCall = $env:JAWS_STEPD_STUB_BROWSER_CALL
         $env:JAWS_STEPD_STUB_STATE = $script:state
         $env:JAWS_STEPD_STUB_DEV_IMAGE = $script:devImage
         $env:JAWS_STEPD_STUB_DEV_MISSING = '0'
         Remove-Item Env:JAWS_STEPD_STUB_MISSING -ErrorAction SilentlyContinue
+        Remove-Item Env:JAWS_STEPD_STUB_BROWSER_CALL -ErrorAction SilentlyContinue
         $env:JAWS_STEPD_POLL_SECONDS = '0'
         $env:PATH = $script:stub + [System.IO.Path]::PathSeparator + $env:PATH
         $script:devBefore = Get-Content -LiteralPath (Join-Path $script:root 'installer/config/jaws-installation-state.dev.json') -Raw
@@ -377,7 +451,8 @@ Describe 'Step D installer' {
             @{ Name = 'JAWS_STEPD_STUB_DEV_IMAGE'; Value = $script:savedImage },
             @{ Name = 'JAWS_STEPD_STUB_DEV_MISSING'; Value = $script:savedMissing },
             @{ Name = 'JAWS_STEPD_STUB_MISSING'; Value = $script:savedAgentMissing },
-            @{ Name = 'JAWS_STEPD_POLL_SECONDS'; Value = $script:savedPoll }
+            @{ Name = 'JAWS_STEPD_POLL_SECONDS'; Value = $script:savedPoll },
+            @{ Name = 'JAWS_STEPD_STUB_BROWSER_CALL'; Value = $script:savedBrowserCall }
         )) {
             if ($null -eq $pair.Value) { Remove-Item "Env:$($pair.Name)" -ErrorAction SilentlyContinue } else { Set-Item "Env:$($pair.Name)" $pair.Value }
         }
@@ -434,6 +509,7 @@ Describe 'Step D installer' {
         $output | Should -Match 'Browser toolbox: jaws-browser-tools'
         $output | Should -Match 'Supervisor image rebuilt: false'
         $output | Should -Match 'Browser tools on this image: pending a Supervisor image built from this host'
+        $output | Should -Match 'Browser allow-list: empty\. No navigation will succeed until an operator adds a URL\.'
         $output | Should -Match 'Supervisor version 1 unchanged: true'
         $output | Should -Match 'Result: PASS'
         $output | Should -Match 'Ready for next step: true'
@@ -542,5 +618,155 @@ Describe 'Step D installer' {
             $env:JAWS_STEPD_STUB_MISSING = '{"error":{"code":"not_found","message":"Not Found"}}'
             { Invoke-JawsStepDAz -Arguments $arguments } | Should -Throw '*JAWS-STEP-D-AZ-001*'
         }
+    }
+
+    It 'publishes a later Supervisor image, proves the private path, and keeps Step E closed' {
+        Write-StepDAcceptance 'cap1'
+        Write-StepDReceipt -EnvironmentName 'cap1' -FoundryAccountName 'jaws-foundry-cap1' -ProjectName 'jaws-cap1' -AgentName 'jaws-supervisor-cap1'
+        & (Join-Path $script:root 'installer/Install-JawsStepD.ps1') -Mode Install -EnvironmentName 'cap1' -AcknowledgeStepDInstall | Out-Null
+        $publish = Join-Path $script:root 'installer/Publish-JawsSupervisorBrowserImage.ps1'
+        $private = Join-Path $script:root 'installer/Test-JawsBrowserPrivatePath.ps1'
+        $capability = Join-Path $script:root 'installer/Test-JawsBrowserCapability.ps1'
+        $url = 'https://portal.contoso.example/reports'
+        $denied = ''
+        try {
+            & $publish -EnvironmentName 'cap1' *>&1 | ForEach-Object { $denied += "$_`n" }
+            throw 'Image publish returned without the acknowledgement.'
+        } catch { $denied += $_.Exception.Message }
+        $denied | Should -Match 'JAWS-STEP-D-035'
+        $denied | Should -Match 'STEP-D BROWSER IMAGE FAIL'
+        $early = ''
+        try {
+            & $private -EnvironmentName 'cap1' -AcknowledgeBrowserPrivatePath *>&1 | ForEach-Object { $early += "$_`n" }
+            throw 'Private path returned before the image publish.'
+        } catch { $early += $_.Exception.Message }
+        $early | Should -Match 'JAWS-STEP-D-036'
+        $devDenied = ''
+        try {
+            & $publish -EnvironmentName 'dev' -AcknowledgeSupervisorBrowserImage *>&1 | ForEach-Object { $devDenied += "$_`n" }
+            throw 'Dev image publish returned.'
+        } catch { $devDenied += $_.Exception.Message }
+        $devDenied | Should -Match 'JAWS-STEP-D-035'
+        $devDenied | Should -Match 'accepted dev project'
+
+        $worldPath = Join-Path $script:state 'world.json'
+        $world = Get-Content -LiteralPath $worldPath -Raw | ConvertFrom-Json
+        $versionTwo = $world.versions.'jaws-supervisor-cap1'.'2'
+        $versionTwo.definition.environment_variables | Add-Member -NotePropertyName JAWS_INVESTIGATION_TOOLBOX_NAME -NotePropertyValue 'jaws-investigation-a2a-tools' -Force
+        $world | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $worldPath -Encoding utf8
+
+        $built = & $publish -EnvironmentName 'cap1' -AcknowledgeSupervisorBrowserImage *>&1 | Out-String
+        $built | Should -Match 'STEP-D BROWSER IMAGE PASS'
+        $built | Should -Match 'Customer installation accepted: false'
+        $built | Should -Match 'Supervisor image rebuilt: true'
+        $built | Should -Match 'Supervisor image built this run: True'
+        $built | Should -Match 'Supervisor version 1 unchanged: true'
+        $built | Should -Match 'Ready for next step: true'
+        $built | Should -Match 'Next step: Test-JawsBrowserPrivatePath.ps1'
+        $built | Should -Not -Match 'Azure writes: 0'
+        $log = Get-Content -LiteralPath (Join-Path $script:state 'log.txt') -Raw
+        $log | Should -Match 'src/Jaws\.Supervisor\.Host/Dockerfile'
+        $log | Should -Match 'jaws/supervisor:browser-'
+        $log | Should -Match 'linux/amd64'
+        $log | Should -Not -Match '\bdocker\b'
+        $world = Get-Content -LiteralPath $worldPath -Raw | ConvertFrom-Json
+        $versionOne = $world.versions.'jaws-supervisor-cap1'.'1'
+        [string]$versionOne.definition.container_configuration.image | Should -Match 'sha256:a{64}$'
+        $versionOne.definition.environment_variables.PSObject.Properties['JAWS_BROWSER_TOOLBOX_NAME'] | Should -BeNullOrEmpty
+        $published = $world.versions.'jaws-supervisor-cap1'.'3'
+        [string]$published.definition.container_configuration.image | Should -Match 'sha256:c{64}$'
+        [string]$published.definition.environment_variables.JAWS_BROWSER_TOOLBOX_NAME | Should -Be 'jaws-browser-tools'
+        [string]$published.definition.environment_variables.JAWS_INVESTIGATION_TOOLBOX_NAME | Should -Be 'jaws-investigation-a2a-tools'
+        $builds = ([regex]::Matches($log, 'acr build')).Count
+        $again = & $publish -EnvironmentName 'cap1' -AcknowledgeSupervisorBrowserImage *>&1 | Out-String
+        $again | Should -Match 'Azure writes: 0'
+        $again | Should -Match 'Supervisor image built this run: False'
+        $log = Get-Content -LiteralPath (Join-Path $script:state 'log.txt') -Raw
+        ([regex]::Matches($log, 'acr build')).Count | Should -Be $builds
+
+        $env:JAWS_STEPD_STUB_BROWSER_CALL = 'unreachable'
+        $blocked = ''
+        try {
+            & $private -EnvironmentName 'cap1' -AcknowledgeBrowserPrivatePath *>&1 | ForEach-Object { $blocked += "$_`n" }
+            throw 'Unreachable private path returned.'
+        } catch { $blocked += $_.Exception.Message }
+        $blocked | Should -Match 'JAWS-STEP-D-040'
+        $blocked | Should -Match 'STEP-D PRIVATE PATH FAIL'
+        $blocked | Should -Match 'Ready for next step: false'
+        $pathReceipt = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-step-d-browser-private-path.cap1.generated.json') -Raw | ConvertFrom-Json
+        $pathReceipt.PrivatePathProven | Should -BeFalse
+
+        $env:JAWS_STEPD_STUB_BROWSER_CALL = 'private-ok'
+        $opened = & $private -EnvironmentName 'cap1' -AcknowledgeBrowserPrivatePath *>&1 | Out-String
+        $opened | Should -Match 'STEP-D PRIVATE PATH PASS'
+        $opened | Should -Match 'Customer installation accepted: false'
+        $opened | Should -Match 'Navigation attempted: false'
+        $opened | Should -Match 'Ready for next step: true'
+        $opened | Should -Match 'Next step: Set-JawsBrowserAllowList.ps1, then Test-JawsBrowserCapability.ps1'
+        $world = Get-Content -LiteralPath $worldPath -Raw | ConvertFrom-Json
+        [string]$world.'last-response-body' | Should -Match 'browser_open'
+        [string]$world.'last-response-body' | Should -Not -Match 'browser_navigate'
+        $pathReceipt = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-step-d-browser-private-path.cap1.generated.json') -Raw | ConvertFrom-Json
+        $pathReceipt.PrivatePathProven | Should -BeTrue
+        $pathReceipt.BrowserNavigateCalls | Should -Be 0
+        $pathReceipt.CustomerInstallationAccepted | Should -BeFalse
+
+        $staleAllow = Join-Path $script:root 'installer/.local/jaws-browser-allow-list.cap1.json'
+        if (Test-Path -LiteralPath $staleAllow) { Remove-Item -LiteralPath $staleAllow }
+        $missingUrl = ''
+        try {
+            & $capability -EnvironmentName 'cap1' -Url $url -AcknowledgeBrowserCapability *>&1 | ForEach-Object { $missingUrl += "$_`n" }
+            throw 'Capability returned before the allow-list update.'
+        } catch { $missingUrl += $_.Exception.Message }
+        $missingUrl | Should -Match 'JAWS-STEP-D-039'
+        & (Join-Path $script:root 'installer/Set-JawsBrowserAllowList.ps1') -Action Add -Url $url -EnvironmentName 'cap1' -AcknowledgeBrowserAllowList | Out-Null
+
+        $env:JAWS_STEPD_STUB_BROWSER_CALL = 'missing-markers'
+        $markers = ''
+        try {
+            & $capability -EnvironmentName 'cap1' -Url $url -AcknowledgeBrowserCapability *>&1 | ForEach-Object { $markers += "$_`n" }
+            throw 'Capability returned without the markers.'
+        } catch { $markers += $_.Exception.Message }
+        $markers | Should -Match 'JAWS-STEP-D-042'
+        $markers | Should -Match 'STEP-D BROWSER CAPABILITY FAIL'
+
+        $env:JAWS_STEPD_STUB_BROWSER_CALL = 'capability'
+        $done = & $capability -EnvironmentName 'cap1' -Url $url -AcknowledgeBrowserCapability *>&1 | Out-String
+        $done | Should -Match 'STEP-D BROWSER CAPABILITY PASS'
+        $done | Should -Match 'Customer installation accepted: false'
+        $done | Should -Match 'Ready for next step: false'
+        $done | Should -Match 'Next step: Step E is not installable'
+        $world = Get-Content -LiteralPath $worldPath -Raw | ConvertFrom-Json
+        $urlPattern = [regex]::Escape($url)
+        [string]$world.'last-response-body' | Should -Match $urlPattern
+        [string]$world.'last-response-body' | Should -Match 'allow_list_rejected'
+        $report = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-step-d-browser-capability.cap1.generated.json') -Raw | ConvertFrom-Json
+        $report.CapabilityProven | Should -BeTrue
+        $report.ExtractedValueObserved | Should -BeTrue
+        $report.AllowListRejectionObserved | Should -BeTrue
+        $report.CustomerInstallationAccepted | Should -BeFalse
+        $report.LiveNavigationClaimed | Should -BeFalse
+        $report.VaultLoginClaimed | Should -BeFalse
+        $report.SignatureValidationClaimed | Should -BeFalse
+        $report.FreshSubscriptionReceiptArchived | Should -BeFalse
+    }
+
+    It 'refuses a Supervisor image that is neither version 1 nor the published browser image' {
+        Write-StepDAcceptance 'cap2'
+        Write-StepDReceipt -EnvironmentName 'cap2' -FoundryAccountName 'jaws-foundry-cap2' -ProjectName 'jaws-cap2' -AgentName 'jaws-supervisor-cap2'
+        & (Join-Path $script:root 'installer/Install-JawsStepD.ps1') -Mode Install -EnvironmentName 'cap2' -AcknowledgeStepDInstall | Out-Null
+        $worldPath = Join-Path $script:state 'world.json'
+        $world = Get-Content -LiteralPath $worldPath -Raw | ConvertFrom-Json
+        $world.versions.'jaws-supervisor-cap2'.'2'.definition.container_configuration.image = 'other.azurecr.io/jaws/supervisor@sha256:' + ('d' * 64)
+        $world | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $worldPath -Encoding utf8
+        $builds = ([regex]::Matches((Get-Content -LiteralPath (Join-Path $script:state 'log.txt') -Raw), 'acr build')).Count
+        $output = ''
+        try {
+            & (Join-Path $script:root 'installer/Publish-JawsSupervisorBrowserImage.ps1') -EnvironmentName 'cap2' -AcknowledgeSupervisorBrowserImage *>&1 | ForEach-Object { $output += "$_`n" }
+            throw 'Publish returned for a foreign image.'
+        } catch { $output += $_.Exception.Message }
+        $output | Should -Match 'JAWS-STEP-D-035'
+        $output | Should -Match 'differs from version 1'
+        ([regex]::Matches((Get-Content -LiteralPath (Join-Path $script:state 'log.txt') -Raw), 'acr build')).Count | Should -Be $builds
     }
 }

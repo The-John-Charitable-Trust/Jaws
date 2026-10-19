@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.IdentityModel.Tokens.Jwt;
 using System.Text.Json;
+using Microsoft.IdentityModel.Tokens;
 using Jaws.Browser.Host;
 using Azure.Identity;
 using Azure.Security.KeyVault.Secrets;
@@ -12,6 +12,9 @@ if (string.IsNullOrWhiteSpace(audience))
 {
     audience = "api://jaws-browser";
 }
+var signatureParameters = BrowserToken.CreateSignatureParameters(
+    Environment.GetEnvironmentVariable("JAWS_BROWSER_TENANT_ID"),
+    audience);
 var timeoutMinutes = ReadInt("JAWS_BROWSER_TIMEOUT_MINUTES", 10);
 var stepLimit = ReadInt("JAWS_BROWSER_STEP_LIMIT", 50);
 var maxSessions = ReadInt("JAWS_BROWSER_MAX_SESSIONS", 3);
@@ -39,25 +42,34 @@ app.MapGet("/healthz", () => Results.Ok(new { status = "ready", component = "jaw
 
 app.MapPost("/sessions", async (HttpRequest request) =>
 {
-    if (!Authorize(request, audience))
+    var auth = Authorize(request, audience, signatureParameters);
+    if (!auth.AudienceAccepted)
     {
         return Unauthorized();
     }
     var active = sessions.Values.Count(item => !item.Closed);
     if (active >= maxSessions)
     {
-        return Problem("browser_queue_timeout", "The session limit is full. Wait and retry.", 429);
+        return Problem("browser_queue_timeout", "The session limit is full. This request was not queued.", 429);
     }
+    SessionBody? body = null;
+    if (request.ContentLength is > 0)
+    {
+        body = await request.ReadFromJsonAsync<SessionBody>();
+    }
+    var requestedBy = string.IsNullOrWhiteSpace(body?.RequestedBy) ? "direct" : body.RequestedBy.Trim();
+    var delegationId = body?.DelegationId?.Trim() ?? "";
     var id = Guid.NewGuid().ToString("N");
-    var session = await BrowserSession.OpenAsync(id, screenshotRoot);
+    var session = await BrowserSession.OpenAsync(id, screenshotRoot, requestedBy, delegationId);
     sessions[id] = session;
-    WriteEvidence(evidenceRoot, id, "session_open", id, "opened", 0, null);
-    return Results.Ok(new { sessionId = id, stepLimit, timeoutMinutes });
+    WriteEvidence(evidenceRoot, id, "session_open", id, "opened", 0, null, requestedBy, delegationId);
+    return Results.Ok(new { sessionId = id, stepLimit, timeoutMinutes, requestedBy, delegationId });
 });
 
 app.MapPost("/sessions/{id}/navigate", async (string id, ActionBody body, HttpRequest request) =>
 {
-    if (!Authorize(request, audience))
+    var auth = Authorize(request, audience, signatureParameters);
+    if (!auth.AudienceAccepted)
     {
         return Unauthorized();
     }
@@ -69,7 +81,7 @@ app.MapPost("/sessions/{id}/navigate", async (string id, ActionBody body, HttpRe
     var allow = await ReadAllowListAsync(allowListPath, allowListSecret);
     if (!BrowserPolicy.IsAllowed(body.Url ?? "", allow))
     {
-        WriteEvidence(evidenceRoot, id, "browser_navigate", body.Url ?? "", "rejected", 0, null);
+        WriteEvidence(evidenceRoot, id, "browser_navigate", body.Url ?? "", "rejected", 0, null, session.RequestedBy, session.DelegationId);
         return Problem("allow_list_rejected", "Navigation was rejected because the URL is outside the allow-list.", 403);
     }
     return await RunAsync(session, evidenceRoot, id, "browser_navigate", body.Url ?? "", stepLimit, timeoutMinutes, async () =>
@@ -87,7 +99,8 @@ app.MapPost("/sessions/{id}/navigate", async (string id, ActionBody body, HttpRe
 
 app.MapPost("/sessions/{id}/snapshot", async (string id, HttpRequest request) =>
 {
-    if (!Authorize(request, audience))
+    var auth = Authorize(request, audience, signatureParameters);
+    if (!auth.AudienceAccepted)
     {
         return Unauthorized();
     }
@@ -105,7 +118,8 @@ app.MapPost("/sessions/{id}/snapshot", async (string id, HttpRequest request) =>
 
 app.MapPost("/sessions/{id}/click", async (string id, SelectorBody body, HttpRequest request) =>
 {
-    if (!Authorize(request, audience))
+    var auth = Authorize(request, audience, signatureParameters);
+    if (!auth.AudienceAccepted)
     {
         return Unauthorized();
     }
@@ -123,7 +137,8 @@ app.MapPost("/sessions/{id}/click", async (string id, SelectorBody body, HttpReq
 
 app.MapPost("/sessions/{id}/type", async (string id, TypeBody body, HttpRequest request) =>
 {
-    if (!Authorize(request, audience))
+    var auth = Authorize(request, audience, signatureParameters);
+    if (!auth.AudienceAccepted)
     {
         return Unauthorized();
     }
@@ -135,8 +150,13 @@ app.MapPost("/sessions/{id}/type", async (string id, TypeBody body, HttpRequest 
     var selector = body.Selector ?? "";
     if (BrowserPolicy.IsCredentialField(selector))
     {
+        if (!auth.CanFillCredential)
+        {
+            WriteEvidence(evidenceRoot, id, "browser_type", selector, "credential_signature_required", 0, null, session.RequestedBy, session.DelegationId);
+            return Problem("credential_signature_required", "Vault login requires a signature-validated token. The agent text was discarded.", 403);
+        }
         var filled = await session.FillCredentialAsync(credentialSecret, selector);
-        WriteEvidence(evidenceRoot, id, "browser_type", selector, filled ? "vault_filled" : "credential_not_registered", 0, null);
+        WriteEvidence(evidenceRoot, id, "browser_type", selector, filled ? "vault_filled" : "credential_not_registered", 0, null, session.RequestedBy, session.DelegationId);
         return filled
             ? Results.Ok(new { url = session.Url, credential = "filled" })
             : Problem("credential_not_registered", "No vault entry is registered for this site. The agent text was discarded.", 404);
@@ -150,7 +170,8 @@ app.MapPost("/sessions/{id}/type", async (string id, TypeBody body, HttpRequest 
 
 app.MapPost("/sessions/{id}/screenshot", async (string id, HttpRequest request) =>
 {
-    if (!Authorize(request, audience))
+    var auth = Authorize(request, audience, signatureParameters);
+    if (!auth.AudienceAccepted)
     {
         return Unauthorized();
     }
@@ -168,7 +189,8 @@ app.MapPost("/sessions/{id}/screenshot", async (string id, HttpRequest request) 
 
 app.MapPost("/sessions/{id}/close", async (string id, HttpRequest request) =>
 {
-    if (!Authorize(request, audience))
+    var auth = Authorize(request, audience, signatureParameters);
+    if (!auth.AudienceAccepted)
     {
         return Unauthorized();
     }
@@ -178,7 +200,7 @@ app.MapPost("/sessions/{id}/close", async (string id, HttpRequest request) =>
     }
     var shot = session.Closed ? null : await session.ScreenshotAsync("close");
     await session.CloseAsync();
-    WriteEvidence(evidenceRoot, id, "browser_close", session.Url, "closed", 0, shot);
+    WriteEvidence(evidenceRoot, id, "browser_close", session.Url, "closed", 0, shot, session.RequestedBy, session.DelegationId);
     return Results.Ok(new { sessionId = id, closed = true, screenshot = shot });
 });
 
@@ -190,23 +212,9 @@ static int ReadInt(string name, int fallback)
     return int.TryParse(text, out var value) && value > 0 ? value : fallback;
 }
 
-static bool Authorize(HttpRequest request, string audience)
+static BrowserAuthorization Authorize(HttpRequest request, string audience, TokenValidationParameters? signature)
 {
-    var header = request.Headers.Authorization.ToString();
-    if (!header.StartsWith("Bearer ", StringComparison.Ordinal) || header.Length < 8)
-    {
-        return false;
-    }
-    var token = header["Bearer ".Length..].Trim();
-    try
-    {
-        var jwt = new JwtSecurityTokenHandler().ReadJwtToken(token);
-        return jwt.Audiences.Contains(audience, StringComparer.Ordinal);
-    }
-    catch (ArgumentException)
-    {
-        return false;
-    }
+    return BrowserToken.Authorize(request.Headers.Authorization.ToString(), audience, signature);
 }
 
 static IResult Unauthorized()
@@ -242,7 +250,7 @@ static async Task<IResult> RunAsync(
     {
         var shot = await session.ScreenshotAsync("limit");
         await session.CloseAsync();
-        WriteEvidence(evidenceRoot, id, action, target, "timeout", 0, shot);
+        WriteEvidence(evidenceRoot, id, action, target, "timeout", 0, shot, session.RequestedBy, session.DelegationId);
         return Problem("browser_timeout", "The browser task reached its step limit or timeout. The session was closed.", 408);
     }
     var watch = Stopwatch.StartNew();
@@ -250,26 +258,26 @@ static async Task<IResult> RunAsync(
     {
         var payload = await work();
         session.Steps++;
-        WriteEvidence(evidenceRoot, id, action, target, "ok", watch.ElapsedMilliseconds, null);
+        WriteEvidence(evidenceRoot, id, action, target, "ok", watch.ElapsedMilliseconds, null, session.RequestedBy, session.DelegationId);
         return Results.Ok(payload);
     }
     catch (BrowserCommandException ex)
     {
         var shot = await session.ScreenshotAsync("failure");
-        WriteEvidence(evidenceRoot, id, action, target, ex.Code, watch.ElapsedMilliseconds, shot);
+        WriteEvidence(evidenceRoot, id, action, target, ex.Code, watch.ElapsedMilliseconds, shot, session.RequestedBy, session.DelegationId);
         var status = ex.Code == "allow_list_rejected" ? 403 : 503;
         return Problem(ex.Code, ex.Message, status);
     }
     catch (TimeoutException)
     {
         var shot = await session.ScreenshotAsync("unreachable");
-        WriteEvidence(evidenceRoot, id, action, target, "browser_unreachable", watch.ElapsedMilliseconds, shot);
+        WriteEvidence(evidenceRoot, id, action, target, "browser_unreachable", watch.ElapsedMilliseconds, shot, session.RequestedBy, session.DelegationId);
         return Problem("browser_unreachable", "The browser service did not finish the action within 30 seconds.", 503);
     }
     catch (PlaywrightException ex)
     {
         var shot = await session.ScreenshotAsync("unreachable");
-        WriteEvidence(evidenceRoot, id, action, target, "browser_unreachable", watch.ElapsedMilliseconds, shot);
+        WriteEvidence(evidenceRoot, id, action, target, "browser_unreachable", watch.ElapsedMilliseconds, shot, session.RequestedBy, session.DelegationId);
         return Problem("browser_unreachable", "The browser engine could not complete the action. " + ex.Message, 503);
     }
 }
@@ -312,7 +320,7 @@ static string SecretName(string secretUri)
     return parts[index + 1];
 }
 
-static void WriteEvidence(string root, string sessionId, string action, string target, string outcome, long durationMs, string? screenshot)
+static void WriteEvidence(string root, string sessionId, string action, string target, string outcome, long durationMs, string? screenshot, string requestedBy, string delegationId)
 {
     var line = JsonSerializer.Serialize(new
     {
@@ -322,7 +330,9 @@ static void WriteEvidence(string root, string sessionId, string action, string t
         target,
         outcome,
         durationMs,
-        screenshot
+        screenshot,
+        requested_by = requestedBy,
+        delegation_id = delegationId
     });
     File.AppendAllText(Path.Combine(root, sessionId + ".jsonl"), line + Environment.NewLine);
 }
@@ -346,6 +356,12 @@ internal sealed class CredentialEntry
 internal sealed class AllowListFile
 {
     public string[] Urls { get; set; } = Array.Empty<string>();
+}
+
+internal sealed class SessionBody
+{
+    public string? RequestedBy { get; set; }
+    public string? DelegationId { get; set; }
 }
 
 internal sealed class ActionBody
@@ -385,9 +401,16 @@ internal sealed class BrowserSession : IAsyncDisposable
     public bool Closed { get; private set; }
     public DateTimeOffset Opened { get; }
 
-    public static async Task<BrowserSession> OpenAsync(string id, string screenshotRoot)
+    public string RequestedBy { get; init; } = "";
+    public string DelegationId { get; init; } = "";
+
+    public static async Task<BrowserSession> OpenAsync(string id, string screenshotRoot, string requestedBy, string delegationId)
     {
-        var session = new BrowserSession(id, screenshotRoot);
+        var session = new BrowserSession(id, screenshotRoot)
+        {
+            RequestedBy = requestedBy,
+            DelegationId = delegationId
+        };
         _playwright ??= await Playwright.CreateAsync();
         if (_browser is null)
         {

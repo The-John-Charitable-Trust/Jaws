@@ -77,6 +77,10 @@ function Test-JawsStepDCatalog {
         if ([string]$item.ComputeEnvironmentId -ne $compute) {
             throw "JAWS-STEP-D-006: Specialist '$id' names a second compute environment."
         }
+        $browserTools = @($item.AllowedTools | Where-Object { [string]$_ -in @(Get-JawsBrowserToolNames) })
+        if ($browserTools.Count -gt 0 -and $id -ne 'virtual-machine') {
+            throw "JAWS-STEP-D-034: Specialist '$id' must not receive browser tools. Only the virtual-machine specialist browses directly."
+        }
         foreach ($tool in @($item.AllowedTools)) {
             if ([string]$tool -notin $known) { throw "JAWS-STEP-D-003: Unknown tool '$tool'." }
             if ([string]$tool -in @(Get-JawsStepDWriteTools)) {

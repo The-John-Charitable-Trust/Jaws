@@ -3,9 +3,11 @@
     <Project Path="src/Jaws.AgentFramework/Jaws.AgentFramework.csproj" />
     <Project Path="src/Jaws.Api/Jaws.Api.csproj" />
     <Project Path="src/Jaws.Supervisor.Host/Jaws.Supervisor.Host.csproj" />
+    <Project Path="src/Jaws.Browser.Host/Jaws.Browser.Host.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Jaws.FirstAgent.Tests/Jaws.FirstAgent.Tests.csproj" />
     <Project Path="tests/Jaws.Supervisor.Host.Tests/Jaws.Supervisor.Host.Tests.csproj" />
+    <Project Path="tests/Jaws.Browser.Host.Tests/Jaws.Browser.Host.Tests.csproj" />
   </Folder>
 </Solution>

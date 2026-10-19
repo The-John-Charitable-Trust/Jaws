@@ -217,7 +217,8 @@ function Install-JawsStepDBrowser {
         'JAWS_BROWSER_TIMEOUT_MINUTES=10',
         'JAWS_BROWSER_STEP_LIMIT=50',
         'JAWS_BROWSER_MAX_SESSIONS=3',
-        "AZURE_TENANT_ID=$tenant"
+        "AZURE_TENANT_ID=$tenant",
+        "JAWS_BROWSER_TENANT_ID=$tenant"
     )
     if ($null -eq $app) {
         $app = Invoke-JawsBrowserAz -Arguments (@(
@@ -418,4 +419,376 @@ function Confirm-JawsStepDBrowser {
     return $reasons
 }
 
-Export-ModuleMember -Function Get-JawsBrowserToolNames,Get-JawsBrowserNames,Install-JawsStepDBrowser,Update-JawsBrowserAllowList,Get-JawsBrowserAllowListPath,Confirm-JawsStepDBrowser
+function Get-JawsBrowserImageReceiptPath {
+    param([Parameter(Mandatory)][string]$InstallerRoot,[Parameter(Mandatory)][string]$EnvironmentName)
+    Join-Path $InstallerRoot ".local/jaws-step-d-browser-image.$EnvironmentName.generated.json"
+}
+
+function Get-JawsBrowserPrivatePathReceiptPath {
+    param([Parameter(Mandatory)][string]$InstallerRoot,[Parameter(Mandatory)][string]$EnvironmentName)
+    Join-Path $InstallerRoot ".local/jaws-step-d-browser-private-path.$EnvironmentName.generated.json"
+}
+
+function Get-JawsBrowserCapabilityReceiptPath {
+    param([Parameter(Mandatory)][string]$InstallerRoot,[Parameter(Mandatory)][string]$EnvironmentName)
+    Join-Path $InstallerRoot ".local/jaws-step-d-browser-capability.$EnvironmentName.generated.json"
+}
+
+function Save-JawsBrowserReceipt {
+    param([Parameter(Mandatory)][string]$Path,$Payload)
+    $dir = Split-Path -Parent $Path
+    if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
+    $Payload | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $Path -Encoding utf8
+}
+
+function Read-JawsBrowserReceipt {
+    param([Parameter(Mandatory)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
+    return (Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json)
+}
+
+function Get-JawsBrowserStepBReceipt {
+    param([Parameter(Mandatory)][string]$InstallerRoot,[Parameter(Mandatory)][string]$EnvironmentName)
+    $path = Join-Path $InstallerRoot ".local/jaws-step-b-install.$EnvironmentName.generated.json"
+    $receipt = Read-JawsBrowserReceipt -Path $path
+    if ($null -eq $receipt -or [string]$receipt.Status -ne 'STEP_B_INSTALLED') {
+        throw "JAWS-STEP-D-035: Step B receipt was not found for $EnvironmentName."
+    }
+    return $receipt
+}
+
+function Test-JawsPublishedSupervisorBrowserImage {
+    param([string]$Image,[string]$VersionOneImage,[string]$RegistryName)
+    $login = "$RegistryName.azurecr.io"
+    $pattern = '^' + [regex]::Escape($login) + '/jaws/supervisor@sha256:[a-f0-9]{64}$'
+    return ($Image -cmatch $pattern -and $Image -cne $VersionOneImage)
+}
+
+function Get-JawsBrowserResponseCalls {
+    param($Response)
+    $items = @()
+    if ($null -ne $Response -and $Response.PSObject.Properties['output'] -and $null -ne $Response.output) {
+        $items = @($Response.output)
+    }
+    $calls = @($items | Where-Object { $_ -and $_.PSObject.Properties['type'] -and [string]$_.type -eq 'function_call' })
+    $records = @()
+    foreach ($call in $calls) {
+        $id = if ($call.PSObject.Properties['call_id']) { [string]$call.call_id } else { '' }
+        $name = if ($call.PSObject.Properties['name']) { [string]$call.name } else { '' }
+        $raw = if ($call.PSObject.Properties['output'] -and $null -ne $call.output) { [string]$call.output } else { '' }
+        $match = @($items | Where-Object {
+            $_ -and $_.PSObject.Properties['type'] -and [string]$_.type -eq 'function_call_output' -and
+            $_.PSObject.Properties['call_id'] -and [string]$_.call_id -ceq $id
+        })
+        if ($match.Count -eq 1 -and $match[0].PSObject.Properties['output'] -and $null -ne $match[0].output) {
+            $raw = [string]$match[0].output
+        }
+        $records += [pscustomobject]@{ Name = $name; Output = $raw }
+    }
+    return @($records)
+}
+
+function Invoke-JawsBrowserSupervisorResponse {
+    param([Parameter(Mandatory)][string]$Url,[Parameter(Mandatory)][string]$Body,[Parameter(Mandatory)][string]$FailureCode)
+    $tmp = [IO.Path]::GetTempFileName()
+    try {
+        [IO.File]::WriteAllText($tmp, $Body, [Text.UTF8Encoding]::new($false))
+        $raw = & az rest --method post --url $Url --resource https://ai.azure.com --headers 'Content-Type=application/json' --body "@$tmp" --output json --only-show-errors 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw "${FailureCode}: Supervisor invocation failed. $($raw | Out-String)"
+        }
+        return (($raw | Out-String) | ConvertFrom-Json)
+    } finally {
+        Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Publish-JawsSupervisorBrowserImage {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$EnvironmentName,
+        [Parameter(Mandatory)][string]$InstallerRoot,
+        [switch]$AcknowledgeSupervisorBrowserImage
+    )
+    if (-not $AcknowledgeSupervisorBrowserImage) {
+        throw 'JAWS-STEP-D-035: Publishing the Supervisor browser image requires -AcknowledgeSupervisorBrowserImage. No image was built.'
+    }
+    if ($EnvironmentName -eq 'dev') {
+        throw 'JAWS-STEP-D-035: The accepted dev project does not receive a Supervisor browser image.'
+    }
+    $install = Read-JawsBrowserReceipt -Path (Join-Path $InstallerRoot ".local/jaws-step-d-install.$EnvironmentName.generated.json")
+    $toolbox = if ($null -ne $install -and $install.PSObject.Properties['BrowserToolboxName']) { [string]$install.BrowserToolboxName } else { '' }
+    if ([string]::IsNullOrWhiteSpace($toolbox)) {
+        throw 'JAWS-STEP-D-035: Step D Install has not recorded a browser toolbox. The Supervisor image was not built.'
+    }
+    $stepB = Get-JawsBrowserStepBReceipt -InstallerRoot $InstallerRoot -EnvironmentName $EnvironmentName
+    $endpoint = "https://$([string]$stepB.FoundryAccountName).services.ai.azure.com/api/projects/$([string]$stepB.ProjectName)"
+    $supervisor = [string]$stepB.AgentName
+    $registry = [string]$stepB.RegistryName
+    $subscription = [string]$stepB.SubscriptionId
+    $v1Url = "$endpoint/agents/$supervisor/versions/1?api-version=v1"
+    $v1 = Invoke-JawsBrowserAz -Arguments @('rest','--method','GET','--url',$v1Url,'--resource','https://ai.azure.com','--output','json','--only-show-errors')
+    $v1Image = [string](Get-JawsBrowserProperty $v1 @('definition','container_configuration','image'))
+    $v1Browser = [string](Get-JawsBrowserProperty $v1 @('definition','environment_variables','JAWS_BROWSER_TOOLBOX_NAME'))
+    if ([string]$v1.status -ne 'active' -or $v1.draft -eq $true -or $v1Image -notmatch '@sha256:[a-f0-9]{64}$' -or -not [string]::IsNullOrWhiteSpace($v1Browser)) {
+        throw 'JAWS-STEP-D-035: Supervisor version 1 is not an active digest-pinned image without the browser variable. It was not modified.'
+    }
+    $summary = Invoke-JawsBrowserAz -Arguments @('rest','--method','GET','--url',"$endpoint/agents/${supervisor}?api-version=v1",'--resource','https://ai.azure.com','--output','json','--only-show-errors')
+    $latest = [string](Get-JawsBrowserProperty $summary @('versions','latest'))
+    $source = if ($latest -match '^[0-9]+$' -and $latest -ne '1') {
+        Invoke-JawsBrowserAz -Arguments @('rest','--method','GET','--url',"$endpoint/agents/$supervisor/versions/${latest}?api-version=v1",'--resource','https://ai.azure.com','--output','json','--only-show-errors')
+    } else { $v1 }
+    $sourceImage = [string](Get-JawsBrowserProperty $source @('definition','container_configuration','image'))
+    $sourceBrowser = [string](Get-JawsBrowserProperty $source @('definition','environment_variables','JAWS_BROWSER_TOOLBOX_NAME'))
+    $alreadyPublished = ($sourceBrowser -eq $toolbox -and (Test-JawsPublishedSupervisorBrowserImage -Image $sourceImage -VersionOneImage $v1Image -RegistryName $registry))
+    $writes = 0
+    $builtThisRun = $false
+    $image = $sourceImage
+    if ($alreadyPublished) {
+        $image = $sourceImage
+    } else {
+        if ($sourceImage -cne $v1Image) {
+            throw 'JAWS-STEP-D-035: The latest Supervisor image differs from version 1 and is not a digest-pinned browser image from this registry. No image was built.'
+        }
+        Import-Module (Join-Path $PSScriptRoot 'SupervisorPackage.psm1') -Force
+        $package = Get-JawsSupervisorPackagePlan -InstallerRoot $InstallerRoot
+        $tag = 'browser-' + [guid]::NewGuid().ToString('N').Substring(0, 16)
+        $imageName = "jaws/supervisor:$tag"
+        $buildOutput = & az @(
+            'acr','build',
+            '--registry',$registry,
+            '--subscription',$subscription,
+            '--image',$imageName,
+            '--file',$package.DockerfilePath,
+            '--platform','linux/amd64',
+            '--output','none',
+            $package.BuildContext
+        ) 2>&1
+        $buildCode = $LASTEXITCODE
+        if ($buildCode -ne 0) {
+            throw "JAWS-STEP-D-035: Azure Container Registry build failed ($buildCode). Docker was not used. $($buildOutput | Out-String)"
+        }
+        $writes++
+        $builtThisRun = $true
+        $shown = Invoke-JawsBrowserAz -Arguments @('acr','repository','show','--name',$registry,'--image',$imageName,'--output','json','--only-show-errors')
+        $digest = [string](Get-JawsBrowserProperty $shown @('digest'))
+        if ($digest -notmatch '^sha256:[a-f0-9]{64}$') {
+            throw 'JAWS-STEP-D-035: Registry did not return a valid immutable digest. No Supervisor version was posted.'
+        }
+        $image = "$registry.azurecr.io/jaws/supervisor@$digest"
+        $variables = [ordered]@{}
+        $current = Get-JawsBrowserProperty $source @('definition','environment_variables')
+        if ($null -ne $current) {
+            foreach ($prop in $current.PSObject.Properties) { $variables[$prop.Name] = [string]$prop.Value }
+        }
+        $variables['JAWS_BROWSER_TOOLBOX_NAME'] = $toolbox
+        $body = [ordered]@{
+            draft = $false
+            definition = [ordered]@{
+                kind = 'hosted'
+                container_configuration = [ordered]@{ image = $image }
+                cpu = [string](Get-JawsBrowserProperty $source @('definition','cpu'))
+                memory = [string](Get-JawsBrowserProperty $source @('definition','memory'))
+                protocol_versions = @([ordered]@{ protocol = 'responses'; version = '2.0.0' })
+                environment_variables = $variables
+            }
+        }
+        $bodyFile = [IO.Path]::GetTempFileName() + '.json'
+        try {
+            $body | ConvertTo-Json -Depth 12 -Compress | Set-Content -LiteralPath $bodyFile -Encoding utf8
+            $created = Invoke-JawsBrowserAz -Arguments @('rest','--method','POST','--url',"$endpoint/agents/$supervisor/versions?api-version=v1",'--resource','https://ai.azure.com','--body',"@$bodyFile",'--output','json','--only-show-errors')
+        } finally {
+            Remove-Item -LiteralPath $bodyFile -Force -ErrorAction SilentlyContinue
+        }
+        $writes++
+        $createdVersion = [string](Get-JawsBrowserProperty $created @('version'))
+        if ($createdVersion -notmatch '^[0-9]+$' -or $createdVersion -eq '1') {
+            throw 'JAWS-STEP-D-035: Foundry did not return a Supervisor version after version 1.'
+        }
+        $latest = $createdVersion
+    }
+    $v1After = Invoke-JawsBrowserAz -Arguments @('rest','--method','GET','--url',$v1Url,'--resource','https://ai.azure.com','--output','json','--only-show-errors')
+    $v1AfterImage = [string](Get-JawsBrowserProperty $v1After @('definition','container_configuration','image'))
+    $v1AfterBrowser = [string](Get-JawsBrowserProperty $v1After @('definition','environment_variables','JAWS_BROWSER_TOOLBOX_NAME'))
+    if ([string]$v1After.status -ne 'active' -or $v1AfterImage -cne $v1Image -or -not [string]::IsNullOrWhiteSpace($v1AfterBrowser)) {
+        throw 'JAWS-STEP-D-035: Supervisor version 1 changed while the browser image was published.'
+    }
+    $path = Get-JawsBrowserImageReceiptPath -InstallerRoot $InstallerRoot -EnvironmentName $EnvironmentName
+    Save-JawsBrowserReceipt -Path $path -Payload ([pscustomobject]@{
+        Result = 'PASS'
+        EnvironmentName = $EnvironmentName
+        SupervisorImageRebuilt = $true
+        ImageBuiltThisRun = $builtThisRun
+        PreviousImage = $v1Image
+        Image = $image
+        SupervisorVersion = $latest
+        BrowserToolboxName = $toolbox
+        SupervisorV1Unchanged = $true
+        AzureWrites = $writes
+        CustomerInstallationAccepted = $false
+        FreshSubscriptionReceiptArchived = $false
+        EvidenceLimitations = 'This receipt records an image publish. It is not a fresh-subscription browser capability receipt.'
+        CompletedAtUtc = [DateTime]::UtcNow.ToString('o')
+    })
+    return [pscustomobject]@{
+        Passed = $true
+        EvidencePath = $path
+        ReadyForNextStep = $true
+        NextStep = 'Test-JawsBrowserPrivatePath.ps1'
+        AzureWrites = $writes
+        Image = $image
+        PreviousImage = $v1Image
+        ImageBuiltThisRun = $builtThisRun
+        SupervisorV1Unchanged = $true
+    }
+}
+
+function Invoke-JawsBrowserPrivatePath {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$EnvironmentName,
+        [Parameter(Mandatory)][string]$InstallerRoot,
+        [switch]$AcknowledgeBrowserPrivatePath
+    )
+    if (-not $AcknowledgeBrowserPrivatePath) {
+        throw 'JAWS-STEP-D-037: The private-path check requires -AcknowledgeBrowserPrivatePath. No Supervisor call was made.'
+    }
+    if ($EnvironmentName -eq 'dev') {
+        throw 'JAWS-STEP-D-037: The accepted dev project does not receive a browser private-path check.'
+    }
+    $imageReceipt = Read-JawsBrowserReceipt -Path (Get-JawsBrowserImageReceiptPath -InstallerRoot $InstallerRoot -EnvironmentName $EnvironmentName)
+    $rebuilt = ($null -ne $imageReceipt -and $imageReceipt.PSObject.Properties['SupervisorImageRebuilt'] -and $imageReceipt.SupervisorImageRebuilt -eq $true)
+    $previous = if ($null -ne $imageReceipt -and $imageReceipt.PSObject.Properties['PreviousImage']) { [string]$imageReceipt.PreviousImage } else { '' }
+    $image = if ($null -ne $imageReceipt -and $imageReceipt.PSObject.Properties['Image']) { [string]$imageReceipt.Image } else { '' }
+    if (-not $rebuilt -or [string]::IsNullOrWhiteSpace($image) -or $image -ceq $previous) {
+        throw 'JAWS-STEP-D-036: Publish the Supervisor browser image before the private-path check. No Supervisor call was made.'
+    }
+    $stepB = Get-JawsBrowserStepBReceipt -InstallerRoot $InstallerRoot -EnvironmentName $EnvironmentName
+    $endpoint = "https://$([string]$stepB.FoundryAccountName).services.ai.azure.com/api/projects/$([string]$stepB.ProjectName)"
+    $supervisor = [string]$stepB.AgentName
+    $model = [string]$stepB.ModelDeploymentName
+    $url = "$endpoint/agents/$supervisor/endpoint/protocols/openai/responses?api-version=v1"
+    $body = @{
+        model = $model
+        input = 'Call browser_open once, then browser_close. Do not open a page. This proves the Foundry tool path can reach the private browser.'
+        stream = $false
+        store = $false
+    } | ConvertTo-Json -Depth 6 -Compress
+    $response = Invoke-JawsBrowserSupervisorResponse -Url $url -Body $body -FailureCode 'JAWS-STEP-D-040'
+    $calls = @(Get-JawsBrowserResponseCalls -Response $response)
+    $opens = @($calls | Where-Object { $_.Name -eq 'browser_open' })
+    $navigates = @($calls | Where-Object { $_.Name -eq 'browser_navigate' })
+    $openText = ((@($opens | ForEach-Object { $_.Output })) -join "`n")
+    $proven = ($opens.Count -ge 1 -and $navigates.Count -eq 0 -and $openText -match 'sessionId' -and $openText -notmatch 'browser_unreachable')
+    $path = Get-JawsBrowserPrivatePathReceiptPath -InstallerRoot $InstallerRoot -EnvironmentName $EnvironmentName
+    Save-JawsBrowserReceipt -Path $path -Payload ([pscustomobject]@{
+        Result = $(if ($proven) { 'PASS' } else { 'FAIL' })
+        PrivatePathProven = $proven
+        EnvironmentName = $EnvironmentName
+        SupervisorImage = $image
+        BrowserOpenCalls = $opens.Count
+        BrowserNavigateCalls = $navigates.Count
+        ObservedOutput = $openText
+        AzureWrites = 0
+        InferencePerformed = $true
+        LiveAzureRead = $true
+        CustomerInstallationAccepted = $false
+        FreshSubscriptionReceiptArchived = $false
+        EvidenceLimitations = 'A CLI stand-in is not a live Foundry receipt. This command does not navigate.'
+        CompletedAtUtc = [DateTime]::UtcNow.ToString('o')
+    })
+    if (-not $proven) {
+        return [pscustomobject]@{
+            Passed = $false
+            EvidencePath = $path
+            ReadyForNextStep = $false
+            NextStep = 'Test-JawsBrowserPrivatePath.ps1'
+            AzureWrites = 0
+            Error = 'JAWS-STEP-D-040: The Foundry tool path did not open a browser session. Navigation was not attempted.'
+        }
+    }
+    return [pscustomobject]@{
+        Passed = $true
+        EvidencePath = $path
+        ReadyForNextStep = $true
+        NextStep = 'Set-JawsBrowserAllowList.ps1, then Test-JawsBrowserCapability.ps1'
+        AzureWrites = 0
+    }
+}
+
+function Invoke-JawsBrowserCapability {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$EnvironmentName,
+        [Parameter(Mandatory)][string]$InstallerRoot,
+        [Parameter(Mandatory)][string]$Url,
+        [switch]$AcknowledgeBrowserCapability
+    )
+    if (-not $AcknowledgeBrowserCapability) {
+        throw 'JAWS-STEP-D-038: Browser capability acceptance requires -AcknowledgeBrowserCapability. No Supervisor call was made.'
+    }
+    if ($EnvironmentName -eq 'dev') {
+        throw 'JAWS-STEP-D-038: The accepted dev project does not receive browser capability acceptance.'
+    }
+    $privatePath = Read-JawsBrowserReceipt -Path (Get-JawsBrowserPrivatePathReceiptPath -InstallerRoot $InstallerRoot -EnvironmentName $EnvironmentName)
+    $proven = ($null -ne $privatePath -and $privatePath.PSObject.Properties['PrivatePathProven'] -and $privatePath.PrivatePathProven -eq $true)
+    if (-not $proven) {
+        throw 'JAWS-STEP-D-041: The private-path check has not passed. Navigation was not attempted.'
+    }
+    $allowPath = Get-JawsBrowserAllowListPath -InstallerRoot $InstallerRoot -EnvironmentName $EnvironmentName
+    $allowed = @(Read-JawsBrowserAllowList -Path $allowPath)
+    if ($allowed -notcontains $Url) {
+        throw 'JAWS-STEP-D-039: Add that URL with Set-JawsBrowserAllowList.ps1 before capability acceptance. No Supervisor call was made.'
+    }
+    $stepB = Get-JawsBrowserStepBReceipt -InstallerRoot $InstallerRoot -EnvironmentName $EnvironmentName
+    $endpoint = "https://$([string]$stepB.FoundryAccountName).services.ai.azure.com/api/projects/$([string]$stepB.ProjectName)"
+    $supervisor = [string]$stepB.AgentName
+    $model = [string]$stepB.ModelDeploymentName
+    $invokeUrl = "$endpoint/agents/$supervisor/endpoint/protocols/openai/responses?api-version=v1"
+    $prompt = "Navigate to $Url with browser_navigate, extract one value, and include the marker EXTRACTED_VALUE. Then try https://blocked.invalid/not-allowed, which is not on the allow-list, and include allow_list_rejected. Do not log a password."
+    $body = @{ model = $model; input = $prompt; stream = $false; store = $false } | ConvertTo-Json -Depth 6 -Compress
+    $response = Invoke-JawsBrowserSupervisorResponse -Url $invokeUrl -Body $body -FailureCode 'JAWS-STEP-D-042'
+    $calls = @(Get-JawsBrowserResponseCalls -Response $response)
+    $text = ((@($calls | ForEach-Object { $_.Output })) -join "`n")
+    $extracted = $text.Contains('EXTRACTED_VALUE')
+    $rejected = $text.Contains('allow_list_rejected')
+    $passed = $extracted -and $rejected
+    $path = Get-JawsBrowserCapabilityReceiptPath -InstallerRoot $InstallerRoot -EnvironmentName $EnvironmentName
+    Save-JawsBrowserReceipt -Path $path -Payload ([pscustomobject]@{
+        Result = $(if ($passed) { 'PASS' } else { 'FAIL' })
+        CapabilityProven = $passed
+        ExtractedValueObserved = $extracted
+        AllowListRejectionObserved = $rejected
+        Url = $Url
+        EnvironmentName = $EnvironmentName
+        AzureWrites = 0
+        InferencePerformed = $true
+        LiveAzureRead = $true
+        LiveNavigationClaimed = $false
+        VaultLoginClaimed = $false
+        SignatureValidationClaimed = $false
+        CustomerInstallationAccepted = $false
+        FreshSubscriptionReceiptArchived = $false
+        EvidenceLimitations = 'A CLI stand-in is not a live page load, a vault login, or a tenant signature check. Customer installation accepted stays false.'
+        CompletedAtUtc = [DateTime]::UtcNow.ToString('o')
+    })
+    if (-not $passed) {
+        return [pscustomobject]@{
+            Passed = $false
+            EvidencePath = $path
+            ReadyForNextStep = $false
+            NextStep = 'Test-JawsBrowserCapability.ps1'
+            AzureWrites = 0
+            Error = 'JAWS-STEP-D-042: The browser response did not contain both EXTRACTED_VALUE and allow_list_rejected.'
+        }
+    }
+    return [pscustomobject]@{
+        Passed = $true
+        EvidencePath = $path
+        ReadyForNextStep = $false
+        NextStep = 'Step E is not installable'
+        AzureWrites = 0
+    }
+}
+
+Export-ModuleMember -Function Get-JawsBrowserToolNames,Get-JawsBrowserNames,Install-JawsStepDBrowser,Update-JawsBrowserAllowList,Get-JawsBrowserAllowListPath,Confirm-JawsStepDBrowser,Publish-JawsSupervisorBrowserImage,Invoke-JawsBrowserPrivatePath,Invoke-JawsBrowserCapability

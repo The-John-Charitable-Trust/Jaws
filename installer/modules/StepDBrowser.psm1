@@ -78,6 +78,13 @@ function Get-JawsBrowserProperty {
     return $current
 }
 
+function Get-JawsBrowserLatestVersion {
+    param($Summary)
+    $latestObj = Get-JawsBrowserProperty $Summary @('versions','latest')
+    if ($latestObj -is [string] -or $latestObj -is [ValueType]) { return [string]$latestObj }
+    return [string](Get-JawsBrowserProperty $latestObj @('version'))
+}
+
 function Get-JawsBrowserNames {
     param([Parameter(Mandatory)][string]$EnvironmentName)
     $compact = ($EnvironmentName -replace '[^a-z0-9]', '')
@@ -342,7 +349,7 @@ function Publish-JawsBrowserSupervisorVersion {
         throw 'JAWS-STEP-D-031: Supervisor version 1 is not an active digest-pinned image without a toolbox variable. It was not modified.'
     }
     $summary = Invoke-JawsBrowserAz -Arguments @('rest','--method','GET','--url',"$($Context.Endpoint)/agents/$($Context.SupervisorAgent)?api-version=v1",'--resource','https://ai.azure.com','--output','json','--only-show-errors')
-    $latest = [string](Get-JawsBrowserProperty $summary @('versions','latest'))
+    $latest = Get-JawsBrowserLatestVersion $summary
     if ($latest -match '^[0-9]+$' -and $latest -ne '1') {
         $source = Invoke-JawsBrowserAz -Arguments @('rest','--method','GET','--url',"$($Context.Endpoint)/agents/$($Context.SupervisorAgent)/versions/${latest}?api-version=v1",'--resource','https://ai.azure.com','--output','json','--only-show-errors')
     } else {
@@ -446,7 +453,7 @@ function Confirm-JawsStepDBrowser {
     if ([string]::IsNullOrWhiteSpace($version)) { $reasons += 'browser toolbox is missing' }
     elseif ($version -cne [string]$InstallReceipt.BrowserToolsetVersion) { $reasons += 'browser toolset version differs from the install receipt' }
     $summary = Invoke-JawsBrowserAz -Arguments @('rest','--method','GET','--url',"$($Context.Endpoint)/agents/$($Context.SupervisorAgent)?api-version=v1",'--resource','https://ai.azure.com','--output','json','--only-show-errors')
-    $latest = [string](Get-JawsBrowserProperty $summary @('versions','latest'))
+    $latest = Get-JawsBrowserLatestVersion $summary
     $routed = Invoke-JawsBrowserAz -Arguments @('rest','--method','GET','--url',"$($Context.Endpoint)/agents/$($Context.SupervisorAgent)/versions/${latest}?api-version=v1",'--resource','https://ai.azure.com','--output','json','--only-show-errors')
     $routedBrowser = [string](Get-JawsBrowserProperty $routed @('definition','environment_variables','JAWS_BROWSER_TOOLBOX_NAME'))
     if ($routedBrowser -cne $names.ToolboxName) { $reasons += 'the latest Supervisor version does not name the browser toolbox' }
@@ -575,7 +582,7 @@ function Publish-JawsSupervisorBrowserImage {
         throw 'JAWS-STEP-D-035: Supervisor version 1 is not an active digest-pinned image without the browser variable. It was not modified.'
     }
     $summary = Invoke-JawsBrowserAz -Arguments @('rest','--method','GET','--url',"$endpoint/agents/${supervisor}?api-version=v1",'--resource','https://ai.azure.com','--output','json','--only-show-errors')
-    $latest = [string](Get-JawsBrowserProperty $summary @('versions','latest'))
+    $latest = Get-JawsBrowserLatestVersion $summary
     $source = if ($latest -match '^[0-9]+$' -and $latest -ne '1') {
         Invoke-JawsBrowserAz -Arguments @('rest','--method','GET','--url',"$endpoint/agents/$supervisor/versions/${latest}?api-version=v1",'--resource','https://ai.azure.com','--output','json','--only-show-errors')
     } else { $v1 }

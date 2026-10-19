@@ -630,8 +630,12 @@ function Invoke-JawsStepBInstall {
         if (-not (Test-Path -LiteralPath $bodyDir)) { New-Item -ItemType Directory -Path $bodyDir | Out-Null }
         $bodyFile = Join-Path $bodyDir "jaws-step-b-agent-body.$($Scope.EnvironmentName).json"
         Set-Content -LiteralPath $bodyFile -Value $body -Encoding ascii
-        $null = Invoke-JawsStepBAz -Arguments @('rest','--method','POST','--url',"$endpoint/agents?api-version=v1",'--resource','https://ai.azure.com','--body',"@$bodyFile",'--output','json','--only-show-errors')
-        $writes++
+        $agentUrl = "$endpoint/agents/$($Scope.AgentName)?api-version=v1"
+        $agentExists = Invoke-JawsStepBAz -AllowMissing -Arguments @('rest','--method','GET','--url',$agentUrl,'--resource','https://ai.azure.com','--output','json','--only-show-errors')
+        if ($null -eq $agentExists) {
+            $null = Invoke-JawsStepBAz -Arguments @('rest','--method','POST','--url',"$endpoint/agents?api-version=v1",'--resource','https://ai.azure.com','--body',"@$bodyFile",'--output','json','--only-show-errors')
+            $writes++
+        }
         $existing = $null
         for ($attempt = 0; $attempt -lt 60; $attempt++) {
             $existing = Invoke-JawsStepBAz -AllowMissing -Arguments @('rest','--method','GET','--url',$versionUrl,'--resource','https://ai.azure.com','--output','json','--only-show-errors')

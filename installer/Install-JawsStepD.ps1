@@ -45,6 +45,7 @@ try {
         } else {
             Write-Host "Browser toolbox: $toolbox"
             Write-Host "Browser endpoint: $($receipt.PlaywrightServiceEndpoint)"
+            Write-Host 'Browser network: private. The hostname is published on the VNet internal load balancer.'
             Write-Host "Browser toolset version: $($receipt.BrowserToolsetVersion)"
             Write-Host 'Supervisor image rebuilt: false'
             Write-Host 'Browser tools on this image: pending a Supervisor image built from this host'

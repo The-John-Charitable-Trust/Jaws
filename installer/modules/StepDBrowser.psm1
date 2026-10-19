@@ -103,6 +103,7 @@ function Get-JawsBrowserNames {
         EnvironmentName = "jaws-br-env-$compact"
         VnetName = "jaws-br-vnet-$compact"
         SubnetName = 'jaws-br-apps'
+        FoundrySubnetName = 'jaws-foundry-agents'
         ToolboxName = 'jaws-browser-tools'
         AllowListSecret = 'jaws-browser-allow-list'
         CredentialSecret = 'jaws-browser-credentials'
@@ -217,6 +218,154 @@ function Publish-JawsBrowserToolboxVersion {
     return [pscustomobject]@{ Version = $createdVersion; AzureWrites = $writes }
 }
 
+function Test-JawsFoundryAgentInjection {
+    param($Account)
+    $injections = @(Get-JawsBrowserProperty $Account @('properties','networkInjections')) | Where-Object { $_ }
+    foreach ($item in $injections) {
+        $scenario = [string](Get-JawsBrowserProperty $item @('scenario'))
+        $subnet = [string](Get-JawsBrowserProperty $item @('subnetArmId'))
+        if ($scenario -eq 'agent' -and -not [string]::IsNullOrWhiteSpace($subnet)) {
+            return $subnet
+        }
+    }
+    return ''
+}
+
+function Enable-JawsBrowserPrivateNetwork {
+    param($Context)
+    $names = Get-JawsBrowserNames -EnvironmentName $Context.EnvironmentName
+    $writes = 0
+    $sub = [string]$Context.SubscriptionId
+    $rg = [string]$Context.ResourceGroupName
+    $location = [string]$Context.Location
+    foreach ($namespace in @('Microsoft.App','Microsoft.Network')) {
+        $provider = Invoke-JawsBrowserAz -Arguments @('provider','show','--namespace',$namespace,'--subscription',$sub,'--output','json','--only-show-errors')
+        if ([string]$provider.registrationState -ne 'Registered') {
+            throw "JAWS-STEP-D-030: $namespace is not registered. Run az provider register --namespace $namespace and wait until it is Registered."
+        }
+    }
+    $vnet = Invoke-JawsBrowserAz -AllowMissing -Arguments @('network','vnet','show','--subscription',$sub,'--resource-group',$rg,'--name',$names.VnetName,'--output','json','--only-show-errors')
+    if ($null -eq $vnet) {
+        $null = Invoke-JawsBrowserAz -Arguments @('network','vnet','create','--subscription',$sub,'--resource-group',$rg,'--name',$names.VnetName,'--location',$location,'--address-prefix','10.42.0.0/16','--output','json','--only-show-errors')
+        $writes++
+    }
+    $browserSubnet = Invoke-JawsBrowserAz -AllowMissing -Arguments @('network','vnet','subnet','show','--subscription',$sub,'--resource-group',$rg,'--vnet-name',$names.VnetName,'--name',$names.SubnetName,'--output','json','--only-show-errors')
+    if ($null -eq $browserSubnet) {
+        $browserSubnet = Invoke-JawsBrowserAz -Arguments @('network','vnet','subnet','create','--subscription',$sub,'--resource-group',$rg,'--vnet-name',$names.VnetName,'--name',$names.SubnetName,'--address-prefixes','10.42.0.0/23','--delegations','Microsoft.App/environments','--output','json','--only-show-errors')
+        $writes++
+    }
+    $foundrySubnet = Invoke-JawsBrowserAz -AllowMissing -Arguments @('network','vnet','subnet','show','--subscription',$sub,'--resource-group',$rg,'--vnet-name',$names.VnetName,'--name',$names.FoundrySubnetName,'--output','json','--only-show-errors')
+    if ($null -eq $foundrySubnet) {
+        $foundrySubnet = Invoke-JawsBrowserAz -Arguments @('network','vnet','subnet','create','--subscription',$sub,'--resource-group',$rg,'--vnet-name',$names.VnetName,'--name',$names.FoundrySubnetName,'--address-prefixes','10.42.2.0/24','--delegations','Microsoft.App/environments','--output','json','--only-show-errors')
+        $writes++
+    }
+    $browserSubnetId = [string](Get-JawsBrowserProperty $browserSubnet @('id'))
+    $foundrySubnetId = [string](Get-JawsBrowserProperty $foundrySubnet @('id'))
+    if ([string]::IsNullOrWhiteSpace($browserSubnetId)) { $browserSubnetId = "/subscriptions/$sub/resourceGroups/$rg/providers/Microsoft.Network/virtualNetworks/$($names.VnetName)/subnets/$($names.SubnetName)" }
+    if ([string]::IsNullOrWhiteSpace($foundrySubnetId)) { $foundrySubnetId = "/subscriptions/$sub/resourceGroups/$rg/providers/Microsoft.Network/virtualNetworks/$($names.VnetName)/subnets/$($names.FoundrySubnetName)" }
+    return [pscustomobject]@{ AzureWrites = $writes; BrowserSubnetId = $browserSubnetId; FoundrySubnetId = $foundrySubnetId }
+}
+
+function Install-JawsFoundryPrivateNetwork {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$EnvironmentName,
+        [Parameter(Mandatory)][string]$InstallerRoot,
+        [switch]$AcknowledgeFoundryReplacement
+    )
+    if (-not $AcknowledgeFoundryReplacement) {
+        throw 'JAWS-STEP-D-044: Replacing Foundry with virtual-network injection requires -AcknowledgeFoundryReplacement. No Azure writes were attempted.'
+    }
+    if ($EnvironmentName -eq 'dev') {
+        throw 'JAWS-STEP-D-044: The accepted dev project is not replaced.'
+    }
+    $receiptPath = Join-Path $InstallerRoot ".local/jaws-step-b-install.$EnvironmentName.generated.json"
+    $receipt = Read-JawsBrowserReceipt -Path $receiptPath
+    if ($null -eq $receipt -or [string]$receipt.Status -ne 'STEP_B_INSTALLED') {
+        throw "JAWS-STEP-D-044: Step B receipt was not found for $EnvironmentName. No Foundry account was replaced."
+    }
+    foreach ($name in @('SubscriptionId','ResourceGroupName','Location','FoundryAccountName')) {
+        if ([string]::IsNullOrWhiteSpace([string]$receipt.$name)) {
+            throw "JAWS-STEP-D-044: Step B receipt is missing $name. No Foundry account was replaced."
+        }
+    }
+    $context = [pscustomobject]@{
+        EnvironmentName = $EnvironmentName
+        SubscriptionId = [string]$receipt.SubscriptionId
+        ResourceGroupName = [string]$receipt.ResourceGroupName
+        Location = [string]$receipt.Location
+    }
+    $network = Enable-JawsBrowserPrivateNetwork -Context $context
+    $writes = [int]$network.AzureWrites
+    $sub = [string]$receipt.SubscriptionId
+    $rg = [string]$receipt.ResourceGroupName
+    $accountName = [string]$receipt.FoundryAccountName
+    $show = @('cognitiveservices','account','show','--subscription',$sub,'--resource-group',$rg,'--name',$accountName,'--output','json','--only-show-errors')
+    $foundry = Invoke-JawsBrowserAz -AllowMissing -Arguments $show
+    $replaced = $false
+    if ($null -ne $foundry) {
+        $managedBy = [string](Get-JawsBrowserProperty $foundry @('tags','managedBy'))
+        $environmentTag = [string](Get-JawsBrowserProperty $foundry @('tags','environment'))
+        if ($managedBy -ne 'JAWS-Installer' -or $environmentTag -ne $EnvironmentName) {
+            throw 'JAWS-STEP-D-044: Foundry account is not owned by this installer. It was not replaced.'
+        }
+        $injected = Test-JawsFoundryAgentInjection $foundry
+        if (-not [string]::IsNullOrWhiteSpace($injected)) {
+            if ($injected -cne [string]$network.FoundrySubnetId) {
+                throw 'JAWS-STEP-D-044: Foundry is injected into a different subnet. It was not replaced.'
+            }
+        } else {
+            $null = Invoke-JawsBrowserAz -Arguments @('cognitiveservices','account','delete','--subscription',$sub,'--resource-group',$rg,'--name',$accountName,'--yes','--output','json','--only-show-errors')
+            $writes++
+            $null = Invoke-JawsBrowserAz -Arguments @('cognitiveservices','account','purge','--subscription',$sub,'--resource-group',$rg,'--name',$accountName,'--location',[string]$receipt.Location,'--output','json','--only-show-errors')
+            $writes++
+            $replaced = $true
+        }
+    } else {
+        $replaced = $true
+    }
+    if ($replaced) {
+        $body = [ordered]@{
+            location = [string]$receipt.Location
+            kind = 'AIServices'
+            sku = [ordered]@{ name = 'S0' }
+            identity = [ordered]@{ type = 'SystemAssigned' }
+            tags = [ordered]@{ application = 'JAWS'; managedBy = 'JAWS-Installer'; environment = $EnvironmentName }
+            properties = [ordered]@{
+                allowProjectManagement = $true
+                customSubDomainName = $accountName
+                publicNetworkAccess = 'Enabled'
+                disableLocalAuth = $false
+                networkAcls = [ordered]@{ defaultAction = 'Allow'; virtualNetworkRules = @(); ipRules = @() }
+                networkInjections = @(
+                    [ordered]@{
+                        scenario = 'agent'
+                        subnetArmId = [string]$network.FoundrySubnetId
+                        useMicrosoftManagedNetwork = $false
+                    }
+                )
+            }
+        }
+        $local = Join-Path $InstallerRoot '.local'
+        if (-not (Test-Path -LiteralPath $local)) { New-Item -ItemType Directory -Path $local | Out-Null }
+        $bodyFile = Join-Path $local "jaws-foundry-network.$EnvironmentName.json"
+        [IO.File]::WriteAllText($bodyFile, ($body | ConvertTo-Json -Depth 8 -Compress), [Text.UTF8Encoding]::new($false))
+        $url = "https://management.azure.com/subscriptions/$sub/resourceGroups/$rg/providers/Microsoft.CognitiveServices/accounts/${accountName}?api-version=2025-04-01-preview"
+        $null = Invoke-JawsBrowserAz -Arguments @('rest','--method','PUT','--url',$url,'--body',"@$bodyFile",'--output','json','--only-show-errors')
+        $writes++
+        $created = Invoke-JawsBrowserAz -Arguments $show
+        if ((Test-JawsFoundryAgentInjection $created) -cne [string]$network.FoundrySubnetId) {
+            throw 'JAWS-STEP-D-044: Foundry was created without agent virtual-network injection.'
+        }
+    }
+    return [pscustomobject]@{
+        AzureWrites = $writes
+        Replaced = $replaced
+        FoundrySubnetId = [string]$network.FoundrySubnetId
+        FoundryAccountName = $accountName
+    }
+}
+
 function Install-JawsStepDBrowser {
     [CmdletBinding()]
     param(
@@ -237,15 +386,13 @@ function Install-JawsStepDBrowser {
     $sub = [string]$Context.SubscriptionId
     $rg = [string]$Context.ResourceGroupName
     $location = [string]$Context.Location
-    $provider = Invoke-JawsBrowserAz -Arguments @('provider','show','--namespace','Microsoft.App','--subscription',$sub,'--output','json','--only-show-errors')
-    if ([string]$provider.registrationState -ne 'Registered') {
-        throw 'JAWS-STEP-D-030: Microsoft.App is not registered. Run az provider register --namespace Microsoft.App and wait until it is Registered. Browser control was not provisioned.'
-    }
+    $network = Enable-JawsBrowserPrivateNetwork -Context $Context
+    $writes += [int]$network.AzureWrites
     $account = Invoke-JawsBrowserAz -Arguments @('account','show','--output','json','--only-show-errors')
     $tenant = [string](Get-JawsBrowserProperty $account @('tenantId'))
     $environment = Invoke-JawsBrowserAz -AllowMissing -Arguments @('containerapp','env','show','--subscription',$sub,'--resource-group',$rg,'--name',$names.EnvironmentName,'--output','json','--only-show-errors')
     $app = Invoke-JawsBrowserAz -AllowMissing -Arguments @('containerapp','show','--subscription',$sub,'--resource-group',$rg,'--name',$names.AppName,'--output','json','--only-show-errors')
-    if ((Get-JawsBrowserProperty $environment @('properties','vnetConfiguration','internal')) -eq $true) {
+    if ($null -ne $environment -and (Get-JawsBrowserProperty $environment @('properties','vnetConfiguration','internal')) -ne $true) {
         if ($null -ne $app) {
             $null = Invoke-JawsBrowserAz -Arguments @('containerapp','delete','--subscription',$sub,'--resource-group',$rg,'--name',$names.AppName,'--yes','--output','json','--only-show-errors')
             $writes++
@@ -256,8 +403,11 @@ function Install-JawsStepDBrowser {
         $environment = $null
     }
     if ($null -eq $environment) {
-        $environment = Invoke-JawsBrowserAz -Arguments @('containerapp','env','create','--subscription',$sub,'--resource-group',$rg,'--name',$names.EnvironmentName,'--location',$location,'--output','json','--only-show-errors')
+        $environment = Invoke-JawsBrowserAz -Arguments @('containerapp','env','create','--subscription',$sub,'--resource-group',$rg,'--name',$names.EnvironmentName,'--location',$location,'--internal-only','true','--infrastructure-subnet-resource-id',[string]$network.BrowserSubnetId,'--output','json','--only-show-errors')
         $writes++
+    }
+    if ((Get-JawsBrowserProperty $environment @('properties','vnetConfiguration','internal')) -ne $true) {
+        throw 'JAWS-STEP-D-030: The browser environment is not internal-only. It was not left on a public endpoint.'
     }
     $packageRoot = Split-Path -Parent $InstallerRoot
     $dockerFile = Join-Path $packageRoot 'src/Jaws.Browser.Host/Dockerfile'
@@ -348,7 +498,7 @@ function Install-JawsStepDBrowser {
     }
     $fqdn = [string](Get-JawsBrowserProperty $app @('properties','configuration','ingress','fqdn'))
     if ([string]::IsNullOrWhiteSpace($fqdn) -or $fqdn -match '\.internal\.') {
-        throw 'JAWS-STEP-D-030: The browser Container App did not return a public endpoint Foundry can reach.'
+        throw 'JAWS-STEP-D-030: The browser Container App did not return a virtual-network endpoint. An .internal. name is hidden from the VNet, and a public environment is not used.'
     }
     $endpoint = "https://$fqdn"
     $toolbox = Publish-JawsBrowserToolboxVersion -Context $Context -ToolboxName $names.ToolboxName -ServerUrl $endpoint -InstallerRoot $InstallerRoot
@@ -475,11 +625,14 @@ function Confirm-JawsStepDBrowser {
     $names = Get-JawsBrowserNames -EnvironmentName $Context.EnvironmentName
     $reasons = @()
     $app = Invoke-JawsBrowserAz -AllowMissing -Arguments @('containerapp','show','--subscription',[string]$Context.SubscriptionId,'--resource-group',[string]$Context.ResourceGroupName,'--name',$names.AppName,'--output','json','--only-show-errors')
+    $environment = Invoke-JawsBrowserAz -AllowMissing -Arguments @('containerapp','env','show','--subscription',[string]$Context.SubscriptionId,'--resource-group',[string]$Context.ResourceGroupName,'--name',$names.EnvironmentName,'--output','json','--only-show-errors')
+    $internal = Get-JawsBrowserProperty $environment @('properties','vnetConfiguration','internal')
     $external = Get-JawsBrowserProperty $app @('properties','configuration','ingress','external')
     $fqdn = [string](Get-JawsBrowserProperty $app @('properties','configuration','ingress','fqdn'))
     if ($null -eq $app) { $reasons += 'browser Container App is missing' }
-    elseif ($external -ne $true) { $reasons += 'browser Container App is not reachable from Foundry' }
-    elseif ($fqdn -match '\.internal\.') { $reasons += 'browser endpoint is an internal Container Apps name' }
+    elseif ($internal -ne $true) { $reasons += 'browser environment has a public endpoint' }
+    elseif ($external -ne $true) { $reasons += 'browser app is hidden from the virtual network' }
+    elseif ($fqdn -match '\.internal\.') { $reasons += 'browser endpoint is hidden from the virtual network' }
     elseif ("https://$fqdn" -cne [string]$InstallReceipt.PlaywrightServiceEndpoint) { $reasons += 'browser endpoint differs from the install receipt' }
     $toolbox = Invoke-JawsBrowserAz -AllowMissing -Arguments @('rest','--method','GET','--url',"$($Context.Endpoint)/toolboxes/$($names.ToolboxName)?api-version=v1",'--resource','https://ai.azure.com','--output','json','--only-show-errors')
     $version = [string](Get-JawsBrowserProperty $toolbox @('default_version'))
@@ -758,6 +911,10 @@ function Invoke-JawsBrowserPrivatePath {
         throw 'JAWS-STEP-D-036: Publish the Supervisor browser image before the private-path check. No Supervisor call was made.'
     }
     $stepB = Get-JawsBrowserStepBReceipt -InstallerRoot $InstallerRoot -EnvironmentName $EnvironmentName
+    $foundry = Invoke-JawsBrowserAz -AllowMissing -Arguments @('cognitiveservices','account','show','--subscription',[string]$stepB.SubscriptionId,'--resource-group',[string]$stepB.ResourceGroupName,'--name',[string]$stepB.FoundryAccountName,'--output','json','--only-show-errors')
+    if ([string]::IsNullOrWhiteSpace((Test-JawsFoundryAgentInjection $foundry))) {
+        throw 'JAWS-STEP-D-043: Foundry has no agent virtual-network injection, so it cannot reach the private browser. Run Install-JawsFoundryPrivateNetwork.ps1 -AcknowledgeFoundryReplacement. No Supervisor call was made.'
+    }
     $endpoint = "https://$([string]$stepB.FoundryAccountName).services.ai.azure.com/api/projects/$([string]$stepB.ProjectName)"
     $supervisor = [string]$stepB.AgentName
     $model = [string]$stepB.ModelDeploymentName
@@ -885,4 +1042,4 @@ function Invoke-JawsBrowserCapability {
     }
 }
 
-Export-ModuleMember -Function Get-JawsBrowserToolNames,Get-JawsBrowserNames,Install-JawsStepDBrowser,Update-JawsBrowserAllowList,Get-JawsBrowserAllowListPath,Confirm-JawsStepDBrowser,Publish-JawsSupervisorBrowserImage,Invoke-JawsBrowserPrivatePath,Invoke-JawsBrowserCapability
+Export-ModuleMember -Function Get-JawsBrowserToolNames,Get-JawsBrowserNames,Install-JawsStepDBrowser,Install-JawsFoundryPrivateNetwork,Update-JawsBrowserAllowList,Get-JawsBrowserAllowListPath,Confirm-JawsStepDBrowser,Publish-JawsSupervisorBrowserImage,Invoke-JawsBrowserPrivatePath,Invoke-JawsBrowserCapability

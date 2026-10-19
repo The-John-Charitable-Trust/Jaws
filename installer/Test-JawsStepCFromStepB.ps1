@@ -53,9 +53,11 @@ Import-Module (Join-Path $root 'modules/MilestoneResult.psm1') -Force
 $response=Invoke-JawsSupervisorAcceptanceResponse -Url "$endpoint/agents/$agent/endpoint/protocols/openai/responses?api-version=v1" -Body $body
 $evidence=Get-JawsDelegationEvidence -Response $response
 $outputTypes=@($response.output | ForEach-Object { if($_ -and $_.PSObject.Properties['type']){[string]$_.type}else{'<missing-type>'} })
-$status=if($evidence.ResponseCompleted -and $evidence.Classification -ceq 'TOOL_INVOKED_SUCCEEDED'){'PASS'}else{'FAIL'}
 $excerpt=((@($evidence.Calls | ForEach-Object { [string]$_.OutputExcerpt })) -join "`n")
 $taskState=if($excerpt -match 'TASK_STATE_[A-Z_]+'){$Matches[0]}else{''}
+$status=Get-JawsStepCAcceptanceStatus -Evidence $evidence -Response $response -TaskState $taskState
+$rateLimited=Test-JawsSupervisorRateLimit $response
+$acceptedUnderRateLimit=($status -eq 'PASS' -and $rateLimited -and -not $evidence.ResponseCompleted)
 $plannerResponseId=if($excerpt -match 'resp_[A-Za-z0-9]+'){$Matches[0]}else{''}
 $report=[pscustomobject]@{
     Status=$status
@@ -71,7 +73,8 @@ $report=[pscustomobject]@{
     ResponseErrorCode=[string](Get-JawsField (Get-JawsField $response 'error') 'code')
     ResponseErrorMessage=[string](Get-JawsField (Get-JawsField $response 'error') 'message')
     RateLimitAttempts=[int]$response.JawsRateLimitAttempts
-    OperatorAction=$(if (Test-JawsSupervisorRateLimit $response) { Get-JawsRateLimitOperatorAction } else { '' })
+    AcceptanceBasis=$(if($acceptedUnderRateLimit){'DelegationCompletedUnderRateLimit'}elseif($evidence.ResponseCompleted){'ResponseCompleted'}else{''})
+    OperatorAction=$(if($acceptedUnderRateLimit){'The Supervisor response was rate-limited after the Investigation task completed. Acceptance used TOOL_INVOKED_SUCCEEDED and TASK_STATE_COMPLETED.'}elseif($rateLimited){Get-JawsRateLimitOperatorAction}else{''})
     QuotaRequest=''
     TaskState=$taskState
     PlannerResponseId=$plannerResponseId
@@ -95,6 +98,9 @@ if(-not [string]::IsNullOrWhiteSpace([string](Get-JawsField $responseError 'mess
 }
 Write-Host "Delegation classification: $($evidence.Classification)"
 Write-Host "Task state: $taskState"
+if($acceptedUnderRateLimit){
+    Write-Host 'Supervisor response was rate-limited after the Investigation task completed. Acceptance used the completed tool result.'
+}
 Write-Host "Step C acceptance: $status; report: $path"
 Write-Host 'Customer installation accepted: false'
 Import-Module (Join-Path $root 'modules/MilestoneResult.psm1') -Force

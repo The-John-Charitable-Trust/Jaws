@@ -247,6 +247,7 @@ if ($Mode -eq 'Install') {
     Write-Host "Project: $($done.ProjectName)"
     Write-Host "Model: $($done.ModelName) $($done.ModelVersion)"
     Write-Host "Quota mode: $($done.QuotaMode)"
+    Write-Host "Model SKU: $($done.ModelSku)"
     Write-Host "Registry: $($done.RegistryLoginServer)"
     Write-Host "Image: $($done.Image)"
     Write-Host "Agent: $($done.AgentName)"
@@ -280,6 +281,7 @@ if ($Mode -eq 'Accept') {
     Write-Host "Project: $($live.ProjectName)"
     Write-Host "Model: $($live.ModelName) $($live.ModelVersion)"
     Write-Host "Quota mode: $($live.QuotaMode)"
+    Write-Host "Model SKU: $($live.ModelSku)"
     Write-Host "Deployment: $($live.DeploymentProvisioningState)"
     Write-Host "Registry admin: false"
     Write-Host 'AcrPull: true'

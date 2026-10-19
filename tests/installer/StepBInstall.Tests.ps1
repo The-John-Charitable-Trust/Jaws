@@ -70,7 +70,10 @@ if args[:3] == ["cognitiveservices", "account", "create"]:
 if args[:3] == ["cognitiveservices", "account", "list-models"]:
     if os.environ.get("JAWS_STEPB_STUB_HIDE_MODEL") == "1":
         emit([])
-    emit([{"format": "OpenAI", "name": "gpt-5-mini", "version": "2025-08-07", "skus": [{"name": "GlobalStandard"}]}])
+    skus = [{"name": "GlobalStandard"}]
+    if os.environ.get("JAWS_STEPB_STUB_STANDARD_SKU", "1") == "1":
+        skus.append({"name": "Standard"})
+    emit([{"format": "OpenAI", "name": "gpt-5-mini", "version": "2025-08-07", "skus": skus}])
 if args[:4] == ["cognitiveservices", "account", "project", "show"]:
     emit(load("project")) if exists("project") else missing()
 if args[:4] == ["cognitiveservices", "account", "project", "create"]:
@@ -83,9 +86,19 @@ if args[:4] == ["cognitiveservices", "account", "deployment", "create"]:
     if os.environ.get("JAWS_STEPB_STUB_QUOTA") == "1":
         print('{"error":{"code":"InsufficientQuota","message":"Quota exceeded for model gpt-5-mini in eastus."}}', file=sys.stderr)
         sys.exit(1)
-    payload = {"name": "gpt-5-mini", "properties": {"provisioningState": "Succeeded", "model": {"name": "gpt-5-mini", "version": "2025-08-07"}}}
+    sku_name = "GlobalStandard"
+    if "--sku-name" in args:
+        sku_name = args[args.index("--sku-name") + 1]
+    capacity = 1
+    if "--sku-capacity" in args:
+        capacity = int(args[args.index("--sku-capacity") + 1])
+    payload = {"name": "gpt-5-mini", "sku": {"name": sku_name, "capacity": capacity}, "properties": {"provisioningState": "Succeeded", "model": {"name": "gpt-5-mini", "version": "2025-08-07"}}}
     save("deployment", payload)
     emit(payload)
+if args[:4] == ["cognitiveservices", "account", "deployment", "delete"]:
+    if exists("deployment"):
+        os.remove(path("deployment"))
+    emit({})
 if args[:2] == ["keyvault", "show"]:
     emit(load("vault")) if exists("vault") else missing()
 if args[:2] == ["keyvault", "create"]:
@@ -206,6 +219,7 @@ Describe 'Step B foundation install' {
             $receipt = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-step-b-install.lab1.generated.json') -Raw | ConvertFrom-Json
             $receipt.Status | Should -Be 'STEP_B_INSTALLED'
             $receipt.QuotaMode | Should -Be 'Static'
+            $receipt.ModelSku | Should -Be 'GlobalStandard'
             $receipt.AgentStatus | Should -Be 'active'
             $receipt.Image | Should -Match '@sha256:[a-f]{64}$'
             $receipt.AzureWrites | Should -BeGreaterThan 0
@@ -222,6 +236,9 @@ Describe 'Step B foundation install' {
             $log | Should -Not -Match '--file Dockerfile( |$)'
             $log | Should -Not -Match 'acr login'
             $log | Should -Not -Match '--method patch'
+            $log | Should -Match '--sku-name GlobalStandard'
+            $log | Should -Not -Match '--sku-name Standard'
+            ([regex]::Matches($log, 'deployment delete')).Count | Should -Be 0
             $log | Should -Not -Match 'jaws-foundry-dev'
             $log | Should -Not -Match 'c52f597b-7753-45b4-a764-67e290dcfd5e'
             $log | Should -Match 'account list-locations --output json --only-show-errors'
@@ -355,9 +372,16 @@ Describe 'Step B foundation install' {
             $install | Should -Match 'Quota mode: Dynamic'
             $receipt = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-step-b-install.lab1.generated.json') -Raw | ConvertFrom-Json
             $receipt.QuotaMode | Should -Be 'Dynamic'
+            $receipt.ModelSku | Should -Be 'Standard'
+            $install | Should -Match 'Model SKU: Standard'
             $deployment = Get-Content -LiteralPath (Join-Path $state 'deployment') -Raw | ConvertFrom-Json
+            $deployment.sku.name | Should -Be 'Standard'
+            $deployment.sku.capacity | Should -Be 1
             $deployment.properties.dynamicThrottlingEnabled | Should -BeTrue
             $log = Get-Content -LiteralPath (Join-Path $state 'log.txt') -Raw
+            $log | Should -Match '--sku-name Standard'
+            $log | Should -Not -Match '--sku-name GlobalStandard'
+            ([regex]::Matches($log, 'deployment delete')).Count | Should -Be 0
             ([regex]::Matches($log, '--method patch')).Count | Should -Be 1
             $log | Should -Match 'api-version=2023-10-01-preview'
             $log | Should -Match '/deployments/gpt-5-mini'
@@ -367,12 +391,15 @@ Describe 'Step B foundation install' {
             & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Install -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' -ApprovedPlanSha256 $plan.PlanSha256 -QuotaMode Dynamic -AcknowledgeStepBInstall | Out-Null
             $log = Get-Content -LiteralPath (Join-Path $state 'log.txt') -Raw
             ([regex]::Matches($log, '--method patch')).Count | Should -Be 1
+            ([regex]::Matches($log, 'deployment create')).Count | Should -Be 1
             $static = & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Install -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' -ApprovedPlanSha256 $plan.PlanSha256 -QuotaMode Static -AcknowledgeStepBInstall *>&1 | Out-String
             $static | Should -Match 'Quota mode: Static'
             $log = Get-Content -LiteralPath (Join-Path $state 'log.txt') -Raw
             ([regex]::Matches($log, '--method patch')).Count | Should -Be 2
             $deployment = Get-Content -LiteralPath (Join-Path $state 'deployment') -Raw | ConvertFrom-Json
             $deployment.properties.dynamicThrottlingEnabled | Should -BeFalse
+            $deployment.sku.name | Should -Be 'Standard'
+            ([regex]::Matches($log, 'deployment delete')).Count | Should -Be 0
             $accept = & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Accept -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' *>&1 | Out-String
             $accept | Should -Match 'Quota mode: Static'
             $accept | Should -Match 'STEP-B ACCEPTANCE PASS'
@@ -381,6 +408,86 @@ Describe 'Step B foundation install' {
             if ($null -eq $savedState) { Remove-Item Env:JAWS_STEPB_STUB_STATE -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_STATE = $savedState }
             if ($null -eq $savedSub) { Remove-Item Env:JAWS_STEPB_STUB_SUB -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_SUB = $savedSub }
             if ($null -eq $savedEnv) { Remove-Item Env:JAWS_STEPB_STUB_ENV -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_ENV = $savedEnv }
+            Remove-Item Env:JAWS_STEPB_POLL_SECONDS -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'replaces an existing GlobalStandard deployment before enabling dynamic quota' {
+        $state = Join-Path $script:stub 'state-replace-sku'
+        $savedPath = $env:PATH
+        $savedState = $env:JAWS_STEPB_STUB_STATE
+        $savedSub = $env:JAWS_STEPB_STUB_SUB
+        $savedEnv = $env:JAWS_STEPB_STUB_ENV
+        try {
+            $env:JAWS_STEPB_STUB_STATE = $state
+            $env:JAWS_STEPB_STUB_SUB = $script:sub
+            $env:JAWS_STEPB_STUB_ENV = 'lab1'
+            $env:JAWS_STEPB_POLL_SECONDS = '0'
+            $env:PATH = $script:stub + [System.IO.Path]::PathSeparator + '/usr/bin'
+            & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Plan -NonInteractive -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus'
+            $plan = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-stage-b-plan.lab1.offline.generated.json') -Raw | ConvertFrom-Json
+            & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Install -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' -ApprovedPlanSha256 $plan.PlanSha256 -AcknowledgeStepBInstall
+            $created = Get-Content -LiteralPath (Join-Path $state 'deployment') -Raw | ConvertFrom-Json
+            $created.sku.name | Should -Be 'GlobalStandard'
+            $install = & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Install -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' -ApprovedPlanSha256 $plan.PlanSha256 -QuotaMode Dynamic -AcknowledgeStepBInstall *>&1 | Out-String
+            $install | Should -Match 'STEP-B INSTALL PASS'
+            $install | Should -Match 'Quota mode: Dynamic'
+            $install | Should -Match 'Model SKU: Standard'
+            $log = Get-Content -LiteralPath (Join-Path $state 'log.txt') -Raw
+            ([regex]::Matches($log, 'deployment delete')).Count | Should -Be 1
+            ([regex]::Matches($log, '--sku-name Standard')).Count | Should -Be 1
+            ([regex]::Matches($log, '--method patch')).Count | Should -Be 1
+            $deployment = Get-Content -LiteralPath (Join-Path $state 'deployment') -Raw | ConvertFrom-Json
+            $deployment.sku.name | Should -Be 'Standard'
+            $deployment.properties.dynamicThrottlingEnabled | Should -BeTrue
+            & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Install -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' -ApprovedPlanSha256 $plan.PlanSha256 -QuotaMode Dynamic -AcknowledgeStepBInstall | Out-Null
+            $log = Get-Content -LiteralPath (Join-Path $state 'log.txt') -Raw
+            ([regex]::Matches($log, 'deployment delete')).Count | Should -Be 1
+            ([regex]::Matches($log, '--method patch')).Count | Should -Be 1
+        } finally {
+            $env:PATH = $savedPath
+            if ($null -eq $savedState) { Remove-Item Env:JAWS_STEPB_STUB_STATE -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_STATE = $savedState }
+            if ($null -eq $savedSub) { Remove-Item Env:JAWS_STEPB_STUB_SUB -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_SUB = $savedSub }
+            if ($null -eq $savedEnv) { Remove-Item Env:JAWS_STEPB_STUB_ENV -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_ENV = $savedEnv }
+            Remove-Item Env:JAWS_STEPB_POLL_SECONDS -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'refuses dynamic quota when the regional Standard SKU is not offered' {
+        $state = Join-Path $script:stub 'state-no-standard'
+        $savedPath = $env:PATH
+        $savedState = $env:JAWS_STEPB_STUB_STATE
+        $savedSub = $env:JAWS_STEPB_STUB_SUB
+        $savedEnv = $env:JAWS_STEPB_STUB_ENV
+        $savedOffer = $env:JAWS_STEPB_STUB_STANDARD_SKU
+        try {
+            $env:JAWS_STEPB_STUB_STATE = $state
+            $env:JAWS_STEPB_STUB_SUB = $script:sub
+            $env:JAWS_STEPB_STUB_ENV = 'lab1'
+            $env:JAWS_STEPB_STUB_STANDARD_SKU = '0'
+            $env:JAWS_STEPB_POLL_SECONDS = '0'
+            $env:PATH = $script:stub + [System.IO.Path]::PathSeparator + '/usr/bin'
+            & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Plan -NonInteractive -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus'
+            $plan = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-stage-b-plan.lab1.offline.generated.json') -Raw | ConvertFrom-Json
+            $output = ''
+            try {
+                & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Install -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' -ApprovedPlanSha256 $plan.PlanSha256 -QuotaMode Dynamic -AcknowledgeStepBInstall *>&1 | ForEach-Object { $output += "$_`n" }
+                throw 'Install returned instead of JAWS-STEP-B-MODEL-001.'
+            } catch {
+                $output += $_.Exception.Message
+            }
+            $output | Should -Match 'JAWS-STEP-B-MODEL-001'
+            $output | Should -Match 'regional Standard SKU'
+            $output | Should -Match 'Result: FAIL'
+            $log = Get-Content -LiteralPath (Join-Path $state 'log.txt') -Raw
+            $log | Should -Not -Match 'deployment create'
+            Test-Path -LiteralPath (Join-Path $state 'deployment') | Should -BeFalse
+        } finally {
+            $env:PATH = $savedPath
+            if ($null -eq $savedState) { Remove-Item Env:JAWS_STEPB_STUB_STATE -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_STATE = $savedState }
+            if ($null -eq $savedSub) { Remove-Item Env:JAWS_STEPB_STUB_SUB -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_SUB = $savedSub }
+            if ($null -eq $savedEnv) { Remove-Item Env:JAWS_STEPB_STUB_ENV -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_ENV = $savedEnv }
+            if ($null -eq $savedOffer) { Remove-Item Env:JAWS_STEPB_STUB_STANDARD_SKU -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_STANDARD_SKU = $savedOffer }
             Remove-Item Env:JAWS_STEPB_POLL_SECONDS -ErrorAction SilentlyContinue
         }
     }

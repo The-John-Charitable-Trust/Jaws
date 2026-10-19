@@ -4,7 +4,7 @@ Step B creates the foundation for one environment in the subscription already se
 
 - resource group
 - Foundry account and project, with a system-assigned project identity
-- model deployment, GlobalStandard capacity 1, with quota mode Static unless Install is given `-QuotaMode Dynamic`
+- model deployment at capacity 1: GlobalStandard when quota mode is Static, regional Standard when Install is given `-QuotaMode Dynamic`
 - Key Vault with RBAC and purge protection
 - Basic registry with admin disabled
 - AcrPull for the project identity
@@ -69,13 +69,13 @@ Optional check that the Supervisor host publishes before the install spends mone
 .\installer\Test-JawsStepB.ps1 -Mode Install
 ```
 
-`-QuotaMode` is `Static` or `Dynamic`. The default is `Static`, which leaves dynamic quota off. The deployment is still GlobalStandard capacity 1 (1,000 tokens per minute). Requests above that rate are refused. `Dynamic` does not change the plan digest or the capacity. After the deployment exists, Install sets `properties.dynamicThrottlingEnabled` to true with `az rest --method patch` and API version `2023-10-01-preview`. Azure may then serve more than the capacity-1 rate when it has spare capacity. Those extra tokens are billed at the normal rate, and dynamic quota has no throughput ceiling. Turning the property on has no separate fee. Use the same plan digest to change an existing deployment:
+`-QuotaMode` is `Static` or `Dynamic`. The default is `Static`. Static creates GlobalStandard capacity 1 (1,000 tokens per minute) and leaves dynamic quota off. Requests above that rate are refused. `Dynamic` does not change the plan digest or the capacity. It creates the regional Standard SKU, because Azure rejects `dynamicThrottlingEnabled` on GlobalStandard. After that deployment exists, Install sets `properties.dynamicThrottlingEnabled` to true with `az rest --method patch` and API version `2023-10-01-preview`. Azure may then serve more than the capacity-1 rate when it has spare capacity. Those extra tokens are billed at the normal rate, and dynamic quota has no throughput ceiling. Turning the property on has no separate fee. If a GlobalStandard deployment is already present, Dynamic Install deletes it and creates the Standard deployment under the same name. A later Dynamic Install does not delete a deployment that is already Standard. Use the same plan digest:
 
 ```powershell
 .\installer\Install-Jaws.ps1 -Mode Install -EnvironmentName your-environment -ResourceGroupName rg-jaws-your-environment -Location eastus -ApprovedPlanSha256 <plan-sha> -QuotaMode Dynamic -AcknowledgeStepBInstall
 ```
 
-A second Install does not patch when the deployment already matches the chosen mode. It also does not build the Supervisor image again once version 1 is active. `Static` on a deployment that already has dynamic quota on sets the property back to false.
+A second Install does not patch when the deployment already matches the chosen mode. It also does not build the Supervisor image again once version 1 is active. `Static` on a Standard deployment that already has dynamic quota on sets the property back to false and leaves the Standard SKU in place. The console prints `Model SKU: GlobalStandard` or `Model SKU: Standard`.
 
 **Expected result.** `Install-Jaws.ps1` prints:
 
@@ -104,7 +104,8 @@ Install uploads `src/Jaws.Supervisor.Host` and runs `az acr build --platform lin
 | Environment `dev` or resource group `rg-aiops-lab` | `JAWS-STEP-B-013` |
 | Existing resource without the installer tags | `JAWS-STEP-B-012`, no adoption |
 | Model quota or unsupported region | `JAWS-STEP-B-MODEL-001`. A quota refusal prints `Issue`, `Action`, and `Quota request: https://aka.ms/oai/stuquotarequest`. Dynamic quota cannot create the deployment when Azure has no quota for capacity 1 |
-| Requested quota mode is not recorded | `JAWS-STEP-B-MODEL-002`. Capacity stays GlobalStandard 1 |
+| Requested quota mode is not recorded | `JAWS-STEP-B-MODEL-002`. Capacity stays 1. Dynamic uses the regional Standard SKU |
+| Regional Standard SKU is not offered | `JAWS-STEP-B-MODEL-001` before a Dynamic deployment is created. GlobalStandard is not used as a substitute |
 | Registry build fails | `JAWS-STEP-B-021`. Docker is not used. A second run does not build again once Supervisor version 1 is active |
 | Second run | Same receipt, no second Foundry account or Supervisor |
 | Approved model is not offered | `JAWS-STEP-B-MODEL-001` before the deployment is created |

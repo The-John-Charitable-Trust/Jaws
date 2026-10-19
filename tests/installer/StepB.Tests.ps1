@@ -59,6 +59,8 @@ Describe 'Step B subscription capture and local package' {
         $installModule | Should -Not -Match 'Get-Command dotnet'
         $installModule | Should -Match 'PolicySimulation'
         $installModule | Should -Match 'dynamicThrottlingEnabled'
+        $installModule | Should -Match "return 'Standard'"
+        $installModule | Should -Match "'deployment','delete'"
         $installModule | Should -Match '2023-10-01-preview'
         $entry | Should -Match "ValidateSet\('Static','Dynamic'\)"
     }

@@ -68,9 +68,10 @@ if method == "get" and "/versions/1" in url:
         })
     name = url.split("/agents/")[1].split("/versions/")[0]
     agent = world["agents"].get(name)
-    if not agent:
+    if not agent and not name.startswith("jaws-supervisor-"):
         missing()
-    emit(agent)
+    if agent:
+        emit(agent)
 if method == "post" and "/agents?api-version=v1" in url and "/versions" not in url:
     body = json.loads(body_text())
     name = body["name"]
@@ -84,7 +85,148 @@ if method == "post" and "/agents?api-version=v1" in url and "/versions" not in u
     save()
     emit(world["agents"][name])
 if method == "get" and "/agents/" in url and "/versions/" not in url:
-    emit({"name": url.split("/agents/")[1].split("?")[0], "versions": {"latest": "1"}})
+    name = url.split("/agents/")[1].split("?")[0]
+    latest = world.get("latest", {}).get(name, "1")
+    emit({"name": name, "versions": {"latest": latest}})
+if method == "get" and "/versions/" in url and "/toolboxes/" not in url:
+    name = url.split("/agents/")[1].split("/versions/")[0]
+    version = url.split("/versions/")[1].split("?")[0]
+    stored = world.get("versions", {}).get(name, {}).get(version)
+    if stored:
+        emit(stored)
+    if version == "1" and name.startswith("jaws-supervisor-"):
+        image = os.environ.get(
+            "JAWS_STEPD_STUB_SUPERVISOR_IMAGE",
+            "jawsacrlab1.azurecr.io/jaws/supervisor@sha256:" + ("a" * 64),
+        )
+        payload = {
+            "name": name,
+            "status": "active",
+            "draft": False,
+            "version": "1",
+            "definition": {
+                "kind": "hosted",
+                "container_configuration": {"image": image},
+                "cpu": "1",
+                "memory": "2Gi",
+                "environment_variables": {"AZURE_AI_MODEL_DEPLOYMENT_NAME": "gpt-5-mini"},
+            },
+        }
+        world.setdefault("versions", {}).setdefault(name, {})["1"] = payload
+        world.setdefault("agents", {})[name] = payload
+        save()
+        emit(payload)
+if method == "post" and "/versions?api-version=v1" in url and "/toolboxes/" not in url:
+    name = url.split("/agents/")[1].split("/versions")[0]
+    body = json.loads(body_text())
+    version = "2"
+    payload = {
+        "name": name,
+        "status": "active",
+        "draft": False,
+        "version": version,
+        "definition": body["definition"],
+    }
+    world.setdefault("versions", {}).setdefault(name, {})[version] = payload
+    world.setdefault("latest", {})[name] = version
+    save()
+    emit(payload)
+if method == "get" and "/toolboxes/jaws-browser-tools" in url:
+    toolbox = world.get("toolbox")
+    if not toolbox:
+        missing()
+    emit(toolbox)
+if method == "post" and "/toolboxes/jaws-browser-tools/versions" in url:
+    body = json.loads(body_text())
+    audience = body["tools"][0]["openapi"]["auth"]["security_scheme"]["audience"]
+    if audience != "api://jaws-browser":
+        print("browser toolbox audience mismatch", file=sys.stderr)
+        sys.exit(2)
+    server = body["tools"][0]["openapi"]["spec"]["servers"][0]["url"]
+    if not server.startswith("https://") or ".internal." not in server:
+        print("browser toolbox must use the internal endpoint", file=sys.stderr)
+        sys.exit(2)
+    toolbox = {"name": "jaws-browser-tools", "default_version": "1", "version": "1"}
+    world["toolbox"] = toolbox
+    save()
+    emit(toolbox)
+if args[:2] == ["provider", "show"]:
+    emit({"namespace": flag("--namespace"), "registrationState": "Registered"})
+if args[:2] == ["account", "show"]:
+    emit({"id": "22222222-2222-2222-2222-222222222222", "tenantId": "33333333-3333-3333-3333-333333333333"})
+if args[:3] == ["network", "vnet", "show"]:
+    emit(world["vnet"]) if "vnet" in world else missing()
+if args[:3] == ["network", "vnet", "create"]:
+    world["vnet"] = {"name": flag("--name"), "location": "eastus"}
+    save()
+    emit(world["vnet"])
+if args[:4] == ["network", "vnet", "subnet", "show"]:
+    emit(world["subnet"]) if "subnet" in world else missing()
+if args[:4] == ["network", "vnet", "subnet", "create"]:
+    if "Microsoft.App/environments" not in args:
+        print("subnet must be delegated to Microsoft.App/environments", file=sys.stderr)
+        sys.exit(2)
+    world["subnet"] = {"name": flag("--name"), "id": "/subscriptions/22222222-2222-2222-2222-222222222222/resourceGroups/rg-jaws-lab1/providers/Microsoft.Network/virtualNetworks/vnet/subnets/jaws-br-apps"}
+    save()
+    emit(world["subnet"])
+if args[:3] == ["containerapp", "env", "show"]:
+    emit(world["cae"]) if "cae" in world else missing()
+if args[:3] == ["containerapp", "env", "create"]:
+    if flag("--internal-only") != "true":
+        print("container app environment must be internal-only", file=sys.stderr)
+        sys.exit(2)
+    world["cae"] = {"name": flag("--name")}
+    save()
+    emit(world["cae"])
+if args[:2] == ["acr", "repository"] and "show" in args[:4]:
+    emit(world["browser-image"]) if "browser-image" in world else missing()
+if args[:2] == ["acr", "build"]:
+    file_arg = flag("--file").replace("\\", "/")
+    if not file_arg.endswith("src/Jaws.Browser.Host/Dockerfile"):
+        print("browser dockerfile path is required", file=sys.stderr)
+        sys.exit(2)
+    if flag("--platform") != "linux/amd64":
+        print("platform must be linux/amd64", file=sys.stderr)
+        sys.exit(2)
+    world["browser-image"] = {"digest": "sha256:" + ("b" * 64)}
+    save()
+    sys.exit(0)
+if args[:2] == ["containerapp", "show"]:
+    emit(world["app"]) if "app" in world else missing()
+if args[:2] == ["containerapp", "create"]:
+    if flag("--ingress") != "internal":
+        print("ingress must be internal", file=sys.stderr)
+        sys.exit(2)
+    if flag("--min-replicas") != "0" or flag("--max-replicas") != "3":
+        print("browser replica bounds must be 0 and 3", file=sys.stderr)
+        sys.exit(2)
+    image = flag("--image")
+    if "@sha256:" not in image:
+        print("browser image must be digest pinned", file=sys.stderr)
+        sys.exit(2)
+    world["app"] = {
+        "name": flag("--name"),
+        "identity": {"principalId": "44444444-4444-4444-4444-444444444444"},
+        "properties": {"configuration": {"ingress": {"external": False, "fqdn": flag("--name") + ".internal.example"}}},
+    }
+    save()
+    emit(world["app"])
+if args[:3] == ["keyvault", "secret", "show"]:
+    name = flag("--name")
+    secrets = world.get("secrets", {})
+    emit(secrets[name]) if name in secrets else missing()
+if args[:3] == ["keyvault", "secret", "set"]:
+    name = flag("--name")
+    world.setdefault("secrets", {})[name] = {"name": name, "id": "https://kvjawslab1.vault.azure.net/secrets/" + name}
+    save()
+    emit(world["secrets"][name])
+if args[:3] == ["role", "assignment", "list"]:
+    emit(world.get("roles", []))
+if args[:3] == ["role", "assignment", "create"]:
+    role = {"roleDefinitionName": flag("--role"), "scope": flag("--scope")}
+    world.setdefault("roles", []).append(role)
+    save()
+    emit(role)
 print("unexpected " + " ".join(args), file=sys.stderr)
 sys.exit(9)
 '@
@@ -123,6 +265,7 @@ sys.exit(9)
             Image = $Image
             ModelDeploymentName = 'gpt-5-mini'
             SubscriptionId = '22222222-2222-2222-2222-222222222222'
+            Location = 'eastus'
         } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $local "jaws-step-b-install.$EnvironmentName.generated.json") -Encoding utf8
     }
 }
@@ -134,6 +277,10 @@ Describe 'Step D catalog' {
         $base = New-JawsStepDCatalog -EnvironmentName 'lab1' -AgentName $agent -Image $image
         { Test-JawsStepDCatalog -Catalog $base } | Should -Not -Throw
         $base.Specialists[0].WritesRequireApproval | Should -BeTrue
+        $browserCatalog = New-JawsStepDCatalog -EnvironmentName 'lab1' -AgentName $agent -Image $image -IncludeBrowserTools
+        { Test-JawsStepDCatalog -Catalog $browserCatalog } | Should -Not -Throw
+        @($browserCatalog.Specialists[0].AllowedTools) | Should -Contain 'browser_navigate'
+        @($browserCatalog.Specialists[0].AllowedTools) | Should -Not -Contain 'vm.run-command'
 
         $unknown = New-JawsStepDCatalog -EnvironmentName 'lab1' -AgentName $agent -Image $image
         $unknown.Specialists[0].AllowedTools = @('vm.get','not-a-tool')
@@ -282,18 +429,40 @@ Describe 'Step D installer' {
         $output = & (Join-Path $script:root 'installer/Install-JawsStepD.ps1') -Mode Install -EnvironmentName 'lab1' -AcknowledgeStepDInstall *>&1 | Out-String
         $output | Should -Match 'STEP-D INSTALL PASS'
         $output | Should -Match 'Customer installation accepted: false'
-        $output | Should -Match 'Azure writes: 1'
+        $output | Should -Match 'Azure writes: '
+        $output | Should -Not -Match 'Azure writes: 0'
+        $output | Should -Match 'Browser toolbox: jaws-browser-tools'
+        $output | Should -Match 'Supervisor image rebuilt: false'
+        $output | Should -Match 'Browser tools on this image: pending a Supervisor image built from this host'
+        $output | Should -Match 'Supervisor version 1 unchanged: true'
         $output | Should -Match 'Result: PASS'
         $output | Should -Match 'Ready for next step: true'
         $output | Should -Match 'Next step: Step D Accept'
         $log = Get-Content -LiteralPath (Join-Path $script:state 'log.txt') -Raw
         $agentPost = [regex]::Escape('/agents?api-version=v1')
         ([regex]::Matches($log, $agentPost)).Count | Should -Be 1
-        $log | Should -Not -Match 'jaws-supervisor-lab1/versions'
+        $log | Should -Match 'containerapp env create'
+        $log | Should -Match '--internal-only true'
+        $log | Should -Match 'containerapp create'
+        $log | Should -Match '--ingress internal'
+        $log | Should -Match 'src/Jaws\.Browser\.Host/Dockerfile'
+        $log | Should -Match 'jaws-supervisor-lab1/versions\?api-version=v1'
+        $log | Should -Not -Match 'jaws-supervisor-lab1/versions/1 .*--method PATCH'
+        $log | Should -Not -Match '--method patch'
+        $receipt = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-step-d-install.lab1.generated.json') -Raw | ConvertFrom-Json
+        $receipt.BrowserToolboxName | Should -Be 'jaws-browser-tools'
+        $receipt.BrowserToolsetVersion | Should -Be '1'
+        $receipt.PlaywrightServiceEndpoint | Should -Match '^https://.+\.internal\.'
+        $receipt.CredentialScopeId | Should -Match '/secrets/jaws-browser-credentials$'
+        $receipt.SupervisorV1Unchanged | Should -BeTrue
+        @($receipt.BrowserAgents) | Should -Contain 'jaws-supervisor-lab1'
+        @($receipt.BrowserAgents) | Should -Contain 'jaws-vm-specialist-lab1'
+        $firstPosts = ([regex]::Matches($log, 'rest --method POST')).Count
         & (Join-Path $script:root 'installer/Install-JawsStepD.ps1') -Mode Install -EnvironmentName 'lab1' -AcknowledgeStepDInstall
         $log = Get-Content -LiteralPath (Join-Path $script:state 'log.txt') -Raw
-        $post = [regex]::Escape('rest --method POST')
-        ([regex]::Matches($log, $post)).Count | Should -Be 1
+        ([regex]::Matches($log, 'rest --method POST')).Count | Should -Be $firstPosts
+        ([regex]::Matches($log, 'containerapp create')).Count | Should -Be 1
+        ([regex]::Matches($log, 'acr build')).Count | Should -Be 1
         (Get-Content -LiteralPath (Join-Path $script:root 'installer/config/jaws-installation-state.dev.json') -Raw) | Should -Be $script:devBefore
         $catalog = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-specialist-catalog.lab1.generated.json') -Raw | ConvertFrom-Json
         @($catalog.Specialists)[0].ComputeEnvironmentId | Should -Be 'jaws-vm-specialist-lab1'
@@ -318,6 +487,7 @@ Describe 'Step D installer' {
         $output = & (Join-Path $script:root 'installer/Install-JawsStepD.ps1') -Mode Install -EnvironmentName 'dev' -AcknowledgeStepDInstall *>&1 | Out-String
         $output | Should -Match 'STEP-D INSTALL PASS'
         $output | Should -Match 'Azure writes: 0'
+        $output | Should -Match 'Browser toolbox: not provisioned'
         $output | Should -Match 'Result: PASS'
         $log = Get-Content -LiteralPath (Join-Path $script:state 'log.txt') -Raw
         $log | Should -Match 'jaws-investigation-dev/versions/1'
@@ -327,6 +497,38 @@ Describe 'Step D installer' {
         @($catalog.Specialists)[0].FoundryAgentName | Should -Be 'jaws-investigation-dev'
         @($catalog.Specialists)[0].ComputeEnvironmentId | Should -Be 'jaws-investigation-dev'
         (Get-Content -LiteralPath (Join-Path $script:root 'installer/config/jaws-installation-state.dev.json') -Raw) | Should -Be $script:devBefore
+    }
+
+    It 'updates the browser allow-list without rebuilding an image' {
+        Write-StepDReceipt
+        $scriptPath = Join-Path $script:root 'installer/Set-JawsBrowserAllowList.ps1'
+        $url = 'https://portal.contoso.example/reports'
+        $denied = ''
+        try {
+            & $scriptPath -Action Add -Url $url -EnvironmentName 'lab1' *>&1 | ForEach-Object { $denied += "$_`n" }
+            throw 'Allow-list returned without the acknowledgement.'
+        } catch {
+            $denied += $_.Exception.Message
+        }
+        $denied | Should -Match 'JAWS-STEP-D-033'
+        $added = & $scriptPath -Action Add -Url $url -EnvironmentName 'lab1' -AcknowledgeBrowserAllowList *>&1 | Out-String
+        $added | Should -Match 'Browser allow-list: Add'
+        $added | Should -Match 'Azure writes: 1'
+        $added | Should -Match 'Customer installation accepted: false'
+        $path = Join-Path $script:root 'installer/.local/jaws-browser-allow-list.lab1.json'
+        $file = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+        @($file.Urls) | Should -Contain $url
+        $removed = & $scriptPath -Action Remove -Url $url -EnvironmentName 'lab1' -AcknowledgeBrowserAllowList *>&1 | Out-String
+        $removed | Should -Match 'Entries: 0'
+        $devDenied = ''
+        try {
+            & $scriptPath -Action Add -Url $url -EnvironmentName 'dev' -AcknowledgeBrowserAllowList *>&1 | ForEach-Object { $devDenied += "$_`n" }
+            throw 'Dev allow-list returned.'
+        } catch {
+            $devDenied += $_.Exception.Message
+        }
+        $devDenied | Should -Match 'JAWS-STEP-D-033'
+        $devDenied | Should -Match 'accepted dev project'
     }
 
     It 'treats Foundry not_found and Not Found as a missing specialist and still fails without -AllowMissing' {

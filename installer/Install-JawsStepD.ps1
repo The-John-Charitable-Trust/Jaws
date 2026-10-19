@@ -37,6 +37,22 @@ try {
     Write-Host "STEP-D $label PASS"
     Write-Host 'Customer installation accepted: false'
     Write-Host "Azure writes: $($result.AzureWrites)"
+    if ($Mode -eq 'Install' -and (Test-Path -LiteralPath $evidencePath -PathType Leaf)) {
+        $receipt = Get-Content -LiteralPath $evidencePath -Raw | ConvertFrom-Json
+        $toolbox = if ($receipt.PSObject.Properties['BrowserToolboxName']) { [string]$receipt.BrowserToolboxName } else { '' }
+        if ([string]::IsNullOrWhiteSpace($toolbox)) {
+            Write-Host 'Browser toolbox: not provisioned'
+        } else {
+            Write-Host "Browser toolbox: $toolbox"
+            Write-Host "Browser endpoint: $($receipt.PlaywrightServiceEndpoint)"
+            Write-Host "Browser toolset version: $($receipt.BrowserToolsetVersion)"
+            Write-Host 'Supervisor image rebuilt: false'
+            Write-Host 'Browser tools on this image: pending a Supervisor image built from this host'
+        }
+        if ($receipt.PSObject.Properties['SupervisorV1Unchanged'] -and $receipt.SupervisorV1Unchanged -eq $true) {
+            Write-Host 'Supervisor version 1 unchanged: true'
+        }
+    }
     Write-JawsMilestoneResult -Result PASS -ReadyForNextStep $result.ReadyForNextStep -NextStep $result.NextStep -EvidencePath $evidencePath
 } catch {
     Save-JawsMilestoneFailure -Path $evidencePath -Message $_.Exception.Message -Started $started

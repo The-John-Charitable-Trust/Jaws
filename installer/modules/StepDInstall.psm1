@@ -3,6 +3,7 @@
 # an unknown tool, or a write without the approval workflow is refused.
 # This module does not modify Supervisor version 1 or the dev installation state.
 Set-StrictMode -Version Latest
+Import-Module (Join-Path $PSScriptRoot 'StepDBrowser.psm1') -Force
 
 function Get-JawsStepDReadTools {
     @(
@@ -68,7 +69,7 @@ function Test-JawsStepDCatalog {
     if ([string]::IsNullOrWhiteSpace($compute) -or $compute -ne [string]$hosted[0].FoundryAgentName) {
         throw 'JAWS-STEP-D-006: The virtual-machine specialist compute environment must be that hosted agent and no other sandbox.'
     }
-    $known = @(Get-JawsStepDReadTools) + @(Get-JawsStepDWriteTools)
+    $known = @(Get-JawsStepDReadTools) + @(Get-JawsStepDWriteTools) + @(Get-JawsBrowserToolNames)
     $phase = @('investigation','deliberation','remediation')
     foreach ($item in $specialists) {
         $id = [string]$item.Id
@@ -96,7 +97,8 @@ function New-JawsStepDCatalog {
     param(
         [Parameter(Mandatory)][string]$EnvironmentName,
         [Parameter(Mandatory)][string]$AgentName,
-        [string]$Image
+        [string]$Image,
+        [switch]$IncludeBrowserTools
     )
     [pscustomobject]@{
         SchemaVersion = '1.0'
@@ -108,7 +110,7 @@ function New-JawsStepDCatalog {
                 Kind = 'hosted'
                 Skills = @('investigate-vm-security-incident','deliberate-remediation')
                 McpServer = 'azure-mcp'
-                AllowedTools = @(Get-JawsStepDReadTools)
+                AllowedTools = $(if ($IncludeBrowserTools) { @(Get-JawsStepDReadTools) + @(Get-JawsBrowserToolNames) } else { @(Get-JawsStepDReadTools) })
                 WritesRequireApproval = $true
                 ApprovalWorkflow = 'approve-vm-change'
                 ComputeEnvironmentId = $AgentName
@@ -184,6 +186,10 @@ function Resolve-JawsStepDContext {
         SupervisorAgent = [string]$receipt.AgentName
         Image = [string]$receipt.Image
         ModelDeploymentName = [string]$receipt.ModelDeploymentName
+        ResourceGroupName = [string]$receipt.ResourceGroupName
+        Location = [string]$(if ($receipt.PSObject.Properties['Location']) { $receipt.Location } else { '' })
+        RegistryName = [string]$receipt.RegistryName
+        KeyVaultName = [string]$receipt.KeyVaultName
         Endpoint = "https://$([string]$receipt.FoundryAccountName).services.ai.azure.com/api/projects/$([string]$receipt.ProjectName)"
         StepCAcceptancePath = $acceptancePath
         StepBReceiptPath = $receiptPath
@@ -233,7 +239,7 @@ function Invoke-JawsStepDValidate {
     if ($null -ne $agent) {
         $image = [string]$agent.definition.container_configuration.image
     }
-    $catalog = New-JawsStepDCatalog -EnvironmentName $EnvironmentName -AgentName $context.AgentName -Image $image
+    $catalog = New-JawsStepDCatalog -EnvironmentName $EnvironmentName -AgentName $context.AgentName -Image $image -IncludeBrowserTools:($EnvironmentName -ne 'dev')
     $null = Test-JawsStepDCatalog -Catalog $catalog
     $local = Join-Path $InstallerRoot '.local'
     $catalogPath = Join-Path $local "jaws-specialist-catalog.$EnvironmentName.generated.json"
@@ -294,7 +300,10 @@ function Invoke-JawsStepDInstall {
                 cpu = '1'
                 memory = '2Gi'
                 protocol_versions = @(@{ protocol = 'responses'; version = '2.0.0' })
-                environment_variables = @{ AZURE_AI_MODEL_DEPLOYMENT_NAME = [string]$context.ModelDeploymentName }
+                environment_variables = @{
+                    AZURE_AI_MODEL_DEPLOYMENT_NAME = [string]$context.ModelDeploymentName
+                    JAWS_BROWSER_TOOLBOX_NAME = 'jaws-browser-tools'
+                }
             }
         } | ConvertTo-Json -Depth 8 -Compress
         $bodyFile = Join-Path $InstallerRoot ".local/jaws-step-d-agent-body.$EnvironmentName.json"
@@ -319,7 +328,12 @@ function Invoke-JawsStepDInstall {
     if ($EnvironmentName -ne 'dev' -and $image -cne [string]$context.Image) {
         throw 'JAWS-STEP-D-018: Virtual-machine specialist image differs from the Step B receipt. It was not overwritten.'
     }
-    $catalog = New-JawsStepDCatalog -EnvironmentName $EnvironmentName -AgentName $context.AgentName -Image $image
+    $browser = $null
+    if ($EnvironmentName -ne 'dev') {
+        $browser = Install-JawsStepDBrowser -Context $context -InstallerRoot $InstallerRoot
+        $writes += $browser.AzureWrites
+    }
+    $catalog = New-JawsStepDCatalog -EnvironmentName $EnvironmentName -AgentName $context.AgentName -Image $image -IncludeBrowserTools:($null -ne $browser)
     $null = Test-JawsStepDCatalog -Catalog $catalog
     $local = Join-Path $InstallerRoot '.local'
     $catalogPath = Join-Path $local "jaws-specialist-catalog.$EnvironmentName.generated.json"
@@ -330,7 +344,7 @@ function Invoke-JawsStepDInstall {
     }
     $beforeJson = $supervisorBefore | ConvertTo-Json -Depth 8 -Compress
     $afterJson = $supervisorAfter | ConvertTo-Json -Depth 8 -Compress
-    if ($beforeJson -ne $afterJson) { throw 'JAWS-STEP-D-019: Step D changed the Supervisor version inventory.' }
+    if ($EnvironmentName -eq 'dev' -and $beforeJson -ne $afterJson) { throw 'JAWS-STEP-D-019: Step D changed the Supervisor version inventory.' }
     $evidencePath = Join-Path $local "jaws-step-d-install.$EnvironmentName.generated.json"
     $payload = [pscustomobject]@{
         SchemaVersion = '1.0'
@@ -344,7 +358,14 @@ function Invoke-JawsStepDInstall {
         ComputeEnvironmentId = $context.AgentName
         CatalogPath = $catalogPath
         AzureWrites = $writes
-        SupervisorUnchanged = $true
+        SupervisorV1Unchanged = $true
+        BrowserToolboxName = $(if ($null -eq $browser) { '' } else { [string]$browser.ToolboxName })
+        BrowserToolsetVersion = $(if ($null -eq $browser) { '' } else { [string]$browser.ToolsetVersion })
+        PlaywrightServiceEndpoint = $(if ($null -eq $browser) { '' } else { [string]$browser.PlaywrightServiceEndpoint })
+        CredentialScopeId = $(if ($null -eq $browser) { '' } else { [string]$browser.CredentialScopeId })
+        AllowListPath = $(if ($null -eq $browser) { '' } else { [string]$browser.AllowListPath })
+        BrowserAgents = $(if ($null -eq $browser) { @() } else { @($browser.Agents) })
+        SupervisorUnchanged = $($EnvironmentName -eq 'dev')
         CustomerInstallationAccepted = $false
         CompletedAtUtc = [DateTime]::UtcNow.ToString('o')
     }
@@ -378,6 +399,16 @@ function Invoke-JawsStepDAccept {
     $image = if ($null -eq $agent) { '' } else { [string]$agent.definition.container_configuration.image }
     $expected = [string]$vm.Image
     $ok = $null -ne $agent -and [string]$agent.status -eq 'active' -and $agent.draft -ne $true -and $image -eq $expected -and [string]$vm.ComputeEnvironmentId -eq $context.AgentName
+    $browserReasons = @()
+    $installReceipt = Get-Content -LiteralPath $installPath -Raw | ConvertFrom-Json
+    if ($EnvironmentName -ne 'dev') {
+        $browserReasons = @(Confirm-JawsStepDBrowser -Context $context -InstallReceipt $installReceipt)
+        $hostedTools = @($vm.AllowedTools | ForEach-Object { [string]$_ })
+        foreach ($tool in @(Get-JawsBrowserToolNames)) {
+            if ($tool -notin $hostedTools) { $browserReasons += "catalog is missing $tool" }
+        }
+    }
+    $ok = $ok -and $browserReasons.Count -eq 0
     $evidencePath = Join-Path $local "jaws-step-d-acceptance.$EnvironmentName.generated.json"
     $payload = [pscustomobject]@{
         SchemaVersion = '1.0'
@@ -392,12 +423,12 @@ function Invoke-JawsStepDAccept {
         AzureWrites = 0
         CustomerInstallationAccepted = $false
         FreshSubscriptionReceiptArchived = $false
-        Reasons = @($(if (-not $ok) { 'The live hosted agent does not match the Step D catalog.' }))
+        Reasons = @($(if (-not $ok) { (@('The live hosted agent does not match the Step D catalog.') + $browserReasons) -join ' ' }))
         CompletedAtUtc = [DateTime]::UtcNow.ToString('o')
     }
     Save-JawsStepDEvidence -Path $evidencePath -Payload $payload | Out-Null
     Assert-JawsStepDDevState -Context $context
-    if (-not $ok) { throw "JAWS-STEP-D-024: Live virtual-machine specialist does not match the catalog. Evidence: $evidencePath" }
+    if (-not $ok) { throw "JAWS-STEP-D-024: Live virtual-machine specialist does not match the catalog. $($browserReasons -join ' ') Evidence: $evidencePath" }
     return [pscustomobject]@{
         EvidencePath = $evidencePath
         ReadyForNextStep = $false

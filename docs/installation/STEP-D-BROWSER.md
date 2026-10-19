@@ -35,8 +35,10 @@ The Investigation prompt planner is the Step C planning callee. It does not rece
 
 Install, after `-AcknowledgeStepDInstall`, creates:
 
-- virtual network `jaws-br-vnet-<environment>` with subnet `jaws-br-apps` (`10.42.0.0/23`) and subnet `jaws-foundry-agents` (`10.42.2.0/24`), both delegated to `Microsoft.App/environments`
-- an internal-only Container Apps environment on `jaws-br-apps` and Container App `jaws-br-<environment>`
+- virtual network `jaws-br-vnet-<compact>` with subnet `jaws-br-apps` (`10.42.0.0/23`) and subnet `jaws-foundry-agents` (`10.42.2.0/24`), both delegated to `Microsoft.App/environments`
+- an internal-only Container Apps environment on `jaws-br-apps` and Container App `jaws-br-<compact>`
+
+`<compact>` is the environment name with every character that is not a letter or digit removed. `aiops-lab-test2` becomes `aiopslabtest2`. Foundry names keep the hyphens.
 - image `jaws/browser:step-d`, built with `az acr build` and pinned to the registry digest
 - Key Vault secrets `jaws-browser-allow-list` and `jaws-browser-credentials`
 - Foundry toolbox `jaws-browser-tools`, authenticated as managed identity audience `api://jaws-browser`
@@ -44,13 +46,53 @@ Install, after `-AcknowledgeStepDInstall`, creates:
 
 The environment has no public endpoint. App ingress is external, which publishes the app on that environment's internal load balancer so clients in the virtual network can reach it. It does not publish the app to the internet. An `.internal.` hostname is not used, because clients elsewhere in the virtual network receive HTTP 404 for that name. A public Container Apps environment is deleted and recreated as internal-only. The bearer token for audience `api://jaws-browser` is still required. The allow-list still starts empty, and a vault password is filled only after the token signature is validated. Scale is minimum 0 and maximum 3 replicas. Before the two secrets are written, Install grants the signed-in account Key Vault Secrets Officer on the vault when that assignment is missing. Step B creates the vault with RBAC authorization and does not grant this data-plane role. The app identity receives Key Vault Secrets User on those two secrets and AcrPull on the registry. The container environment includes `JAWS_BROWSER_TENANT_ID` from the signed-in tenant.
 
+The install receipt records `PlaywrightServiceEndpoint`, `BrowserToolsetVersion`, and `CredentialScopeId`. A passing Install prints `Supervisor image rebuilt: false` and either `Browser allow-list: empty. No navigation will succeed until an operator adds a URL.` or the current entry count. Install does not rebuild the Supervisor image.
+
 ## Foundry virtual-network injection
 
 A Foundry account created without `networkInjections` sends tool calls from Microsoft's network. Those calls cannot reach the internal load balancer. Injection is set when the account is created and cannot be added later.
 
 `Install-JawsFoundryPrivateNetwork.ps1 -AcknowledgeFoundryReplacement` deletes that account, purges the soft-deleted name, and creates it again with agent injection into `jaws-foundry-agents`. The Foundry data-plane endpoint stays publicly reachable so this installer can keep calling it from the operator machine. Browser traffic from the agent leaves through the virtual network. The command removes the project, the model deployment, the Supervisor, and the Investigation toolbox with the account. Re-run Step B Install, Step C Install, and Step D Install afterward. Without the acknowledgement, or for `-EnvironmentName dev`, it throws `JAWS-STEP-D-044` and writes nothing. The private-path check throws `JAWS-STEP-D-043` when the account has no agent injection, and it does not call the Supervisor.
 
-The install receipt records `PlaywrightServiceEndpoint`, `BrowserToolsetVersion`, and `CredentialScopeId`. A passing Install prints `Supervisor image rebuilt: false` and either `Browser allow-list: empty. No navigation will succeed until an operator adds a URL.` or the current entry count. Install does not rebuild the Supervisor image.
+If the new account create reports that the name is still reserved, wait 5 minutes and run the same command once. Do not retry in a loop. If it is still reserved, wait another 5 minutes and run it once more.
+
+The Step B re-run uses the digest already recorded for this environment. Open `installer/.local/jaws-step-b-install.<environment>.generated.json` and copy `PlanSha256`. The same value is `PlanSha256` in `installer/.local/jaws-stage-b-plan.<environment>.offline.generated.json`, and it is the `Plan SHA-256` line printed by Step B Plan. Copy `ResourceGroupName`, `Location`, and `QuotaMode` from the install receipt as well. Quota mode is not part of the digest. Pass the same `-QuotaMode` that receipt records.
+
+## Test environment aiops-lab-test2
+
+Use `-EnvironmentName aiops-lab-test2` on every command. `aiopslabtest2` is only the compact form used by the Container Apps resources. It is not the environment name and it is not the Foundry account name.
+
+| Use this | Name |
+| --- | --- |
+| `-EnvironmentName` | `aiops-lab-test2` |
+| Foundry account | `jaws-foundry-aiops-lab-test2` |
+| Project | `jaws-aiops-lab-test2` |
+| Supervisor | `jaws-supervisor-aiops-lab-test2` |
+| Virtual-machine specialist | `jaws-vm-specialist-aiops-lab-test2` |
+| Container App | `jaws-br-aiopslabtest2` |
+| Container Apps environment | `jaws-br-env-aiopslabtest2` |
+| Virtual network | `jaws-br-vnet-aiopslabtest2` |
+
+Resource group, location, quota mode, and plan digest come from `installer/.local/jaws-step-b-install.aiops-lab-test2.generated.json`.
+
+```powershell
+git checkout main
+git pull origin main
+.\installer\Install-JawsFoundryPrivateNetwork.ps1 -EnvironmentName aiops-lab-test2 -AcknowledgeFoundryReplacement
+```
+
+Expected: `STEP-D FOUNDRY NETWORK PASS`, `Foundry account replaced: True`, `Customer installation accepted: false`, and `Next step: Step B Install`. If the name is still reserved, wait 5 minutes and run that command once.
+
+```powershell
+.\installer\Install-Jaws.ps1 -Mode Install -EnvironmentName aiops-lab-test2 -ResourceGroupName <ResourceGroupName> -Location <Location> -ApprovedPlanSha256 <PlanSha256> -QuotaMode <QuotaMode> -AcknowledgeStepBInstall
+.\installer\Install-JawsThroughStepC.ps1 -Mode Install -EnvironmentName aiops-lab-test2 -AcknowledgeStepCInstall
+.\installer\Install-JawsStepD.ps1 -Mode Install -EnvironmentName aiops-lab-test2 -AcknowledgeStepDInstall
+.\installer\Install-JawsStepD.ps1 -Mode Accept -EnvironmentName aiops-lab-test2
+.\installer\Publish-JawsSupervisorBrowserImage.ps1 -EnvironmentName aiops-lab-test2 -AcknowledgeSupervisorBrowserImage
+.\installer\Test-JawsBrowserPrivatePath.ps1 -EnvironmentName aiops-lab-test2 -AcknowledgeBrowserPrivatePath
+```
+
+Install prints `Browser network: private`. Accept prints `Ready for next step: false` and `Next step: Step E is not installable`. The private-path pass prints `STEP-D PRIVATE PATH PASS` and `Navigation attempted: false`. `Customer installation accepted` stays false on every one of those commands.
 
 ## Supervisor image
 

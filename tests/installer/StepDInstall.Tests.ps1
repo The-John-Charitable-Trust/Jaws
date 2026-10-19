@@ -607,6 +607,22 @@ Describe 'Step D installer' {
         $devDenied | Should -Match 'accepted dev project'
     }
 
+    It 'reads one JSON value when az leaves ANSI codes and a warning after it' {
+        $ansi = [char]27 + '[0m'
+        InModuleScope StepDInstall -Parameters @{ Ansi = $ansi } {
+            $payload = "warning before`n{`"name`":`"jaws-vm-specialist-lab1`",`"note`":`"brace } inside`"}`n$($Ansi)WARNING after"
+            $parsed = ConvertFrom-JawsStepDJson $payload
+            $parsed.name | Should -Be 'jaws-vm-specialist-lab1'
+            $parsed.note | Should -Be 'brace } inside'
+            $array = ConvertFrom-JawsStepDJson ("log`n[{`"a`":1}]" + $Ansi)
+            $array[0].a | Should -Be 1
+        }
+        InModuleScope StepDBrowser -Parameters @{ Ansi = $ansi } {
+            $parsed = ConvertFrom-JawsBrowserJson ("{`"digest`":`"sha256:abc`"}" + $Ansi)
+            $parsed.digest | Should -Be 'sha256:abc'
+        }
+    }
+
     It 'treats Foundry not_found and Not Found as a missing specialist and still fails without -AllowMissing' {
         InModuleScope StepDInstall {
             $arguments = @('rest','--method','GET','--url','https://example.test/agents/jaws-vm-specialist-lab9/versions/1','--output','json')

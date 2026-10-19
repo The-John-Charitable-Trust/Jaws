@@ -14,15 +14,41 @@ function Get-JawsBrowserToolNames {
     )
 }
 
+function Get-JawsBrowserJsonEnd {
+    param([Parameter(Mandatory)][string]$Text,[Parameter(Mandatory)][int]$Start)
+    $depth = 0
+    $inString = $false
+    $escaped = $false
+    for ($i = $Start; $i -lt $Text.Length; $i++) {
+        $ch = $Text[$i]
+        if ($inString) {
+            if ($escaped) { $escaped = $false; continue }
+            if ($ch -eq '\') { $escaped = $true; continue }
+            if ($ch -eq '"') { $inString = $false }
+            continue
+        }
+        if ($ch -eq '"') { $inString = $true; continue }
+        if ($ch -eq '{' -or $ch -eq '[') { $depth++ }
+        elseif ($ch -eq '}' -or $ch -eq ']') {
+            $depth--
+            if ($depth -eq 0) { return $i }
+        }
+    }
+    return -1
+}
+
 function ConvertFrom-JawsBrowserJson {
     param([AllowNull()][string]$Text)
     if ([string]::IsNullOrWhiteSpace($Text)) { return $null }
-    $objectAt = $Text.IndexOf('{')
-    $arrayAt = $Text.IndexOf('[')
+    $clean = $Text -replace "$([char]27)\[[0-9;?]*[ -/]*[@-~]", ''
+    $objectAt = $clean.IndexOf('{')
+    $arrayAt = $clean.IndexOf('[')
     $start = $objectAt
     if ($start -lt 0 -or ($arrayAt -ge 0 -and $arrayAt -lt $start)) { $start = $arrayAt }
     if ($start -lt 0) { return $null }
-    return ($Text.Substring($start) | ConvertFrom-Json)
+    $end = Get-JawsBrowserJsonEnd -Text $clean -Start $start
+    if ($end -lt $start) { return $null }
+    return ($clean.Substring($start, ($end - $start) + 1) | ConvertFrom-Json)
 }
 
 function Invoke-JawsBrowserAz {

@@ -220,7 +220,7 @@ function Install-JawsStepDBrowser {
     $imageRef = "$($Context.RegistryName).azurecr.io/$($names.ImageRepository)"
     $existingImage = Invoke-JawsBrowserAz -AllowMissing -Arguments @('acr','repository','show','--name',[string]$Context.RegistryName,'--image',$names.ImageRepository,'--output','json','--only-show-errors')
     if ($null -eq $existingImage) {
-        $null = Invoke-JawsBrowserAz -Arguments @('acr','build','--registry',[string]$Context.RegistryName,'--subscription',$sub,'--image',$names.ImageRepository,'--file',$dockerFile,'--platform','linux/amd64','--output','none',$buildContext)
+        $null = Invoke-JawsBrowserAz -Arguments @('acr','build','--registry',[string]$Context.RegistryName,'--subscription',$sub,'--image',$names.ImageRepository,'--file',$dockerFile,'--platform','linux/amd64','--output','none','--no-logs',$buildContext)
         $writes++
         $existingImage = Invoke-JawsBrowserAz -Arguments @('acr','repository','show','--name',[string]$Context.RegistryName,'--image',$names.ImageRepository,'--output','json','--only-show-errors')
     }
@@ -523,7 +523,11 @@ function Invoke-JawsBrowserSupervisorResponse {
         if ($LASTEXITCODE -ne 0) {
             throw "${FailureCode}: Supervisor invocation failed. $($raw | Out-String)"
         }
-        return (($raw | Out-String) | ConvertFrom-Json)
+        $parsed = ConvertFrom-JawsBrowserJson (($raw | Out-String))
+        if ($null -eq $parsed) {
+            throw "${FailureCode}: Supervisor invocation returned no JSON. $($raw | Out-String)"
+        }
+        return $parsed
     } finally {
         Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
     }
@@ -588,6 +592,7 @@ function Publish-JawsSupervisorBrowserImage {
             '--file',$package.DockerfilePath,
             '--platform','linux/amd64',
             '--output','none',
+            '--no-logs',
             $package.BuildContext
         ) 2>&1
         $buildCode = $LASTEXITCODE

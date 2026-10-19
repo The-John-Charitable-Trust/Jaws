@@ -48,12 +48,15 @@ def flag(name):
 
 def body_text():
     raw = flag("--body")
-    if raw.startswith("@"):
-        raw = raw[1:]
     if not raw:
         return ""
-    with open(raw, encoding="utf-8") as handle:
-        return handle.read()
+    path = raw[1:] if raw.startswith("@") else raw
+    if os.path.isfile(path):
+        with open(path, encoding="utf-8") as handle:
+            return handle.read()
+    if raw.startswith("@"):
+        raise SystemExit("body file missing: " + path)
+    return raw
 
 conn_id = f"/subscriptions/{sub}/resourceGroups/rg-jaws-lab1/providers/Microsoft.CognitiveServices/accounts/jaws-foundry-lab1/projects/jaws-lab1/connections/jaws-investigation-a2a-lab1"
 scope = f"/subscriptions/{sub}/resourceGroups/rg-jaws-lab1/providers/Microsoft.CognitiveServices/accounts/jaws-foundry-lab1/projects/jaws-lab1"
@@ -148,18 +151,65 @@ if method in ("get", "put") and "connections/jaws-investigation-a2a-lab1" in url
     if not world["connection"]:
         missing()
     emit(world["connection"])
-if method == "get" and "/toolboxes/jaws-investigation-a2a-tools/versions" in url:
-    if not world["toolbox"]:
-        missing()
-    emit({"data": [{"name": "jaws-investigation-a2a-tools", "version": "1", "tools": [{"type": "a2a", "a2a_version": "1.0", "project_connection_id": conn_id}]}]})
-if method == "get" and "/toolboxes/jaws-investigation-a2a-tools?" in url:
-    if not world["toolbox"]:
-        missing()
-    emit({"name": "jaws-investigation-a2a-tools", "default_version": "1"})
-if method == "post" and "/toolboxes/jaws-investigation-a2a-tools/versions" in url:
+def toolbox_version_payload(body, version_id):
+    return {
+        "name": "jaws-investigation-a2a-tools",
+        "version": version_id,
+        "description": body.get("description", ""),
+        "tools": body.get("tools", []),
+    }
+
+if os.environ.get("JAWS_STEPC_STUB_TOOLBOX_DATA_OBJECT") == "1" and not world.get("toolbox_version"):
     world["toolbox"] = True
+    world["default_version"] = "1"
     save()
-    emit({"name": "jaws-investigation-a2a-tools", "version": "1"})
+if method == "get" and "/toolboxes/jaws-investigation-a2a-tools/versions/" in url:
+    version = world.get("toolbox_version")
+    requested = url.split("/versions/")[1].split("?")[0]
+    if not version or str(version.get("version")) != requested:
+        missing()
+    emit(version)
+if method == "get" and "/toolboxes/jaws-investigation-a2a-tools/versions" in url:
+    if os.environ.get("JAWS_STEPC_STUB_TOOLBOX_DATA_OBJECT") == "1" and not world.get("toolbox_version"):
+        emit({"data": {"name": "jaws-investigation-a2a-tools", "version": "1", "tools": [{"type": "a2a", "a2a_version": "1.0", "project_connection_id": conn_id}]}})
+    version = world.get("toolbox_version")
+    if not version:
+        if world.get("toolbox"):
+            emit({"data": []})
+        missing()
+    emit({"data": [version]})
+if method == "get" and "/toolboxes/jaws-investigation-a2a-tools?" in url:
+    if not world.get("toolbox") and not world.get("toolbox_version"):
+        missing()
+    emit({"name": "jaws-investigation-a2a-tools", "default_version": str(world.get("default_version") or "1")})
+if method == "post" and "/toolboxes/jaws-investigation-a2a-tools/versions" in url:
+    stored_text = body_text()
+    with open(os.path.join(state_dir, "toolbox-body.json"), "w", encoding="utf-8") as handle:
+        handle.write(stored_text)
+    if os.environ.get("JAWS_STEPC_STUB_TOOLBOX_SHELL") == "1":
+        world["toolbox"] = True
+        world["toolbox_version"] = None
+        world["default_version"] = "1"
+        save()
+        emit({"name": "jaws-investigation-a2a-tools", "default_version": "1"})
+    stored = json.loads(stored_text)
+    version_id = os.environ.get("JAWS_STEPC_STUB_TOOLBOX_VERSION") or "1"
+    version = toolbox_version_payload(stored, version_id)
+    world["toolbox"] = True
+    world["toolbox_version"] = version
+    if version_id == "1" or not world.get("default_version"):
+        world["default_version"] = "1"
+    save()
+    emit(version)
+if method == "patch" and "/toolboxes/jaws-investigation-a2a-tools?" in url:
+    body_raw = body_text()
+    with open(os.path.join(state_dir, "toolbox-patch.json"), "w", encoding="utf-8") as handle:
+        handle.write(body_raw)
+    body = json.loads(body_raw)
+    world["toolbox"] = True
+    world["default_version"] = str(body["default_version"])
+    save()
+    emit({"name": "jaws-investigation-a2a-tools", "default_version": world["default_version"]})
 if method == "post" and "/protocols/openai/responses" in url:
     limit = int(os.environ.get("JAWS_STEPC_STUB_RATE_LIMITS", "0") or "0")
     used_path = os.path.join(state_dir, "rate-limits-used")
@@ -312,6 +362,9 @@ Describe 'Step C from a Step B environment' {
         $script:savedPoll = $env:JAWS_STEPC_POLL_SECONDS
         $script:savedLimits = $env:JAWS_STEPC_STUB_RATE_LIMITS
         $script:savedWait = $env:JAWS_STEPC_RATE_LIMIT_WAIT_SECONDS
+        $script:savedShell = $env:JAWS_STEPC_STUB_TOOLBOX_SHELL
+        $script:savedToolboxVersion = $env:JAWS_STEPC_STUB_TOOLBOX_VERSION
+        $script:savedDataObject = $env:JAWS_STEPC_STUB_TOOLBOX_DATA_OBJECT
         $env:JAWS_STEPC_STUB_STATE = $script:state
         $env:JAWS_STEPC_STUB_SUB = $script:sub
         $env:JAWS_STEPC_STUB_IMAGE = $script:image
@@ -319,6 +372,9 @@ Describe 'Step C from a Step B environment' {
         $env:JAWS_STEPC_POLL_SECONDS = '0'
         $env:JAWS_STEPC_RATE_LIMIT_WAIT_SECONDS = '0'
         Remove-Item Env:JAWS_STEPC_STUB_RATE_LIMITS -ErrorAction SilentlyContinue
+        Remove-Item Env:JAWS_STEPC_STUB_TOOLBOX_SHELL -ErrorAction SilentlyContinue
+        Remove-Item Env:JAWS_STEPC_STUB_TOOLBOX_VERSION -ErrorAction SilentlyContinue
+        Remove-Item Env:JAWS_STEPC_STUB_TOOLBOX_DATA_OBJECT -ErrorAction SilentlyContinue
         $env:PATH = $script:stub + [System.IO.Path]::PathSeparator + $env:PATH
         $script:devBefore = Get-Content -LiteralPath (Join-Path $script:root 'installer/config/jaws-installation-state.dev.json') -Raw
     }
@@ -331,7 +387,10 @@ Describe 'Step C from a Step B environment' {
             @{ Name = 'JAWS_STEPC_STUB_V1_TOOLBOX'; Value = $script:savedToolbox },
             @{ Name = 'JAWS_STEPC_POLL_SECONDS'; Value = $script:savedPoll },
             @{ Name = 'JAWS_STEPC_STUB_RATE_LIMITS'; Value = $script:savedLimits },
-            @{ Name = 'JAWS_STEPC_RATE_LIMIT_WAIT_SECONDS'; Value = $script:savedWait }
+            @{ Name = 'JAWS_STEPC_RATE_LIMIT_WAIT_SECONDS'; Value = $script:savedWait },
+            @{ Name = 'JAWS_STEPC_STUB_TOOLBOX_SHELL'; Value = $script:savedShell },
+            @{ Name = 'JAWS_STEPC_STUB_TOOLBOX_VERSION'; Value = $script:savedToolboxVersion },
+            @{ Name = 'JAWS_STEPC_STUB_TOOLBOX_DATA_OBJECT'; Value = $script:savedDataObject }
         )) {
             if ($null -eq $pair.Value) { Remove-Item "Env:$($pair.Name)" -ErrorAction SilentlyContinue } else { Set-Item "Env:$($pair.Name)" $pair.Value }
         }
@@ -502,5 +561,81 @@ Describe 'Step C from a Step B environment' {
         $report.RateLimitAttempts | Should -Be 3
         $report.TaskState | Should -Be 'TASK_STATE_COMPLETED'
         $report.CustomerInstallationAccepted | Should -BeFalse
+    }
+
+    It 'does not treat an empty toolbox shell or a non-array version list as a created A2A tool' {
+        Write-StepBFixture
+        $endpoint = 'https://jaws-foundry-lab1.services.ai.azure.com/api/projects/jaws-lab1'
+        $connId = "/subscriptions/$($script:sub)/resourceGroups/rg-jaws-lab1/providers/Microsoft.CognitiveServices/accounts/jaws-foundry-lab1/projects/jaws-lab1/connections/jaws-investigation-a2a-lab1"
+        $target = "$endpoint/agents/jaws-investigation-planner-lab1/endpoint/protocols/a2a"
+        @{
+            planner = $true
+            patched = $true
+            connection = @{ id = $connId; name = 'jaws-investigation-a2a-lab1'; target = $target }
+            toolbox = $true
+            latest = '1'
+            roles = @()
+            default_version = '1'
+        } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $script:state 'world.json') -Encoding utf8
+        $toolboxScript = Join-Path $script:root 'installer/Configure-JawsDelegationToolbox.ps1'
+        $common = @{
+            EnvironmentName = 'lab1'
+            ProjectEndpoint = $endpoint
+            ToolboxName = 'jaws-investigation-a2a-tools'
+            ConnectionName = 'jaws-investigation-a2a-lab1'
+            PlannerAgent = 'jaws-investigation-planner-lab1'
+        }
+        $env:JAWS_STEPC_STUB_TOOLBOX_DATA_OBJECT = '1'
+        $falsePass = ''
+        try {
+            & $toolboxScript -Mode Verify @common *>&1 | ForEach-Object { $falsePass += "$_`n" }
+            throw 'Verify returned for a version list that is not an array.'
+        } catch { $falsePass += $_.Exception.Message }
+        $falsePass | Should -Match 'JAWS-TOOLBOX-007'
+        $falsePass | Should -Not -Match 'verified'
+        Remove-Item Env:JAWS_STEPC_STUB_TOOLBOX_DATA_OBJECT
+        & $toolboxScript -Mode Plan @common | Out-Null
+        $plan = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-step-c-toolbox-plan.lab1.generated.json') -Raw | ConvertFrom-Json
+        $env:JAWS_STEPC_STUB_TOOLBOX_SHELL = '1'
+        $shell = ''
+        try {
+            & $toolboxScript -Mode Install @common -ApprovedPlanSha256 $plan.PlanSha256 -AcknowledgeToolboxChargesAndAccess *>&1 | ForEach-Object { $shell += "$_`n" }
+            throw 'Install returned after Foundry sent back a toolbox shell.'
+        } catch { $shell += $_.Exception.Message }
+        $shell | Should -Match 'JAWS-TOOLBOX-011'
+        $shell | Should -Not -Match 'verified'
+        $posted = Get-Content -LiteralPath (Join-Path $script:state 'toolbox-body.json') -Raw
+        $posted | Should -Match '"type":"a2a"'
+        $posted | Should -Match '"a2a_version":"1.0"'
+        $posted | Should -Not -Match 'base_url'
+        Remove-Item Env:JAWS_STEPC_STUB_TOOLBOX_SHELL
+        Remove-Item -LiteralPath (Join-Path $script:state 'world.json') -Force
+        @{
+            planner = $true
+            patched = $true
+            connection = @{ id = $connId; name = 'jaws-investigation-a2a-lab1'; target = $target }
+            toolbox = $false
+            latest = '1'
+            roles = @()
+        } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $script:state 'world.json') -Encoding utf8
+        $created = & $toolboxScript -Mode Install @common -ApprovedPlanSha256 $plan.PlanSha256 -AcknowledgeToolboxChargesAndAccess *>&1 | Out-String
+        $created | Should -Match 'Toolbox default version 1 verified'
+        $stored = Get-Content -LiteralPath (Join-Path $script:state 'toolbox-body.json') -Raw
+        $stored | Should -Match '"type":"a2a"'
+        $verified = & $toolboxScript -Mode Verify @common *>&1 | Out-String
+        $verified | Should -Match 'Toolbox default version 1 verified'
+        $env:JAWS_STEPC_STUB_TOOLBOX_VERSION = '2'
+        Remove-Item -LiteralPath (Join-Path $script:state 'world.json') -Force
+        @{
+            planner = $true
+            patched = $true
+            connection = @{ id = $connId; name = 'jaws-investigation-a2a-lab1'; target = $target }
+            toolbox = $false
+            latest = '1'
+            roles = @()
+        } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $script:state 'world.json') -Encoding utf8
+        $promoted = & $toolboxScript -Mode Install @common -ApprovedPlanSha256 $plan.PlanSha256 -AcknowledgeToolboxChargesAndAccess *>&1 | Out-String
+        $promoted | Should -Match 'Toolbox default version 2 verified'
+        Get-Content -LiteralPath (Join-Path $script:state 'toolbox-patch.json') -Raw | Should -Be '{"default_version":"2"}'
     }
 }

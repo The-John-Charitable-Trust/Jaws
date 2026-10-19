@@ -28,6 +28,9 @@ def save():
     with open(world_path, "w", encoding="utf-8") as handle:
         json.dump(world, handle)
 
+def tool_name(operation):
+    return os.environ.get("JAWS_STEPD_STUB_TOOL_PREFIX", "") + operation
+
 def emit(payload, code=0):
     text = json.dumps(payload)
     if "/protocols/openai/responses" in url:
@@ -150,7 +153,7 @@ if method == "post" and "/protocols/openai/responses" in url:
             "id": "resp_unreachable",
             "status": "completed",
             "output": [
-                {"type": "function_call", "name": "browser_open", "call_id": "call_open"},
+                {"type": "function_call", "name": tool_name("browser_open"), "call_id": "call_open"},
                 {"type": "function_call_output", "call_id": "call_open", "output": "browser_unreachable"},
             ],
         })
@@ -159,9 +162,9 @@ if method == "post" and "/protocols/openai/responses" in url:
             "id": "resp_capability",
             "status": "completed",
             "output": [
-                {"type": "function_call", "name": "browser_navigate", "call_id": "call_nav"},
+                {"type": "function_call", "name": tool_name("browser_navigate"), "call_id": "call_nav"},
                 {"type": "function_call_output", "call_id": "call_nav", "output": "EXTRACTED_VALUE=42"},
-                {"type": "function_call", "name": "browser_navigate", "call_id": "call_deny"},
+                {"type": "function_call", "name": tool_name("browser_navigate"), "call_id": "call_deny"},
                 {"type": "function_call_output", "call_id": "call_deny", "output": "allow_list_rejected"},
             ],
         })
@@ -170,7 +173,7 @@ if method == "post" and "/protocols/openai/responses" in url:
             "id": "resp_missing",
             "status": "completed",
             "output": [
-                {"type": "function_call", "name": "browser_navigate", "call_id": "call_nav"},
+                {"type": "function_call", "name": tool_name("browser_navigate"), "call_id": "call_nav"},
                 {"type": "function_call_output", "call_id": "call_nav", "output": "page loaded"},
             ],
         })
@@ -178,7 +181,7 @@ if method == "post" and "/protocols/openai/responses" in url:
         "id": "resp_private",
         "status": "completed",
         "output": [
-            {"type": "function_call", "name": "browser_open", "call_id": "call_open"},
+            {"type": "function_call", "name": tool_name("browser_open"), "call_id": "call_open"},
             {"type": "function_call_output", "call_id": "call_open", "output": "{\"sessionId\":\"abc123\",\"requested_by\":\"jaws-supervisor-cap1\"}"},
             {"type": "function_call", "name": "browser_close", "call_id": "call_close"},
             {"type": "function_call_output", "call_id": "call_close", "output": "closed"},
@@ -449,12 +452,14 @@ Describe 'Step D installer' {
         $script:savedPoll = $env:JAWS_STEPD_POLL_SECONDS
         $script:savedBrowserCall = $env:JAWS_STEPD_STUB_BROWSER_CALL
         $script:savedAnsiSuffix = $env:JAWS_STEPD_STUB_ANSI_SUFFIX
+        $script:savedToolPrefix = $env:JAWS_STEPD_STUB_TOOL_PREFIX
         $env:JAWS_STEPD_STUB_STATE = $script:state
         $env:JAWS_STEPD_STUB_DEV_IMAGE = $script:devImage
         $env:JAWS_STEPD_STUB_DEV_MISSING = '0'
         Remove-Item Env:JAWS_STEPD_STUB_MISSING -ErrorAction SilentlyContinue
         Remove-Item Env:JAWS_STEPD_STUB_BROWSER_CALL -ErrorAction SilentlyContinue
         Remove-Item Env:JAWS_STEPD_STUB_ANSI_SUFFIX -ErrorAction SilentlyContinue
+        Remove-Item Env:JAWS_STEPD_STUB_TOOL_PREFIX -ErrorAction SilentlyContinue
         $env:JAWS_STEPD_POLL_SECONDS = '0'
         $env:PATH = $script:stub + [System.IO.Path]::PathSeparator + $env:PATH
         $script:devBefore = Get-Content -LiteralPath (Join-Path $script:root 'installer/config/jaws-installation-state.dev.json') -Raw
@@ -468,7 +473,8 @@ Describe 'Step D installer' {
             @{ Name = 'JAWS_STEPD_STUB_MISSING'; Value = $script:savedAgentMissing },
             @{ Name = 'JAWS_STEPD_POLL_SECONDS'; Value = $script:savedPoll },
             @{ Name = 'JAWS_STEPD_STUB_BROWSER_CALL'; Value = $script:savedBrowserCall },
-            @{ Name = 'JAWS_STEPD_STUB_ANSI_SUFFIX'; Value = $script:savedAnsiSuffix }
+            @{ Name = 'JAWS_STEPD_STUB_ANSI_SUFFIX'; Value = $script:savedAnsiSuffix },
+            @{ Name = 'JAWS_STEPD_STUB_TOOL_PREFIX'; Value = $script:savedToolPrefix }
         )) {
             if ($null -eq $pair.Value) { Remove-Item "Env:$($pair.Name)" -ErrorAction SilentlyContinue } else { Set-Item "Env:$($pair.Name)" $pair.Value }
         }
@@ -647,6 +653,17 @@ Describe 'Step D installer' {
         }
     }
 
+    It 'accepts a Foundry-namespaced browser tool and rejects a different operation' {
+        InModuleScope StepDBrowser {
+            Test-JawsBrowserToolName -Name 'browser_open' -Operation 'browser_open' | Should -BeTrue
+            Test-JawsBrowserToolName -Name 'jaws-browser.browser_open' -Operation 'browser_open' | Should -BeTrue
+            Test-JawsBrowserToolName -Name 'jaws-browser-tools___browser_open' -Operation 'browser_open' | Should -BeTrue
+            Test-JawsBrowserToolName -Name 'jaws-browser_browser_navigate' -Operation 'browser_navigate' | Should -BeTrue
+            Test-JawsBrowserToolName -Name 'browser_snapshot' -Operation 'browser_open' | Should -BeFalse
+            Test-JawsBrowserToolName -Name 'browser_navigate' -Operation 'browser_open' | Should -BeFalse
+        }
+    }
+
     It 'reads versions.latest as a version object or a version string' {
         InModuleScope StepDBrowser {
             $asObject = [pscustomobject]@{ versions = [pscustomobject]@{ latest = [pscustomobject]@{ agent_guid = 'abc'; version = 3 } } }
@@ -766,7 +783,9 @@ Describe 'Step D installer' {
         $pathReceipt.PrivatePathProven | Should -BeFalse
 
         $env:JAWS_STEPD_STUB_BROWSER_CALL = 'private-ok'
+        $env:JAWS_STEPD_STUB_TOOL_PREFIX = 'jaws-browser.'
         $opened = & $private -EnvironmentName 'cap1' -AcknowledgeBrowserPrivatePath *>&1 | Out-String
+        Remove-Item Env:JAWS_STEPD_STUB_TOOL_PREFIX -ErrorAction SilentlyContinue
         $opened | Should -Match 'STEP-D PRIVATE PATH PASS'
         $opened | Should -Match 'Customer installation accepted: false'
         $opened | Should -Match 'Navigation attempted: false'

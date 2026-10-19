@@ -238,14 +238,22 @@ if args[:3] == ["network", "vnet", "create"]:
     save()
     emit(world["vnet"])
 if args[:4] == ["network", "vnet", "subnet", "show"]:
-    emit(world["subnet"]) if "subnet" in world else missing()
+    subnets = world.get("subnets", {})
+    name = flag("--name")
+    emit(subnets[name]) if name in subnets else missing()
 if args[:4] == ["network", "vnet", "subnet", "create"]:
     if "Microsoft.App/environments" not in args:
         print("subnet must be delegated to Microsoft.App/environments", file=sys.stderr)
         sys.exit(2)
-    world["subnet"] = {"name": flag("--name"), "id": "/subscriptions/22222222-2222-2222-2222-222222222222/resourceGroups/rg-jaws-lab1/providers/Microsoft.Network/virtualNetworks/vnet/subnets/jaws-br-apps"}
+    name = flag("--name")
+    item = {
+        "name": name,
+        "id": "/subscriptions/" + flag("--subscription") + "/resourceGroups/" + flag("--resource-group") + "/providers/Microsoft.Network/virtualNetworks/" + flag("--vnet-name") + "/subnets/" + name,
+        "addressPrefix": flag("--address-prefixes"),
+    }
+    world.setdefault("subnets", {})[name] = item
     save()
-    emit(world["subnet"])
+    emit(item)
 if args[:3] == ["containerapp", "env", "show"]:
     emit(world["cae"]) if "cae" in world else missing()
 if args[:3] == ["containerapp", "env", "delete"]:
@@ -256,10 +264,10 @@ if args[:3] == ["containerapp", "env", "delete"]:
     save()
     emit({})
 if args[:3] == ["containerapp", "env", "create"]:
-    if "--internal-only" in args or "--infrastructure-subnet-resource-id" in args:
-        print("browser environment must be external", file=sys.stderr)
+    if flag("--internal-only") != "true" or not flag("--infrastructure-subnet-resource-id"):
+        print("browser environment must be internal-only on the virtual network", file=sys.stderr)
         sys.exit(2)
-    world["cae"] = {"name": flag("--name"), "properties": {"vnetConfiguration": {"internal": False}}}
+    world["cae"] = {"name": flag("--name"), "properties": {"vnetConfiguration": {"internal": True}}}
     save()
     emit(world["cae"])
 if args[:2] == ["acr", "repository"] and "show" in args[:4]:
@@ -342,6 +350,57 @@ if args[:3] == ["role", "assignment", "create"]:
     world.setdefault("roles", []).append(role)
     save()
     emit(role)
+
+def default_foundry(name):
+    env = name[len("jaws-foundry-"):] if name.startswith("jaws-foundry-") else "lab1"
+    return {
+        "name": name,
+        "tags": {"managedBy": "JAWS-Installer", "environment": env, "application": "JAWS"},
+        "properties": {
+            "publicNetworkAccess": "Enabled",
+            "networkInjections": [{
+                "scenario": "agent",
+                "subnetArmId": "/subscriptions/22222222-2222-2222-2222-222222222222/resourceGroups/rg-jaws-" + env + "/providers/Microsoft.Network/virtualNetworks/jaws-br-vnet-" + env + "/subnets/jaws-foundry-agents",
+                "useMicrosoftManagedNetwork": False,
+            }],
+        },
+    }
+
+if args[:3] == ["cognitiveservices", "account", "show"]:
+    foundry = world.get("foundry", None)
+    if isinstance(foundry, dict):
+        emit(foundry)
+    if foundry == "deleted":
+        missing()
+    emit(default_foundry(flag("--name")))
+if args[:3] == ["cognitiveservices", "account", "delete"]:
+    if "--yes" not in args:
+        print("foundry delete requires --yes", file=sys.stderr)
+        sys.exit(2)
+    world["foundry"] = "deleted"
+    save()
+    emit({})
+if args[:3] == ["cognitiveservices", "account", "purge"]:
+    world["foundry-purged"] = True
+    save()
+    emit({})
+if method == "put" and "/providers/Microsoft.CognitiveServices/accounts/" in url:
+    body = json.loads(body_text())
+    injections = body["properties"]["networkInjections"]
+    subnet = injections[0]["subnetArmId"]
+    if injections[0]["scenario"] != "agent" or injections[0]["useMicrosoftManagedNetwork"] is not False:
+        print("foundry injection is incomplete", file=sys.stderr)
+        sys.exit(2)
+    if not subnet.endswith("/subnets/jaws-foundry-agents"):
+        print("foundry injection subnet is wrong", file=sys.stderr)
+        sys.exit(2)
+    if body["properties"]["publicNetworkAccess"] != "Enabled":
+        print("foundry public inbound must stay enabled for the installer", file=sys.stderr)
+        sys.exit(2)
+    name = url.split("/accounts/")[1].split("?")[0]
+    world["foundry"] = {"name": name, "tags": body.get("tags", {}), "properties": body["properties"]}
+    save()
+    emit(world["foundry"])
 print("unexpected " + " ".join(args), file=sys.stderr)
 sys.exit(9)
 '@
@@ -486,7 +545,9 @@ Describe 'Step D installer' {
             'jaws-step-d-install.reach1.generated.json',
             'jaws-step-d-acceptance.reach1.generated.json',
             'jaws-specialist-catalog.reach1.generated.json',
-            'jaws-browser-allow-list.reach1.json'
+            'jaws-browser-allow-list.reach1.json',
+            'jaws-step-b-install.net1.generated.json',
+            'jaws-step-d-foundry-network.net1.generated.json'
         )) {
             $path = Join-Path $local $name
             if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path }
@@ -591,8 +652,13 @@ Describe 'Step D installer' {
         $log = Get-Content -LiteralPath (Join-Path $script:state 'log.txt') -Raw
         $agentPost = [regex]::Escape('/agents?api-version=v1')
         ([regex]::Matches($log, $agentPost)).Count | Should -Be 1
+        $log | Should -Match 'network vnet create'
+        $log | Should -Match 'jaws-br-apps'
+        $log | Should -Match 'jaws-foundry-agents'
+        $log | Should -Match '10\.42\.2\.0/24'
         $log | Should -Match 'containerapp env create'
-        $log | Should -Not -Match '--internal-only'
+        $log | Should -Match '--internal-only'
+        $log | Should -Match '--infrastructure-subnet-resource-id'
         $log | Should -Not -Match 'containerapp env delete'
         $log | Should -Match 'containerapp create'
         $log | Should -Match '--ingress external'
@@ -610,6 +676,7 @@ Describe 'Step D installer' {
         $receipt.BrowserToolsetVersion | Should -Be '1'
         $receipt.PlaywrightServiceEndpoint | Should -Match '^https://'
         $receipt.PlaywrightServiceEndpoint | Should -Not -Match '\.internal\.'
+        $output | Should -Match 'Browser network: private'
         $receipt.CredentialScopeId | Should -Match '/secrets/jaws-browser-credentials$'
         $receipt.SupervisorV1Unchanged | Should -BeTrue
         @($receipt.BrowserAgents) | Should -Contain 'jaws-supervisor-lab1'
@@ -619,6 +686,7 @@ Describe 'Step D installer' {
         $log = Get-Content -LiteralPath (Join-Path $script:state 'log.txt') -Raw
         ([regex]::Matches($log, 'rest --method POST')).Count | Should -Be $firstPosts
         ([regex]::Matches($log, 'containerapp create')).Count | Should -Be 1
+        ([regex]::Matches($log, 'network vnet create')).Count | Should -Be 1
         ([regex]::Matches($log, 'acr build')).Count | Should -Be 1
         ([regex]::Matches($log, 'Key Vault Secrets Officer')).Count | Should -Be 1
         $log | Should -Match 'jaws-supervisor-lab1/versions/2\?api-version=v1'
@@ -642,31 +710,91 @@ Describe 'Step D installer' {
         $report.AzureWrites | Should -Be 0
     }
 
-    It 'replaces an internal browser environment with a public endpoint and promotes the toolbox' {
+    It 'keeps an internal browser environment and publishes the app on the virtual-network load balancer' {
         Write-StepDAcceptance 'reach1'
         Write-StepDReceipt -EnvironmentName 'reach1' -FoundryAccountName 'jaws-foundry-reach1' -ProjectName 'jaws-reach1' -AgentName 'jaws-supervisor-reach1'
         @'
-{"agents":{},"cae":{"name":"jaws-br-env-reach1","properties":{"vnetConfiguration":{"internal":true}}},"app":{"name":"jaws-br-reach1","identity":{"principalId":"44444444-4444-4444-4444-444444444444"},"properties":{"configuration":{"ingress":{"external":false,"fqdn":"jaws-br-reach1.internal.example"}}}},"toolbox":{"name":"jaws-browser-tools","default_version":"1"},"toolbox-versions":{"1":{"name":"jaws-browser-tools","version":"1","tools":[{"openapi":{"spec":{"servers":[{"url":"https://jaws-br-reach1.internal.example"}]}}}]}}}
+{"agents":{},"subnets":{"jaws-br-apps":{"name":"jaws-br-apps","id":"/subscriptions/22222222-2222-2222-2222-222222222222/resourceGroups/rg-jaws-reach1/providers/Microsoft.Network/virtualNetworks/jaws-br-vnet-reach1/subnets/jaws-br-apps"},"jaws-foundry-agents":{"name":"jaws-foundry-agents","id":"/subscriptions/22222222-2222-2222-2222-222222222222/resourceGroups/rg-jaws-reach1/providers/Microsoft.Network/virtualNetworks/jaws-br-vnet-reach1/subnets/jaws-foundry-agents"}},"cae":{"name":"jaws-br-env-reach1","properties":{"vnetConfiguration":{"internal":true}}},"app":{"name":"jaws-br-reach1","identity":{"principalId":"44444444-4444-4444-4444-444444444444"},"properties":{"configuration":{"ingress":{"external":false,"fqdn":"jaws-br-reach1.internal.example.com"}}}},"toolbox":{"name":"jaws-browser-tools","default_version":"1"},"toolbox-versions":{"1":{"name":"jaws-browser-tools","version":"1","tools":[{"openapi":{"spec":{"servers":[{"url":"https://jaws-br-reach1.internal.example.com"}]}}}]}}}
 '@ | Set-Content -LiteralPath (Join-Path $script:state 'world.json') -Encoding utf8
         $output = & (Join-Path $script:root 'installer/Install-JawsStepD.ps1') -Mode Install -EnvironmentName 'reach1' -AcknowledgeStepDInstall *>&1 | Out-String
         $output | Should -Match 'STEP-D INSTALL PASS'
+        $output | Should -Match 'Browser network: private'
         $log = Get-Content -LiteralPath (Join-Path $script:state 'log.txt') -Raw
-        $log.IndexOf('containerapp delete') | Should -BeLessThan $log.IndexOf('containerapp env delete')
-        $log.IndexOf('containerapp env delete') | Should -BeLessThan $log.IndexOf('containerapp env create')
-        $log | Should -Match '--ingress external'
+        $log | Should -Not -Match 'containerapp env delete'
+        $log | Should -Match 'containerapp ingress enable'
+        $log | Should -Match '--type external'
         $log | Should -Match 'rest --method PATCH'
         $receipt = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-step-d-install.reach1.generated.json') -Raw | ConvertFrom-Json
         $receipt.PlaywrightServiceEndpoint | Should -Be 'https://jaws-br-reach1.example.com'
         $receipt.BrowserToolsetVersion | Should -Be '2'
         $world = Get-Content -LiteralPath (Join-Path $script:state 'world.json') -Raw | ConvertFrom-Json
+        [bool]$world.cae.properties.vnetConfiguration.internal | Should -BeTrue
         [string]$world.toolbox.default_version | Should -Be '2'
         [string]$world.'toolbox-versions'.'2'.tools[0].openapi.spec.servers[0].url | Should -Be 'https://jaws-br-reach1.example.com'
         $accept = & (Join-Path $script:root 'installer/Install-JawsStepD.ps1') -Mode Accept -EnvironmentName 'reach1' *>&1 | Out-String
         $accept | Should -Match 'STEP-D ACCEPTANCE PASS'
         & (Join-Path $script:root 'installer/Install-JawsStepD.ps1') -Mode Install -EnvironmentName 'reach1' -AcknowledgeStepDInstall | Out-Null
         $log = Get-Content -LiteralPath (Join-Path $script:state 'log.txt') -Raw
-        ([regex]::Matches($log, 'containerapp env delete')).Count | Should -Be 1
+        ([regex]::Matches($log, 'containerapp env delete')).Count | Should -Be 0
         ([regex]::Matches($log, 'rest --method PATCH')).Count | Should -Be 1
+    }
+
+    It 'replaces a public browser environment with an internal-only environment' {
+        Write-StepDAcceptance 'reach1'
+        Write-StepDReceipt -EnvironmentName 'reach1' -FoundryAccountName 'jaws-foundry-reach1' -ProjectName 'jaws-reach1' -AgentName 'jaws-supervisor-reach1'
+        @'
+{"agents":{},"cae":{"name":"jaws-br-env-reach1","properties":{"vnetConfiguration":{"internal":false}}},"app":{"name":"jaws-br-reach1","identity":{"principalId":"44444444-4444-4444-4444-444444444444"},"properties":{"configuration":{"ingress":{"external":true,"fqdn":"jaws-br-reach1.example.com"}}}},"toolbox":{"name":"jaws-browser-tools","default_version":"1"},"toolbox-versions":{"1":{"name":"jaws-browser-tools","version":"1","tools":[{"openapi":{"spec":{"servers":[{"url":"https://jaws-br-reach1.example.com"}]}}}]}}}
+'@ | Set-Content -LiteralPath (Join-Path $script:state 'world.json') -Encoding utf8
+        $output = & (Join-Path $script:root 'installer/Install-JawsStepD.ps1') -Mode Install -EnvironmentName 'reach1' -AcknowledgeStepDInstall *>&1 | Out-String
+        $output | Should -Match 'STEP-D INSTALL PASS'
+        $log = Get-Content -LiteralPath (Join-Path $script:state 'log.txt') -Raw
+        $log.IndexOf('containerapp delete') | Should -BeLessThan $log.IndexOf('containerapp env delete')
+        $log.IndexOf('containerapp env delete') | Should -BeLessThan $log.IndexOf('containerapp env create')
+        $log | Should -Match '--internal-only true'
+        $world = Get-Content -LiteralPath (Join-Path $script:state 'world.json') -Raw | ConvertFrom-Json
+        [bool]$world.cae.properties.vnetConfiguration.internal | Should -BeTrue
+        $accept = & (Join-Path $script:root 'installer/Install-JawsStepD.ps1') -Mode Accept -EnvironmentName 'reach1' *>&1 | Out-String
+        $accept | Should -Match 'STEP-D ACCEPTANCE PASS'
+    }
+
+    It 'replaces a public-egress Foundry account with agent virtual-network injection' {
+        Write-StepDReceipt -EnvironmentName 'net1' -FoundryAccountName 'jaws-foundry-net1' -ProjectName 'jaws-net1' -AgentName 'jaws-supervisor-net1'
+        @'
+{"agents":{},"foundry":{"name":"jaws-foundry-net1","tags":{"managedBy":"JAWS-Installer","environment":"net1"},"properties":{"publicNetworkAccess":"Enabled"}}}
+'@ | Set-Content -LiteralPath (Join-Path $script:state 'world.json') -Encoding utf8
+        $scriptPath = Join-Path $script:root 'installer/Install-JawsFoundryPrivateNetwork.ps1'
+        $denied = ''
+        try {
+            & $scriptPath -EnvironmentName 'net1' *>&1 | ForEach-Object { $denied += "$_`n" }
+            throw 'Foundry replacement returned without the acknowledgement.'
+        } catch { $denied += $_.Exception.Message }
+        $denied | Should -Match 'JAWS-STEP-D-044'
+        Test-Path -LiteralPath (Join-Path $script:state 'log.txt') | Should -BeFalse
+        $devDenied = ''
+        try {
+            & $scriptPath -EnvironmentName 'dev' -AcknowledgeFoundryReplacement *>&1 | ForEach-Object { $devDenied += "$_`n" }
+            throw 'Dev Foundry replacement returned.'
+        } catch { $devDenied += $_.Exception.Message }
+        $devDenied | Should -Match 'JAWS-STEP-D-044'
+        $output = & $scriptPath -EnvironmentName 'net1' -AcknowledgeFoundryReplacement *>&1 | Out-String
+        $output | Should -Match 'STEP-D FOUNDRY NETWORK PASS'
+        $output | Should -Match 'Customer installation accepted: false'
+        $output | Should -Match 'Foundry account replaced: True'
+        $output | Should -Match 'Ready for next step: true'
+        $output | Should -Match 'Next step: Step B Install'
+        $log = Get-Content -LiteralPath (Join-Path $script:state 'log.txt') -Raw
+        $log.IndexOf('cognitiveservices account delete') | Should -BeLessThan $log.IndexOf('cognitiveservices account purge')
+        $log | Should -Match 'rest --method PUT'
+        (Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-foundry-network.net1.json') -Raw) | Should -Match 'subnets/jaws-foundry-agents'
+        $world = Get-Content -LiteralPath (Join-Path $script:state 'world.json') -Raw | ConvertFrom-Json
+        [string]$world.foundry.properties.networkInjections[0].scenario | Should -Be 'agent'
+        [string]$world.foundry.properties.networkInjections[0].subnetArmId | Should -Match '/subnets/jaws-foundry-agents$'
+        [string]$world.foundry.properties.publicNetworkAccess | Should -Be 'Enabled'
+        [bool]$world.'foundry-purged' | Should -BeTrue
+        $deletes = ([regex]::Matches($log, 'cognitiveservices account delete')).Count
+        & $scriptPath -EnvironmentName 'net1' -AcknowledgeFoundryReplacement | Out-Null
+        $log = Get-Content -LiteralPath (Join-Path $script:state 'log.txt') -Raw
+        ([regex]::Matches($log, 'cognitiveservices account delete')).Count | Should -Be $deletes
     }
 
     It 'binds the existing dev specialist and does not post a second agent' {
@@ -850,6 +978,19 @@ Describe 'Step D installer' {
         $again | Should -Match 'Supervisor image built this run: False'
         $log = Get-Content -LiteralPath (Join-Path $script:state 'log.txt') -Raw
         ([regex]::Matches($log, 'acr build')).Count | Should -Be $builds
+
+        $world = Get-Content -LiteralPath $worldPath -Raw | ConvertFrom-Json
+        $world | Add-Member -NotePropertyName foundry -NotePropertyValue ([pscustomobject]@{ name = 'jaws-foundry-cap1'; tags = [pscustomobject]@{}; properties = [pscustomobject]@{} }) -Force
+        $world | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $worldPath -Encoding utf8
+        $noNetwork = ''
+        try {
+            & $private -EnvironmentName 'cap1' -AcknowledgeBrowserPrivatePath *>&1 | ForEach-Object { $noNetwork += "$_`n" }
+            throw 'Private path returned without Foundry injection.'
+        } catch { $noNetwork += $_.Exception.Message }
+        $noNetwork | Should -Match 'JAWS-STEP-D-043'
+        $world = Get-Content -LiteralPath $worldPath -Raw | ConvertFrom-Json
+        $world.PSObject.Properties.Remove('foundry')
+        $world | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $worldPath -Encoding utf8
 
         $env:JAWS_STEPD_STUB_BROWSER_CALL = 'unreachable'
         $blocked = ''

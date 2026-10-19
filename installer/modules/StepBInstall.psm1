@@ -132,7 +132,7 @@ function Invoke-JawsStepBAz {
         }
         if ($text -match 'InsufficientQuota|quota') {
             $issue = (($text -split '\r?\n' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ' ').Trim()
-            $action = 'Request a quota increase for this model and region, then run Install again. The installer keeps the deployment at GlobalStandard capacity 1.'
+            $action = 'Request a quota increase for this model and region, then run Install again. Dynamic quota does not apply until this capacity-1 deployment exists. The installer keeps the deployment at GlobalStandard capacity 1.'
             Write-JawsOperatorIssue -Issue $issue -Action $action -QuotaRequest
             throw "JAWS-STEP-B-MODEL-001: Model quota blocked the deployment. $action Quota request: $(Get-JawsQuotaRequestUrl). $issue"
         }
@@ -232,6 +232,36 @@ function Get-JawsStepBDeploymentModel {
     return [pscustomobject]@{ Name = $name; Version = $version }
 }
 
+function Test-JawsStepBDynamicQuota {
+    param($Deployment)
+    return ((Get-JawsStepBProperty -Object $Deployment -Names @('properties','dynamicThrottlingEnabled')) -eq $true)
+}
+
+function Set-JawsStepBDeploymentQuotaMode {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]$Scope,
+        [Parameter(Mandatory)]$Deployment,
+        [Parameter(Mandatory)][ValidateSet('Static','Dynamic')][string]$QuotaMode,
+        [Parameter(Mandatory)][string]$InstallerRoot
+    )
+    $wantDynamic = $QuotaMode -eq 'Dynamic'
+    if ((Test-JawsStepBDynamicQuota $Deployment) -eq $wantDynamic) {
+        return [pscustomobject]@{ Deployment = $Deployment; Changed = $false }
+    }
+    $local = Join-Path $InstallerRoot '.local'
+    if (-not (Test-Path -LiteralPath $local)) { New-Item -ItemType Directory -Path $local | Out-Null }
+    $bodyFile = Join-Path $local "jaws-step-b-quota.$($Scope.EnvironmentName).json"
+    @{ properties = @{ dynamicThrottlingEnabled = $wantDynamic } } | ConvertTo-Json -Compress | Set-Content -LiteralPath $bodyFile -Encoding ascii
+    $url = "https://management.azure.com/subscriptions/$([string]$Scope.SubscriptionId)/resourceGroups/$([string]$Scope.ResourceGroupName)/providers/Microsoft.CognitiveServices/accounts/$([string]$Scope.FoundryAccountName)/deployments/$([string]$Scope.ModelDeploymentName)?api-version=2023-10-01-preview"
+    $null = Invoke-JawsStepBAz -Arguments @('rest','--method','patch','--url',$url,'--body',"@$bodyFile",'--output','json','--only-show-errors')
+    $shown = Invoke-JawsStepBAz -Arguments @('cognitiveservices','account','deployment','show','--subscription',[string]$Scope.SubscriptionId,'--resource-group',[string]$Scope.ResourceGroupName,'--name',[string]$Scope.FoundryAccountName,'--deployment-name',[string]$Scope.ModelDeploymentName,'--output','json','--only-show-errors')
+    if ((Test-JawsStepBDynamicQuota $shown) -ne $wantDynamic) {
+        throw "JAWS-STEP-B-MODEL-002: Quota mode $QuotaMode was not recorded. dynamicThrottlingEnabled does not match. Capacity stays GlobalStandard 1."
+    }
+    return [pscustomobject]@{ Deployment = $shown; Changed = $true }
+}
+
 function Invoke-JawsStepBRoleAssignment {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string[]]$Arguments)
@@ -264,7 +294,7 @@ function Get-JawsStepBAuthorizedWrites {
         [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.Resources/resourceGroups'; BoundTo = 'The approved resource group and location only.' },
         [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.CognitiveServices/accounts'; BoundTo = 'AIServices S0. Custom domain equals the account name.' },
         [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.CognitiveServices/accounts/projects'; BoundTo = 'System-assigned project identity only.' },
-        [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.CognitiveServices/accounts/deployments'; BoundTo = 'The approved OpenAI model name and version, GlobalStandard, capacity 1. The plan is not changed if that model is absent.' },
+        [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.CognitiveServices/accounts/deployments'; BoundTo = 'The approved OpenAI model name and version, GlobalStandard, capacity 1. Install applies -QuotaMode Static by default. Dynamic sets dynamicThrottlingEnabled and does not change the plan digest. The plan is not changed if that model is absent.' },
         [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.KeyVault/vaults'; BoundTo = 'RBAC authorization and purge protection.' },
         [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.ContainerRegistry/registries'; BoundTo = 'Basic SKU, admin disabled, public network enabled.' },
         [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.Authorization/roleAssignments'; BoundTo = 'AcrPull for this project identity on this registry only.' },
@@ -411,7 +441,7 @@ function Invoke-JawsStepBPreflight {
         RoleAssignment = [bool]$canAssign
         LocationAccepted = [bool]$locationOk
         ModelQuota = 'DeferredUntilFoundryAccountExists'
-        ModelBound = "$($Scope.ModelName) $($Scope.ModelVersion) OpenAI GlobalStandard capacity 1"
+        ModelBound = "$($Scope.ModelName) $($Scope.ModelVersion) OpenAI GlobalStandard capacity 1. Quota mode is applied at Install and defaults to Static."
         PolicySimulation = 'NotPerformed'
         PolicyAssignmentCount = $policyCount
         PolicyReadError = $policyNote
@@ -433,6 +463,7 @@ function Invoke-JawsStepBInstall {
         [Parameter(Mandatory)]$Scope,
         [Parameter(Mandatory)][string]$ApprovedPlanSha256,
         [Parameter(Mandatory)][string]$InstallerRoot,
+        [ValidateSet('Static','Dynamic')][string]$QuotaMode = 'Static',
         [switch]$AcknowledgeStepBInstall
     )
     if (-not $AcknowledgeStepBInstall) {
@@ -502,6 +533,9 @@ function Invoke-JawsStepBInstall {
     if ($deployedModel.Name -ne [string]$Scope.ModelName -or $deployedModel.Version -ne [string]$Scope.ModelVersion) {
         throw 'JAWS-STEP-B-MODEL-001: The deployment does not match the approved model name and version. The plan was not changed.'
     }
+    $quota = Set-JawsStepBDeploymentQuotaMode -Scope $Scope -Deployment $deployment -QuotaMode $QuotaMode -InstallerRoot $InstallerRoot
+    if ($quota.Changed) { $writes++ }
+    $deployment = $quota.Deployment
     $vaultShow = @('keyvault','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.KeyVaultName,'--output','json','--only-show-errors')
     $vault = Invoke-JawsStepBAz -AllowMissing -Arguments $vaultShow
     if ($null -eq $vault) {
@@ -630,6 +664,7 @@ function Invoke-JawsStepBInstall {
         ModelDeploymentName = [string]$Scope.ModelDeploymentName
         ModelName = [string]$Scope.ModelName
         ModelVersion = [string]$Scope.ModelVersion
+        QuotaMode = $QuotaMode
         KeyVaultName = [string]$Scope.KeyVaultName
         RegistryName = [string]$Scope.RegistryName
         RegistryLoginServer = $login
@@ -703,6 +738,10 @@ function Invoke-JawsStepBAccept {
     if ($null -eq $deployment) { $reasons += 'model deployment is missing' }
     elseif ((Get-JawsStepBProvisioningState -Resource $deployment) -ne 'Succeeded') { $reasons += 'model deployment is not Succeeded' }
     elseif ($deployedModel.Name -ne [string]$scope.ModelName -or $deployedModel.Version -ne [string]$scope.ModelVersion) { $reasons += 'deployed model differs from the approved plan' }
+    $observedQuota = if (Test-JawsStepBDynamicQuota $deployment) { 'Dynamic' } else { 'Static' }
+    if ($receipt.PSObject.Properties['QuotaMode'] -and [string]$receipt.QuotaMode -cne $observedQuota) {
+        $reasons += "quota mode is $observedQuota and the receipt says $([string]$receipt.QuotaMode)"
+    }
     $vault = Invoke-JawsStepBAz -AllowMissing -Arguments @('keyvault','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$scope.KeyVaultName,'--output','json','--only-show-errors')
     $rbac = Get-JawsStepBProperty -Object $vault -Names @('properties','enableRbacAuthorization')
     $purge = Get-JawsStepBProperty -Object $vault -Names @('properties','enablePurgeProtection')
@@ -752,6 +791,7 @@ function Invoke-JawsStepBAccept {
         ProjectPrincipalId = $principal
         ModelName = [string]$scope.ModelName
         ModelVersion = [string]$scope.ModelVersion
+        QuotaMode = $observedQuota
         DeploymentProvisioningState = 'Succeeded'
         KeyVaultName = [string]$scope.KeyVaultName
         KeyVaultRbac = $true

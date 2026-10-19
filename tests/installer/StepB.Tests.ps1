@@ -58,6 +58,9 @@ Describe 'Step B subscription capture and local package' {
         $installModule | Should -Not -Match 'Get-Command docker'
         $installModule | Should -Not -Match 'Get-Command dotnet'
         $installModule | Should -Match 'PolicySimulation'
+        $installModule | Should -Match 'dynamicThrottlingEnabled'
+        $installModule | Should -Match '2023-10-01-preview'
+        $entry | Should -Match "ValidateSet\('Static','Dynamic'\)"
     }
 
     It 'finds the Supervisor host and scores a local package without a registry push' {

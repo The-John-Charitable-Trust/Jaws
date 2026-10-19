@@ -143,6 +143,24 @@ if args[:1] == ["rest"] and "--method" in args:
             '{"error":{"code":"not_found","message":"Not Found"}}',
         ), file=sys.stderr)
         sys.exit(1)
+    if method.lower() == "patch" and "/deployments/" in url:
+        if "api-version=2023-10-01-preview" not in url:
+            print("quota patch requires api-version=2023-10-01-preview", file=sys.stderr)
+            sys.exit(2)
+        body_flag = args[args.index("--body") + 1]
+        with open(body_flag[1:], encoding="utf-8") as handle:
+            body = json.load(handle)
+        enabled = body.get("properties", {}).get("dynamicThrottlingEnabled", None)
+        if not isinstance(enabled, bool):
+            print("dynamicThrottlingEnabled must be a boolean", file=sys.stderr)
+            sys.exit(2)
+        current = load("deployment")
+        current.setdefault("properties", {})
+        current["properties"]["dynamicThrottlingEnabled"] = enabled
+        if os.environ.get("JAWS_STEPB_STUB_QUOTA_REJECT") == "1":
+            emit(current)
+        save("deployment", current)
+        emit(current)
     if method == "GET":
         emit(load("agent")) if exists("agent") else missing()
     body_flag = args[args.index("--body") + 1]
@@ -187,6 +205,7 @@ Describe 'Step B foundation install' {
             & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Install -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' -ApprovedPlanSha256 $plan.PlanSha256 -AcknowledgeStepBInstall
             $receipt = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-step-b-install.lab1.generated.json') -Raw | ConvertFrom-Json
             $receipt.Status | Should -Be 'STEP_B_INSTALLED'
+            $receipt.QuotaMode | Should -Be 'Static'
             $receipt.AgentStatus | Should -Be 'active'
             $receipt.Image | Should -Match '@sha256:[a-f]{64}$'
             $receipt.AzureWrites | Should -BeGreaterThan 0
@@ -202,6 +221,7 @@ Describe 'Step B foundation install' {
             $log | Should -Match '--file .+src/Jaws\.Supervisor\.Host/Dockerfile'
             $log | Should -Not -Match '--file Dockerfile( |$)'
             $log | Should -Not -Match 'acr login'
+            $log | Should -Not -Match '--method patch'
             $log | Should -Not -Match 'jaws-foundry-dev'
             $log | Should -Not -Match 'c52f597b-7753-45b4-a764-67e290dcfd5e'
             $log | Should -Match 'account list-locations --output json --only-show-errors'
@@ -213,6 +233,7 @@ Describe 'Step B foundation install' {
             $accept | Should -Match 'Azure writes: 0'
             $accept | Should -Match 'Foundry provisioning: Succeeded'
             $accept | Should -Match 'Deployment: Succeeded'
+            $accept | Should -Match 'Quota mode: Static'
             $accept | Should -Match 'Registry admin: false'
             $accept | Should -Match 'AcrPull: true'
             $accept | Should -Match 'Agent status: active'
@@ -308,6 +329,95 @@ Describe 'Step B foundation install' {
             if ($null -eq $savedSub) { Remove-Item Env:JAWS_STEPB_STUB_SUB -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_SUB = $savedSub }
             if ($null -eq $savedEnv) { Remove-Item Env:JAWS_STEPB_STUB_ENV -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_ENV = $savedEnv }
             if ($null -eq $savedQuota) { Remove-Item Env:JAWS_STEPB_STUB_QUOTA -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_QUOTA = $savedQuota }
+            Remove-Item Env:JAWS_STEPB_POLL_SECONDS -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'applies dynamic quota without changing the plan digest and can return to static' {
+        $state = Join-Path $script:stub 'state-dynamic'
+        $savedPath = $env:PATH
+        $savedState = $env:JAWS_STEPB_STUB_STATE
+        $savedSub = $env:JAWS_STEPB_STUB_SUB
+        $savedEnv = $env:JAWS_STEPB_STUB_ENV
+        try {
+            $env:JAWS_STEPB_STUB_STATE = $state
+            $env:JAWS_STEPB_STUB_SUB = $script:sub
+            $env:JAWS_STEPB_STUB_ENV = 'lab1'
+            $env:JAWS_STEPB_POLL_SECONDS = '0'
+            $env:PATH = $script:stub + [System.IO.Path]::PathSeparator + '/usr/bin'
+            $planOut = & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Plan -NonInteractive -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' -QuotaMode Dynamic *>&1 | Out-String
+            $planOut | Should -Match 'Quota mode: Dynamic'
+            $plan = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-stage-b-plan.lab1.offline.generated.json') -Raw | ConvertFrom-Json
+            $scope = New-JawsStepBInstallScope -SubscriptionId $script:sub -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' -EnvironmentName 'lab1' -ModelName 'gpt-5-mini' -ModelVersion '2025-08-07'
+            $plan.PlanSha256 | Should -Be $scope.PlanSha256
+            $install = & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Install -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' -ApprovedPlanSha256 $plan.PlanSha256 -QuotaMode Dynamic -AcknowledgeStepBInstall *>&1 | Out-String
+            $install | Should -Match 'STEP-B INSTALL PASS'
+            $install | Should -Match 'Quota mode: Dynamic'
+            $receipt = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-step-b-install.lab1.generated.json') -Raw | ConvertFrom-Json
+            $receipt.QuotaMode | Should -Be 'Dynamic'
+            $deployment = Get-Content -LiteralPath (Join-Path $state 'deployment') -Raw | ConvertFrom-Json
+            $deployment.properties.dynamicThrottlingEnabled | Should -BeTrue
+            $log = Get-Content -LiteralPath (Join-Path $state 'log.txt') -Raw
+            ([regex]::Matches($log, '--method patch')).Count | Should -Be 1
+            $log | Should -Match 'api-version=2023-10-01-preview'
+            $log | Should -Match '/deployments/gpt-5-mini'
+            $dynamicAccept = & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Accept -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' *>&1 | Out-String
+            $dynamicAccept | Should -Match 'Quota mode: Dynamic'
+            $dynamicAccept | Should -Match 'STEP-B ACCEPTANCE PASS'
+            & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Install -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' -ApprovedPlanSha256 $plan.PlanSha256 -QuotaMode Dynamic -AcknowledgeStepBInstall | Out-Null
+            $log = Get-Content -LiteralPath (Join-Path $state 'log.txt') -Raw
+            ([regex]::Matches($log, '--method patch')).Count | Should -Be 1
+            $static = & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Install -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' -ApprovedPlanSha256 $plan.PlanSha256 -QuotaMode Static -AcknowledgeStepBInstall *>&1 | Out-String
+            $static | Should -Match 'Quota mode: Static'
+            $log = Get-Content -LiteralPath (Join-Path $state 'log.txt') -Raw
+            ([regex]::Matches($log, '--method patch')).Count | Should -Be 2
+            $deployment = Get-Content -LiteralPath (Join-Path $state 'deployment') -Raw | ConvertFrom-Json
+            $deployment.properties.dynamicThrottlingEnabled | Should -BeFalse
+            $accept = & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Accept -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' *>&1 | Out-String
+            $accept | Should -Match 'Quota mode: Static'
+            $accept | Should -Match 'STEP-B ACCEPTANCE PASS'
+        } finally {
+            $env:PATH = $savedPath
+            if ($null -eq $savedState) { Remove-Item Env:JAWS_STEPB_STUB_STATE -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_STATE = $savedState }
+            if ($null -eq $savedSub) { Remove-Item Env:JAWS_STEPB_STUB_SUB -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_SUB = $savedSub }
+            if ($null -eq $savedEnv) { Remove-Item Env:JAWS_STEPB_STUB_ENV -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_ENV = $savedEnv }
+            Remove-Item Env:JAWS_STEPB_POLL_SECONDS -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'stops when Azure does not record the requested quota mode' {
+        $state = Join-Path $script:stub 'state-quota-reject'
+        $savedPath = $env:PATH
+        $savedState = $env:JAWS_STEPB_STUB_STATE
+        $savedSub = $env:JAWS_STEPB_STUB_SUB
+        $savedEnv = $env:JAWS_STEPB_STUB_ENV
+        $savedReject = $env:JAWS_STEPB_STUB_QUOTA_REJECT
+        try {
+            $env:JAWS_STEPB_STUB_STATE = $state
+            $env:JAWS_STEPB_STUB_SUB = $script:sub
+            $env:JAWS_STEPB_STUB_ENV = 'lab1'
+            $env:JAWS_STEPB_STUB_QUOTA_REJECT = '1'
+            $env:JAWS_STEPB_POLL_SECONDS = '0'
+            $env:PATH = $script:stub + [System.IO.Path]::PathSeparator + '/usr/bin'
+            & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Plan -NonInteractive -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus'
+            $plan = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-stage-b-plan.lab1.offline.generated.json') -Raw | ConvertFrom-Json
+            $output = ''
+            try {
+                & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Install -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' -ApprovedPlanSha256 $plan.PlanSha256 -QuotaMode Dynamic -AcknowledgeStepBInstall *>&1 | ForEach-Object { $output += "$_`n" }
+                throw 'Install returned instead of JAWS-STEP-B-MODEL-002.'
+            } catch {
+                $output += $_.Exception.Message
+            }
+            $output | Should -Match 'JAWS-STEP-B-MODEL-002'
+            $output | Should -Match 'Result: FAIL'
+            $deployment = Get-Content -LiteralPath (Join-Path $state 'deployment') -Raw | ConvertFrom-Json
+            $deployment.properties.PSObject.Properties['dynamicThrottlingEnabled'] | Should -BeNullOrEmpty
+        } finally {
+            $env:PATH = $savedPath
+            if ($null -eq $savedState) { Remove-Item Env:JAWS_STEPB_STUB_STATE -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_STATE = $savedState }
+            if ($null -eq $savedSub) { Remove-Item Env:JAWS_STEPB_STUB_SUB -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_SUB = $savedSub }
+            if ($null -eq $savedEnv) { Remove-Item Env:JAWS_STEPB_STUB_ENV -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_ENV = $savedEnv }
+            if ($null -eq $savedReject) { Remove-Item Env:JAWS_STEPB_STUB_QUOTA_REJECT -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_QUOTA_REJECT = $savedReject }
             Remove-Item Env:JAWS_STEPB_POLL_SECONDS -ErrorAction SilentlyContinue
         }
     }

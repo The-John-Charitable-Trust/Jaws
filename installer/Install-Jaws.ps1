@@ -14,6 +14,7 @@ param(
     [string]$Location,
     [string]$ModelName='gpt-5-mini',
     [string]$ModelVersion='2025-08-07',
+    [ValidateSet('Static','Dynamic')][string]$QuotaMode='Static',
     [switch]$AcknowledgeStepBInstall,
     [string]$ApprovedPlanSha256,
     [string]$StateFile,
@@ -178,6 +179,7 @@ if ($Mode -eq 'Plan') {
             Write-Host "Foundry account: $($planResult.InstallScope.FoundryAccountName)"
             Write-Host "Project: $($planResult.InstallScope.ProjectName)"
             Write-Host "Model: $($planResult.InstallScope.ModelName) $($planResult.InstallScope.ModelVersion)"
+            Write-Host "Quota mode: $QuotaMode"
             Write-Host "Registry: $($planResult.InstallScope.RegistryName)"
             Write-Host "Agent: $($planResult.InstallScope.AgentName)"
             Write-Host 'Install authorized: false'
@@ -233,7 +235,7 @@ if ($Mode -eq 'Install') {
     }
     $installEvidence = Join-Path $PSScriptRoot ".local/jaws-step-b-install.$EnvironmentName.generated.json"
     try {
-        $installed = Invoke-JawsStepBInstall -Scope $saved.InstallScope -ApprovedPlanSha256 $ApprovedPlanSha256 -InstallerRoot $PSScriptRoot -AcknowledgeStepBInstall:$AcknowledgeStepBInstall
+        $installed = Invoke-JawsStepBInstall -Scope $saved.InstallScope -ApprovedPlanSha256 $ApprovedPlanSha256 -InstallerRoot $PSScriptRoot -QuotaMode $QuotaMode -AcknowledgeStepBInstall:$AcknowledgeStepBInstall
     } catch {
         Save-JawsMilestoneFailure -Path $installEvidence -Message $_.Exception.Message -Started $jawsMilestoneStarted
         Write-JawsMilestoneResult -Result FAIL -ReadyForNextStep $false -NextStep 'Step B Accept' -EvidencePath $installEvidence
@@ -244,6 +246,7 @@ if ($Mode -eq 'Install') {
     Write-Host "Foundry account: $($done.FoundryAccountName)"
     Write-Host "Project: $($done.ProjectName)"
     Write-Host "Model: $($done.ModelName) $($done.ModelVersion)"
+    Write-Host "Quota mode: $($done.QuotaMode)"
     Write-Host "Registry: $($done.RegistryLoginServer)"
     Write-Host "Image: $($done.Image)"
     Write-Host "Agent: $($done.AgentName)"
@@ -276,6 +279,7 @@ if ($Mode -eq 'Accept') {
     Write-Host "Foundry provisioning: $($live.FoundryProvisioningState)"
     Write-Host "Project: $($live.ProjectName)"
     Write-Host "Model: $($live.ModelName) $($live.ModelVersion)"
+    Write-Host "Quota mode: $($live.QuotaMode)"
     Write-Host "Deployment: $($live.DeploymentProvisioningState)"
     Write-Host "Registry admin: false"
     Write-Host 'AcrPull: true'

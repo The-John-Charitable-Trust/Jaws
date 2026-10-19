@@ -42,7 +42,7 @@ if($v1.status -ne 'active' -or $routed.status -ne 'active' -or $routed.draft -ne
 $body=@{model='gpt-5-mini';input='Use the Investigation A2A toolbox for a read-only investigation planning request. Identify three diagnostic checks for an unhealthy Azure VM. Do not perform any remediation. Report what the Investigation agent actually returned.';stream=$false;store=$false}|ConvertTo-Json -Depth 8 -Compress
 Import-Module (Join-Path $root 'modules/DelegationEvidence.psm1') -Force
 Import-Module (Join-Path $root 'modules/MilestoneResult.psm1') -Force
-$response=Invoke-JawsSupervisorAcceptanceResponse -Url "$endpoint/agents/$agent/endpoint/protocols/openai/responses?api-version=v1" -Body $body
+$response=Invoke-JawsSupervisorAcceptanceResponse -Url "$endpoint/agents/$agent/endpoint/protocols/openai/responses?api-version=v1" -Body $body -DevProject
 $evidence=Get-JawsDelegationEvidence -Response $response
 $outputTypes=@($response.output | ForEach-Object { if($_ -and $_.PSObject.Properties['type']){[string]$_.type}else{'<missing-type>'} })
 $status=if($evidence.ResponseCompleted -and $evidence.Classification -ceq 'TOOL_INVOKED_SUCCEEDED'){'PASS'}else{'FAIL'}
@@ -62,8 +62,8 @@ $report=[pscustomobject]@{
  ResponseErrorCode=[string](Get-JawsField (Get-JawsField $response 'error') 'code')
  ResponseErrorMessage=[string](Get-JawsField (Get-JawsField $response 'error') 'message')
  RateLimitAttempts=[int]$response.JawsRateLimitAttempts
- OperatorAction=$(if (Test-JawsSupervisorRateLimit $response) { 'Retry acceptance after the rate-limit window. If it fails again, request more quota for this model and region.' } else { '' })
- QuotaRequest=$(if (Test-JawsSupervisorRateLimit $response) { Get-JawsQuotaRequestUrl } else { '' })
+ OperatorAction=$(if (Test-JawsSupervisorRateLimit $response) { Get-JawsRateLimitOperatorAction -DevProject } else { '' })
+ QuotaRequest=''
  TaskState=$taskState
  PlannerResponseId=$plannerResponseId
  OutputItemTypes=$outputTypes
@@ -93,6 +93,6 @@ Import-Module (Join-Path $root 'modules/MilestoneResult.psm1') -Force
 $stepCPassed = ($status -eq 'PASS' -and $taskState -eq 'TASK_STATE_COMPLETED')
 Write-JawsMilestoneResult -Result $(if($stepCPassed){'PASS'}else{'FAIL'}) -ReadyForNextStep $stepCPassed -NextStep $(if($stepCPassed){'Step D Validate'}else{'Step C inference acceptance'}) -EvidencePath $path
 if($status -ne 'PASS' -and (Test-JawsSupervisorRateLimit $response)){
- throw (Get-JawsRateLimitAcceptanceFailure $response)
+ throw (Get-JawsRateLimitAcceptanceFailure $response -DevProject)
 }
 if($status -ne 'PASS'){throw "JAWS-C-ACCEPT-007: $($evidence.Classification). See tool output in acceptance report; Step C not closed."}

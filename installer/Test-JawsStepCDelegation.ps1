@@ -39,7 +39,7 @@ if($v1.status -ne 'active' -or $routed.status -ne 'active' -or $routed.draft -ne
  $routed.definition.environment_variables.JAWS_INVESTIGATION_TOOLBOX_NAME -cne 'jaws-investigation-a2a-tools'){
  throw 'JAWS-C-ACCEPT-004: Live Supervisor release state does not match the expected image.'
 }
-$body=@{model='gpt-5-mini';input='Use the Investigation A2A toolbox for a read-only investigation planning request. Identify three diagnostic checks for an unhealthy Azure VM. Do not perform any remediation. Report what the Investigation agent actually returned.';stream=$false;store=$false}|ConvertTo-Json -Depth 8 -Compress
+$body=@{model='gpt-5-mini';input='Call the Investigation A2A toolbox tool now for a read-only investigation planning request. Identify three diagnostic checks for an unhealthy Azure VM. Do not perform any remediation. Do not answer from your own knowledge. Report what the Investigation agent actually returned.';stream=$false;store=$false}|ConvertTo-Json -Depth 8 -Compress
 Import-Module (Join-Path $root 'modules/DelegationEvidence.psm1') -Force
 Import-Module (Join-Path $root 'modules/MilestoneResult.psm1') -Force
 $response=Invoke-JawsSupervisorAcceptanceResponse -Url "$endpoint/agents/$agent/endpoint/protocols/openai/responses?api-version=v1" -Body $body -DevProject

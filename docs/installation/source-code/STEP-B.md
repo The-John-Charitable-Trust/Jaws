@@ -145,7 +145,7 @@ AddToolbox(toolboxNames, "JAWS_INVESTIGATION_TOOLBOX_NAME");
 AddToolbox(toolboxNames, "JAWS_BROWSER_TOOLBOX_NAME");
 ```
 
-**Source lines 50–75:**
+**Source lines 59–84:**
 
 ```csharp
 AIAgent supervisor = new AIProjectClient(endpoint, credential)

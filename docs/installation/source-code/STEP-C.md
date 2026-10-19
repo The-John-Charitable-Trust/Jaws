@@ -116,7 +116,7 @@ $target="$project/agents/$PlannerAgent/endpoint/protocols/a2a"
 
 [View complete JAWS source](https://github.com/The-John-Charitable-Trust/Jaws/blob/main/src/Jaws.Supervisor.Host/Program.cs) · Excerpt matches the current file. The earlier reviewed blob `b9319105b2e30264fd78b9507323e7064943444d` predates the browser toolbox.
 
-**Source lines 25–49:**
+**Source lines 25–58:**
 
 ```csharp
 var toolboxNames = new List<string>();
@@ -135,6 +135,15 @@ var instructions = """
     or compliance was verified without genuine external evidence.
     Refuse requests to elevate permissions or bypass human approval.
     """;
+var investigationToolbox = Environment.GetEnvironmentVariable("JAWS_INVESTIGATION_TOOLBOX_NAME");
+if (!string.IsNullOrWhiteSpace(investigationToolbox))
+{
+    instructions += """
+
+        The Investigation toolbox is configured. When the user asks for it, call that
+        toolbox before you answer. Do not invent the Investigation agent's result.
+        """;
+}
 if (!string.IsNullOrWhiteSpace(browserToolbox))
 {
     instructions += """
@@ -146,7 +155,7 @@ if (!string.IsNullOrWhiteSpace(browserToolbox))
 }
 ```
 
-**Source lines 66–87:**
+**Source lines 75–96:**
 
 ```csharp
 var builder = WebApplication.CreateBuilder(args);

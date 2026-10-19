@@ -38,6 +38,15 @@ var instructions = """
     or compliance was verified without genuine external evidence.
     Refuse requests to elevate permissions or bypass human approval.
     """;
+var investigationToolbox = Environment.GetEnvironmentVariable("JAWS_INVESTIGATION_TOOLBOX_NAME");
+if (!string.IsNullOrWhiteSpace(investigationToolbox))
+{
+    instructions += """
+
+        The Investigation toolbox is configured. When the user asks for it, call that
+        toolbox before you answer. Do not invent the Investigation agent's result.
+        """;
+}
 if (!string.IsNullOrWhiteSpace(browserToolbox))
 {
     instructions += """

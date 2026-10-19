@@ -61,6 +61,7 @@ public static class FoundryToolboxCallMetadata
     {
         ArgumentNullException.ThrowIfNull(inner);
         ForwardListedTools(options);
+        RequireInvestigationDelegation(messages, options);
         var response = await inner.RunAsync(messages, session, options, cancellationToken);
         LogFunctionFailures(response.Messages.SelectMany(message => message.Contents));
         return response;
@@ -75,6 +76,7 @@ public static class FoundryToolboxCallMetadata
     {
         ArgumentNullException.ThrowIfNull(inner);
         ForwardListedTools(options);
+        RequireInvestigationDelegation(messages, options);
         await foreach (var update in inner.RunStreamingAsync(messages, session, options, cancellationToken))
         {
             LogFunctionFailures(update.Contents);
@@ -114,6 +116,106 @@ public static class FoundryToolboxCallMetadata
         }
 
         Console.Error.WriteLine("JAWS-TOOLBOX-CALL-002: FunctionInvokingChatClient was not found.");
+    }
+
+    /// <summary>
+    /// An explicit investigation request must call the Investigation toolbox tool.
+    /// Tool choice stays optional for every other turn. A configured toolbox that did not
+    /// arrive on this run fails closed, so the model cannot answer the investigation itself.
+    /// </summary>
+    public static void RequireInvestigationDelegation(
+        IEnumerable<ChatMessage>? messages,
+        AgentRunOptions? options,
+        string? investigationToolboxName = null)
+    {
+        investigationToolboxName ??= Environment.GetEnvironmentVariable("JAWS_INVESTIGATION_TOOLBOX_NAME");
+        if (string.IsNullOrWhiteSpace(investigationToolboxName) || !RequestsInvestigationDelegation(messages))
+        {
+            return;
+        }
+
+        if (options is not ChatClientAgentRunOptions chat)
+        {
+            throw new InvalidOperationException(
+                "JAWS-TOOLBOX-CALL-003: The request asks for the Investigation toolbox, but this run has no chat options.");
+        }
+
+        var tools = chat.ChatOptions?.Tools;
+        var match = FindInvestigationTool(tools);
+        if (match is null || string.IsNullOrWhiteSpace(match.Name))
+        {
+            var seen = tools is null || tools.Count == 0
+                ? "<none>"
+                : string.Join(", ", tools.Select(tool => string.IsNullOrWhiteSpace(tool?.Name) ? "<unnamed>" : tool.Name));
+            throw new InvalidOperationException(
+                "JAWS-TOOLBOX-CALL-003: The request asks for the Investigation toolbox, but this run has no Investigation tool. " +
+                $"Tools on the run: {seen}. The container did not offer the toolbox to the model.");
+        }
+
+        chat.ChatOptions!.ToolMode = ChatToolMode.RequireSpecific(match.Name);
+        Console.Error.WriteLine("JAWS-TOOLBOX-CALL-003: Requiring Investigation tool " + match.Name + ".");
+    }
+
+    private static bool RequestsInvestigationDelegation(IEnumerable<ChatMessage>? messages)
+    {
+        if (messages is null)
+        {
+            return false;
+        }
+
+        foreach (var message in messages)
+        {
+            var text = message.Text;
+            if (string.IsNullOrWhiteSpace(text) && message.Contents is not null)
+            {
+                text = string.Concat(message.Contents.OfType<TextContent>().Select(content => content.Text));
+            }
+
+            if (string.IsNullOrWhiteSpace(text) ||
+                text.IndexOf("Investigation", StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                continue;
+            }
+
+            if (text.IndexOf("toolbox", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                text.IndexOf("A2A", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                text.IndexOf("diagnostic", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                text.IndexOf("plan", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static AITool? FindInvestigationTool(IList<AITool>? tools)
+    {
+        if (tools is null)
+        {
+            return null;
+        }
+
+        AITool? fallback = null;
+        foreach (var tool in tools)
+        {
+            if (tool is null || string.IsNullOrWhiteSpace(tool.Name))
+            {
+                continue;
+            }
+
+            if (tool.Name.Contains("SendMessage", StringComparison.OrdinalIgnoreCase))
+            {
+                return tool;
+            }
+
+            if (fallback is null && tool.Name.Contains("investigation", StringComparison.OrdinalIgnoreCase))
+            {
+                fallback = tool;
+            }
+        }
+
+        return fallback;
     }
 
     private static void ForwardListedTools(AgentRunOptions? options)

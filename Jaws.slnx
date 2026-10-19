@@ -6,5 +6,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Jaws.FirstAgent.Tests/Jaws.FirstAgent.Tests.csproj" />
+    <Project Path="tests/Jaws.Supervisor.Host.Tests/Jaws.Supervisor.Host.Tests.csproj" />
   </Folder>
 </Solution>

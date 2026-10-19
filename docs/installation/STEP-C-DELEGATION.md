@@ -78,6 +78,16 @@ Regression on this closure, plus the install-path tests: installer Pester 184 pa
 
 Hosted Investigation v1 stays active for later read-only execution work. This closure does not require that container to run the planning call.
 
+## JAWS-C-ACCEPT-007 / TOOL_NOT_INVOKED
+
+A completed Supervisor response with reasoning and a message, and with no `function_call` output item, is `TOOL_NOT_INVOKED`. The installer classified that outcome on a Step C Accept after the planner, RemoteA2A connection, toolbox, routed version, and Foundry Agent Consumer assignment were already in place. The response was not a rate limit.
+
+The container registers `JAWS_INVESTIGATION_TOOLBOX_NAME` through `AddFoundryToolboxes`. Passing the name list as a string array matches the hosting package's `params string[]` parameter, so one configured toolbox is the same registration the 2026-10-15 image used. That image's instructions also told the model to delegate only when it was useful. The acceptance question can be answered without a tool, and the default tool choice is optional, so a completed turn can contain no tool call even when the toolbox is loaded.
+
+The host now does two things when that environment variable is set. The instructions tell the model to call the Investigation toolbox before answering an investigation request. On the run, `FoundryToolboxCallMetadata.RequireInvestigationDelegation` sets tool choice to the enumerated Investigation tool (`…___SendMessage`) when the user asked for it. If that tool is not on the run, the turn fails with `JAWS-TOOLBOX-CALL-003` and names the tools that were present. Other requests leave tool choice optional. Supervisor version 1 leaves the variable unset, so its prompt and tool choice stay as they were.
+
+This change is in the image only after a new Supervisor build. Step C does not run that build. The routed version and version 1 keep the Step B digest. Re-running Accept against the image that returned `TOOL_NOT_INVOKED` uses the stronger acceptance input, and it still depends on that image having offered the tool.
+
 ## JAWS-C-ACCEPT-007 / TOOL_INVOKED_FAILED
 
 `SupervisorV2Verify` can show a completed response, a real `jaws-investigation-a2a-dev__SendMessage` call, and tool output `Error: Function failed.` Connection, toolbox v2, and Foundry Agent Consumer checks can all pass before that. Two separate causes have shown up behind that text.

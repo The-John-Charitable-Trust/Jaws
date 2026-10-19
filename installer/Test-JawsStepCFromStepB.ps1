@@ -44,7 +44,7 @@ if($routed.status -ne 'active' -or $routed.draft -ne $false -or
 }
 $body=@{
     model=$ctx.ModelName
-    input='Use the Investigation A2A toolbox for a read-only investigation planning request. Identify three diagnostic checks for an unhealthy Azure VM. Do not perform any remediation. Report what the Investigation agent actually returned.'
+    input='Call the Investigation A2A toolbox tool now for a read-only investigation planning request. Identify three diagnostic checks for an unhealthy Azure VM. Do not perform any remediation. Do not answer from your own knowledge. Report what the Investigation agent actually returned.'
     stream=$false
     store=$false
 } | ConvertTo-Json -Depth 8 -Compress

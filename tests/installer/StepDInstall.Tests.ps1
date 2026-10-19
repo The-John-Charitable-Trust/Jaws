@@ -29,7 +29,10 @@ def save():
         json.dump(world, handle)
 
 def emit(payload, code=0):
-    print(json.dumps(payload))
+    text = json.dumps(payload)
+    if "/protocols/openai/responses" in url:
+        text += os.environ.get("JAWS_STEPD_STUB_ANSI_SUFFIX", "")
+    print(text)
     sys.exit(code)
 
 def missing():
@@ -234,6 +237,9 @@ if args[:2] == ["acr", "build"]:
     if flag("--platform") != "linux/amd64":
         print("platform must be linux/amd64", file=sys.stderr)
         sys.exit(2)
+    if "--no-logs" not in args:
+        print("acr build requires --no-logs", file=sys.stderr)
+        sys.exit(2)
     if file_arg.endswith("src/Jaws.Browser.Host/Dockerfile"):
         world["browser-image"] = {"digest": "sha256:" + ("b" * 64)}
         save()
@@ -435,11 +441,13 @@ Describe 'Step D installer' {
         $script:savedAgentMissing = $env:JAWS_STEPD_STUB_MISSING
         $script:savedPoll = $env:JAWS_STEPD_POLL_SECONDS
         $script:savedBrowserCall = $env:JAWS_STEPD_STUB_BROWSER_CALL
+        $script:savedAnsiSuffix = $env:JAWS_STEPD_STUB_ANSI_SUFFIX
         $env:JAWS_STEPD_STUB_STATE = $script:state
         $env:JAWS_STEPD_STUB_DEV_IMAGE = $script:devImage
         $env:JAWS_STEPD_STUB_DEV_MISSING = '0'
         Remove-Item Env:JAWS_STEPD_STUB_MISSING -ErrorAction SilentlyContinue
         Remove-Item Env:JAWS_STEPD_STUB_BROWSER_CALL -ErrorAction SilentlyContinue
+        Remove-Item Env:JAWS_STEPD_STUB_ANSI_SUFFIX -ErrorAction SilentlyContinue
         $env:JAWS_STEPD_POLL_SECONDS = '0'
         $env:PATH = $script:stub + [System.IO.Path]::PathSeparator + $env:PATH
         $script:devBefore = Get-Content -LiteralPath (Join-Path $script:root 'installer/config/jaws-installation-state.dev.json') -Raw
@@ -452,7 +460,8 @@ Describe 'Step D installer' {
             @{ Name = 'JAWS_STEPD_STUB_DEV_MISSING'; Value = $script:savedMissing },
             @{ Name = 'JAWS_STEPD_STUB_MISSING'; Value = $script:savedAgentMissing },
             @{ Name = 'JAWS_STEPD_POLL_SECONDS'; Value = $script:savedPoll },
-            @{ Name = 'JAWS_STEPD_STUB_BROWSER_CALL'; Value = $script:savedBrowserCall }
+            @{ Name = 'JAWS_STEPD_STUB_BROWSER_CALL'; Value = $script:savedBrowserCall },
+            @{ Name = 'JAWS_STEPD_STUB_ANSI_SUFFIX'; Value = $script:savedAnsiSuffix }
         )) {
             if ($null -eq $pair.Value) { Remove-Item "Env:$($pair.Name)" -ErrorAction SilentlyContinue } else { Set-Item "Env:$($pair.Name)" $pair.Value }
         }
@@ -522,6 +531,7 @@ Describe 'Step D installer' {
         $log | Should -Match 'containerapp create'
         $log | Should -Match '--ingress internal'
         $log | Should -Match 'src/Jaws\.Browser\.Host/Dockerfile'
+        $log | Should -Match 'acr build .*--no-logs'
         $log | Should -Match 'jaws-supervisor-lab1/versions\?api-version=v1'
         $log | Should -Not -Match 'jaws-supervisor-lab1/versions/1 .*--method PATCH'
         $log | Should -Not -Match '--method patch'
@@ -623,6 +633,15 @@ Describe 'Step D installer' {
         }
     }
 
+    It 'reads a Foundry response when az leaves ANSI after the JSON' {
+        InModuleScope StepDBrowser {
+            $env:JAWS_STEPD_STUB_ANSI_SUFFIX = [char]27 + '[0m'
+            $response = Invoke-JawsBrowserSupervisorResponse -Url 'https://example.test/agents/jaws-supervisor-lab1/endpoint/protocols/openai/responses?api-version=v1' -Body '{"input":"ping"}' -FailureCode 'JAWS-STEP-D-040'
+            $response.id | Should -Be 'resp_private'
+            @($response.output | Where-Object { $_.type -eq 'function_call' -and $_.name -eq 'browser_open' }).Count | Should -Be 1
+        }
+    }
+
     It 'treats a missing ACR tag as absent and still fails without -AllowMissing' {
         InModuleScope StepDBrowser {
             $arguments = @('acr','repository','show','--name','jawsacrlab1','--image','jaws/browser:step-d','--output','json')
@@ -694,6 +713,7 @@ Describe 'Step D installer' {
         $log | Should -Match 'src/Jaws\.Supervisor\.Host/Dockerfile'
         $log | Should -Match 'jaws/supervisor:browser-'
         $log | Should -Match 'linux/amd64'
+        $log | Should -Match 'acr build .*--no-logs'
         $log | Should -Not -Match '\bdocker\b'
         $world = Get-Content -LiteralPath $worldPath -Raw | ConvertFrom-Json
         $versionOne = $world.versions.'jaws-supervisor-cap1'.'1'

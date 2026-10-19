@@ -52,9 +52,9 @@ function Test-JawsSupervisorRateLimit($Response) {
 function Get-JawsRateLimitOperatorAction {
  param([switch]$DevProject)
  if($DevProject){
-  return 'The model deployment rate limit stopped acceptance. Switch the dev gpt-5-mini deployment to dynamic quota in Foundry (Step B Install refuses dev), or wait for the limit to reset and retry this acceptance. Capacity stays GlobalStandard 1.'
+  return 'The model deployment rate limit stopped acceptance. Switch the dev gpt-5-mini deployment to dynamic quota in Foundry (Step B Install refuses dev), or wait for the limit to reset and retry this acceptance. Capacity stays 1. Dynamic quota uses the regional Standard SKU.'
  }
- return 'The model deployment rate limit stopped acceptance. Switch to dynamic quota by re-running Step B Install with -QuotaMode Dynamic, or wait for the limit to reset and retry this acceptance. Capacity stays GlobalStandard 1.'
+ return 'The model deployment rate limit stopped acceptance. Switch to dynamic quota by re-running Step B Install with -QuotaMode Dynamic, or wait for the limit to reset and retry this acceptance. Capacity stays 1. Dynamic quota uses the regional Standard SKU.'
 }
 function Invoke-JawsSupervisorAcceptanceResponse {
  param([Parameter(Mandatory)][string]$Url,[Parameter(Mandatory)][string]$Body,[switch]$DevProject)

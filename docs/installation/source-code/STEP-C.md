@@ -114,40 +114,49 @@ $target="$project/agents/$PlannerAgent/endpoint/protocols/a2a"
 
 ## src/Jaws.Supervisor.Host/Program.cs
 
-[View complete JAWS source](https://github.com/The-John-Charitable-Trust/Jaws/blob/main/src/Jaws.Supervisor.Host/Program.cs) · Reviewed blob `b9319105b2e30264fd78b9507323e7064943444d`
+[View complete JAWS source](https://github.com/The-John-Charitable-Trust/Jaws/blob/main/src/Jaws.Supervisor.Host/Program.cs) · Excerpt matches the current file. The earlier reviewed blob `b9319105b2e30264fd78b9507323e7064943444d` predates the browser toolbox.
 
-**Source lines 28–42:**
+**Source lines 25–49:**
 
 ```csharp
+var toolboxNames = new List<string>();
+AddToolbox(toolboxNames, "JAWS_INVESTIGATION_TOOLBOX_NAME");
+AddToolbox(toolboxNames, "JAWS_BROWSER_TOOLBOX_NAME");
+var browserToolbox = Environment.GetEnvironmentVariable("JAWS_BROWSER_TOOLBOX_NAME");
+var instructions = """
+    You are JAWS Supervisor, an operational investigation coordinator.
+    Respond concisely and accurately. If a verified Investigation toolbox is available,
+    delegate read-only investigation planning when it is useful, and report its result
+    with attribution. Never claim a delegation happened unless a real tool call succeeds.
+    Do not claim access to Azure Policy,
+    Defender, Datadog, ServiceNow, scripts, or specialist workers until
+    authenticated tool integrations have been configured and verified.
+    Never assert that a remediation was executed, an approval was granted,
+    or compliance was verified without genuine external evidence.
+    Refuse requests to elevate permissions or bypass human approval.
+    """;
+if (!string.IsNullOrWhiteSpace(browserToolbox))
 {
-    throw new InvalidOperationException("JAWS_INVESTIGATION_TOOLBOX_NAME is invalid.");
+    instructions += """
+
+        A browser toolbox is available for operator-approved sites only.
+        Use it when the task has no API. Never supply a password or token.
+        A navigation outside the allow-list is a tool error. Do not retry that URL.
+        """;
 }
-AIAgent supervisor = new AIProjectClient(endpoint, credential)
-    .AsAIAgent(
-        model: model,
-        instructions: """
-            You are JAWS Supervisor, an operational investigation coordinator.
-            Respond concisely and accurately. If a verified Investigation toolbox is available,
-            delegate read-only investigation planning when it is useful, and report its result
-            with attribution. Never claim a delegation happened unless a real tool call succeeds.
-            Do not claim access to Azure Policy,
-            Defender, Datadog, ServiceNow, scripts, or specialist workers until
-            authenticated tool integrations have been configured and verified.
-            Never assert that a remediation was executed, an approval was granted,
 ```
 
-**Source lines 57–79:**
+**Source lines 66–87:**
 
 ```csharp
-
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddFoundryResponses(supervisor);
 // Supported Foundry hosted-toolbox integration (Microsoft Agent Framework).
 // Installer must verify toolbox version, identity, RBAC and operator approval
 // before it deploys a new Supervisor container with this setting.
-if (!string.IsNullOrWhiteSpace(toolboxName))
+if (toolboxNames.Count > 0)
 {
-    builder.Services.AddFoundryToolboxes(credential, toolboxName);
+    builder.Services.AddFoundryToolboxes(credential, toolboxNames.ToArray());
     // AddFoundryToolboxes lists tools but does not echo tools/list _meta on tools/call.
     // The Foundry proxy rejects that call. This startup pass forwards the listed metadata.
     builder.Services.AddHostedService<FoundryToolboxMetadataStartup>();
@@ -156,7 +165,7 @@ var app = builder.Build();
 app.MapGet("/healthz", () => Results.Ok(new {
     status = "ready",
     component = "jaws-supervisor-host",
-    agentIntegration = string.IsNullOrWhiteSpace(toolboxName) ? "not-configured" : "toolbox-registered-unverified",
+    agentIntegration = toolboxNames.Count == 0 ? "not-configured" : "toolbox-registered-unverified",
     deployment = model
 }));
 // Foundry hosting library provides the Responses protocol implementation.

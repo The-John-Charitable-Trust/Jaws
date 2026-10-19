@@ -54,13 +54,13 @@
       "id": "D",
       "title": "Virtual-machine specialist & compute",
       "status": "partial",
-      "capability": "JSON specialist catalog and VM compute",
-      "value": "A hosted VM specialist owns one compute environment. The catalog refuses an unknown tool, a phase agent, a second sandbox, and a write without the approval workflow.",
+      "capability": "JSON specialist catalog, VM compute, and a private browser",
+      "value": "A hosted VM specialist owns one compute environment. Outside the dev project, the Supervisor and that specialist can call a private browser. The catalog refuses an unknown tool, a phase agent, a second sandbox, and a write without the approval workflow.",
       "implementation": "installer/Install-JawsStepD.ps1",
       "tests": "tests/installer/StepDInstall.Tests.ps1",
       "microsoftUrl": "https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/deploy-hosted-agent",
       "microsoftTitle": "Hosted agent deployment",
-      "evidence": "The installer writes the JSON catalog and, outside the dev project, creates one hosted virtual-machine specialist from the Step B image. The dev project binds jaws-investigation-dev and does not post a second agent. Offline Pester covers the catalog refusals and a CLI stand-in. The Supervisor image is not changed to load the catalog. No fresh-subscription receipt is recorded, so Step D is not accepted."
+      "evidence": "The installer writes the JSON catalog and, outside the dev project, creates one hosted virtual-machine specialist from the Step B image plus a private browser Container App and toolbox jaws-browser-tools. A later Supervisor version names that toolbox. Version 1 stays unchanged and the Supervisor image is not rebuilt. The dev project binds jaws-investigation-dev and does not receive the browser. Offline Pester covers the catalog refusals and a CLI stand-in. No fresh-subscription receipt is recorded, and a stub pass does not prove a live page load, so Step D is not accepted."
     },
     {
       "id": "E",

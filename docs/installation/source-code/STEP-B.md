@@ -111,9 +111,9 @@ function Invoke-JawsStepBAccept {
 
 ## src/Jaws.Supervisor.Host/Program.cs
 
-[View complete JAWS source](https://github.com/The-John-Charitable-Trust/Jaws/blob/main/src/Jaws.Supervisor.Host/Program.cs) · Reviewed blob `b9319105b2e30264fd78b9507323e7064943444d`
+[View complete JAWS source](https://github.com/The-John-Charitable-Trust/Jaws/blob/main/src/Jaws.Supervisor.Host/Program.cs) · Excerpt matches the current file. The earlier reviewed blob `b9319105b2e30264fd78b9507323e7064943444d` predates the browser toolbox.
 
-**Source lines 1–25:**
+**Source lines 1–27:**
 
 ```csharp
 using Azure.AI.Projects;
@@ -140,28 +140,23 @@ if (string.IsNullOrWhiteSpace(model))
     throw new InvalidOperationException("AZURE_AI_MODEL_DEPLOYMENT_NAME is required.");
 }
 var credential = new DefaultAzureCredential();
-var toolboxName = Environment.GetEnvironmentVariable("JAWS_INVESTIGATION_TOOLBOX_NAME");
+var toolboxNames = new List<string>();
+AddToolbox(toolboxNames, "JAWS_INVESTIGATION_TOOLBOX_NAME");
+AddToolbox(toolboxNames, "JAWS_BROWSER_TOOLBOX_NAME");
 ```
 
-**Source lines 35–67:**
+**Source lines 50–75:**
 
 ```csharp
-            You are JAWS Supervisor, an operational investigation coordinator.
-            Respond concisely and accurately. If a verified Investigation toolbox is available,
-            delegate read-only investigation planning when it is useful, and report its result
-            with attribution. Never claim a delegation happened unless a real tool call succeeds.
-            Do not claim access to Azure Policy,
-            Defender, Datadog, ServiceNow, scripts, or specialist workers until
-            authenticated tool integrations have been configured and verified.
-            Never assert that a remediation was executed, an approval was granted,
-            or compliance was verified without genuine external evidence.
-            Refuse requests to elevate permissions or bypass human approval.
-            """,
+AIAgent supervisor = new AIProjectClient(endpoint, credential)
+    .AsAIAgent(
+        model: model,
+        instructions: instructions,
         name: "jaws-supervisor",
         description: "JAWS Supervisor hosted runtime: read-only initial deployment.");
 
-// Only a toolbox-enabled candidate wraps the agent. Supervisor v1 leaves this unset.
-if (!string.IsNullOrWhiteSpace(toolboxName))
+// Only a toolbox-enabled candidate wraps the agent. Supervisor v1 leaves both names unset.
+if (toolboxNames.Count > 0)
 {
     FoundryToolboxCallMetadata.EnableDetailedFunctionErrors(supervisor);
     supervisor = supervisor.AsBuilder().Use(
@@ -174,9 +169,9 @@ builder.Services.AddFoundryResponses(supervisor);
 // Supported Foundry hosted-toolbox integration (Microsoft Agent Framework).
 // Installer must verify toolbox version, identity, RBAC and operator approval
 // before it deploys a new Supervisor container with this setting.
-if (!string.IsNullOrWhiteSpace(toolboxName))
+if (toolboxNames.Count > 0)
 {
-    builder.Services.AddFoundryToolboxes(credential, toolboxName);
+    builder.Services.AddFoundryToolboxes(credential, toolboxNames.ToArray());
     // AddFoundryToolboxes lists tools but does not echo tools/list _meta on tools/call.
     // The Foundry proxy rejects that call. This startup pass forwards the listed metadata.
 ```

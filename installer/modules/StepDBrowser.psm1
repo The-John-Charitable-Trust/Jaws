@@ -60,7 +60,7 @@ function Invoke-JawsBrowserAz {
     $code = $LASTEXITCODE
     $text = (@($output) | ForEach-Object { "$_" }) -join "`n"
     if ($code -ne 0) {
-        if ($AllowMissing -and $text -match 'MISSING|ResourceNotFound|ResourceGroupNotFound|was not found|NotFound|not_found|Not Found') {
+        if ($AllowMissing -and $text -match 'MISSING|ResourceNotFound|ResourceGroupNotFound|was not found|NotFound|not_found|Not Found|does not exist') {
             return $null
         }
         throw "JAWS-STEP-D-AZ-001: az $($Arguments -join ' ') failed ($code). $text"

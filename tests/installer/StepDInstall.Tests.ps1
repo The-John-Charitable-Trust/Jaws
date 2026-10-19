@@ -623,6 +623,16 @@ Describe 'Step D installer' {
         }
     }
 
+    It 'treats a missing ACR tag as absent and still fails without -AllowMissing' {
+        InModuleScope StepDBrowser {
+            $arguments = @('acr','repository','show','--name','jawsacrlab1','--image','jaws/browser:step-d','--output','json')
+            $env:JAWS_STEPD_STUB_MISSING = 'Error: the specified tag does not exist.'
+            $result = Invoke-JawsBrowserAz -AllowMissing -Arguments $arguments
+            $result | Should -BeNullOrEmpty
+            { Invoke-JawsBrowserAz -Arguments $arguments } | Should -Throw '*JAWS-STEP-D-AZ-001*'
+        }
+    }
+
     It 'treats Foundry not_found and Not Found as a missing specialist and still fails without -AllowMissing' {
         InModuleScope StepDInstall {
             $arguments = @('rest','--method','GET','--url','https://example.test/agents/jaws-vm-specialist-lab9/versions/1','--output','json')

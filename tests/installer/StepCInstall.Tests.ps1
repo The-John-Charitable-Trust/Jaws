@@ -220,6 +220,10 @@ if method == "post" and "/protocols/openai/responses" in url:
     ]
     if used < limit:
         open(used_path, "w", encoding="utf-8").write(str(used + 1))
+        limited_output = output if os.environ.get("JAWS_STEPC_STUB_RATE_LIMIT_WITH_DELEGATION") == "1" else [
+            {"type": "reasoning"},
+            {"type": "message", "content": "rate limited before the Investigation tool returned"},
+        ]
         emit({
             "id": "caresp_stub_limited",
             "status": "failed",
@@ -227,7 +231,7 @@ if method == "post" and "/protocols/openai/responses" in url:
                 "code": "server_error",
                 "message": "Model deployment rate limit exceeded. Your requests to gpt-5-mini for gpt-5-mini in eastus have exceeded request rate limit.",
             },
-            "output": output,
+            "output": limited_output,
         })
     emit({"id": "caresp_stub", "status": "completed", "output": output})
 print("unexpected " + " ".join(args), file=sys.stderr)
@@ -365,6 +369,7 @@ Describe 'Step C from a Step B environment' {
         $script:savedShell = $env:JAWS_STEPC_STUB_TOOLBOX_SHELL
         $script:savedToolboxVersion = $env:JAWS_STEPC_STUB_TOOLBOX_VERSION
         $script:savedDataObject = $env:JAWS_STEPC_STUB_TOOLBOX_DATA_OBJECT
+        $script:savedRateLimitDelegation = $env:JAWS_STEPC_STUB_RATE_LIMIT_WITH_DELEGATION
         $env:JAWS_STEPC_STUB_STATE = $script:state
         $env:JAWS_STEPC_STUB_SUB = $script:sub
         $env:JAWS_STEPC_STUB_IMAGE = $script:image
@@ -375,6 +380,7 @@ Describe 'Step C from a Step B environment' {
         Remove-Item Env:JAWS_STEPC_STUB_TOOLBOX_SHELL -ErrorAction SilentlyContinue
         Remove-Item Env:JAWS_STEPC_STUB_TOOLBOX_VERSION -ErrorAction SilentlyContinue
         Remove-Item Env:JAWS_STEPC_STUB_TOOLBOX_DATA_OBJECT -ErrorAction SilentlyContinue
+        Remove-Item Env:JAWS_STEPC_STUB_RATE_LIMIT_WITH_DELEGATION -ErrorAction SilentlyContinue
         $env:PATH = $script:stub + [System.IO.Path]::PathSeparator + $env:PATH
         $script:devBefore = Get-Content -LiteralPath (Join-Path $script:root 'installer/config/jaws-installation-state.dev.json') -Raw
     }
@@ -390,7 +396,8 @@ Describe 'Step C from a Step B environment' {
             @{ Name = 'JAWS_STEPC_RATE_LIMIT_WAIT_SECONDS'; Value = $script:savedWait },
             @{ Name = 'JAWS_STEPC_STUB_TOOLBOX_SHELL'; Value = $script:savedShell },
             @{ Name = 'JAWS_STEPC_STUB_TOOLBOX_VERSION'; Value = $script:savedToolboxVersion },
-            @{ Name = 'JAWS_STEPC_STUB_TOOLBOX_DATA_OBJECT'; Value = $script:savedDataObject }
+            @{ Name = 'JAWS_STEPC_STUB_TOOLBOX_DATA_OBJECT'; Value = $script:savedDataObject },
+            @{ Name = 'JAWS_STEPC_STUB_RATE_LIMIT_WITH_DELEGATION'; Value = $script:savedRateLimitDelegation }
         )) {
             if ($null -eq $pair.Value) { Remove-Item "Env:$($pair.Name)" -ErrorAction SilentlyContinue } else { Set-Item "Env:$($pair.Name)" $pair.Value }
         }
@@ -559,7 +566,34 @@ Describe 'Step C from a Step B environment' {
         $report.OperatorAction | Should -Match '-QuotaMode Dynamic'
         $report.OperatorAction | Should -Match 'wait for the limit to reset'
         $report.RateLimitAttempts | Should -Be 3
+        $report.TaskState | Should -Be ''
+        $report.AcceptanceBasis | Should -Be ''
+        $report.CustomerInstallationAccepted | Should -BeFalse
+    }
+
+    It 'accepts a rate-limited response once the Investigation task has completed' {
+        Write-StepBFixture
+        $env:JAWS_STEPC_STUB_RATE_LIMITS = '5'
+        $env:JAWS_STEPC_STUB_RATE_LIMIT_WITH_DELEGATION = '1'
+        $output = & (Join-Path $script:root 'installer/Install-JawsThroughStepC.ps1') -Mode Install -EnvironmentName 'lab1' -AcknowledgeStepCInstall -AcknowledgeInferenceCharges *>&1 | Out-String
+        $output | Should -Match 'Step C acceptance: PASS'
+        $output | Should -Match 'Task state: TASK_STATE_COMPLETED'
+        $output | Should -Match 'rate-limited after the Investigation task completed'
+        $output | Should -Not -Match 'JAWS-C-ACCEPT-010'
+        $output | Should -Not -Match 'JAWS-C-ACCEPT-007'
+        $output | Should -Match 'Step C install: CLOSED'
+        $output | Should -Match 'Result: PASS'
+        $output | Should -Not -Match 'Supervisor model rate limit \(attempt'
+        $log = Get-Content -LiteralPath (Join-Path $script:state 'log.txt') -Raw
+        ([regex]::Matches($log, '/protocols/openai/responses')).Count | Should -Be 1
+        $report = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-step-c-final-acceptance.lab1.generated.json') -Raw | ConvertFrom-Json
+        $report.Status | Should -Be 'PASS'
+        $report.Classification | Should -Be 'TOOL_INVOKED_SUCCEEDED'
         $report.TaskState | Should -Be 'TASK_STATE_COMPLETED'
+        $report.ResponseStatus | Should -Be 'failed'
+        $report.ResponseErrorMessage | Should -Match 'rate limit'
+        $report.AcceptanceBasis | Should -Be 'DelegationCompletedUnderRateLimit'
+        $report.RateLimitAttempts | Should -Be 1
         $report.CustomerInstallationAccepted | Should -BeFalse
     }
 

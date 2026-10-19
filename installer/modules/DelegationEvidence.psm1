@@ -43,6 +43,17 @@ function Get-JawsDelegationEvidence($Response) {
   ResponseCompleted=([string](Get-JawsField $Response 'status') -ceq 'completed')
  }
 }
+function Test-JawsDelegationProved($Response) {
+ $evidence=Get-JawsDelegationEvidence -Response $Response
+ $excerpt=((@($evidence.Calls | ForEach-Object { [string]$_.OutputExcerpt })) -join "`n")
+ $taskState=if($excerpt -match 'TASK_STATE_[A-Z_]+'){$Matches[0]}else{''}
+ return ($evidence.Classification -ceq 'TOOL_INVOKED_SUCCEEDED' -and $taskState -eq 'TASK_STATE_COMPLETED')
+}
+function Get-JawsStepCAcceptanceStatus($Evidence,$Response,[string]$TaskState) {
+ $proved=($Evidence.Classification -ceq 'TOOL_INVOKED_SUCCEEDED' -and $TaskState -eq 'TASK_STATE_COMPLETED')
+ if($proved -and ($Evidence.ResponseCompleted -or (Test-JawsSupervisorRateLimit $Response))){ return 'PASS' }
+ return 'FAIL'
+}
 function Test-JawsSupervisorRateLimit($Response) {
  $errorObject=Get-JawsField $Response 'error'
  $code=[string](Get-JawsField $errorObject 'code')
@@ -70,7 +81,7 @@ function Invoke-JawsSupervisorAcceptanceResponse {
    if($LASTEXITCODE -ne 0){ throw "JAWS-C-ACCEPT-006: Supervisor invocation failed: $($raw | Out-String)" }
    $response=$raw | Out-String | ConvertFrom-Json -ErrorAction Stop
   } finally { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
-  if(-not (Test-JawsSupervisorRateLimit $response) -or $attempt -eq $attempts){
+  if(-not (Test-JawsSupervisorRateLimit $response) -or (Test-JawsDelegationProved $response) -or $attempt -eq $attempts){
    $response | Add-Member -NotePropertyName JawsRateLimitAttempts -NotePropertyValue $attempt -Force
    return $response
   }
@@ -94,4 +105,4 @@ function Get-JawsRateLimitAcceptanceFailure {
  Write-JawsOperatorIssue -Issue $issue -Action $action
  return "JAWS-C-ACCEPT-010: $issue $action"
 }
-Export-ModuleMember -Function Get-JawsField,Get-JawsDelegationEvidence,Test-JawsSupervisorRateLimit,Get-JawsRateLimitOperatorAction,Invoke-JawsSupervisorAcceptanceResponse,Get-JawsRateLimitAcceptanceFailure
+Export-ModuleMember -Function Get-JawsField,Get-JawsDelegationEvidence,Test-JawsDelegationProved,Get-JawsStepCAcceptanceStatus,Test-JawsSupervisorRateLimit,Get-JawsRateLimitOperatorAction,Invoke-JawsSupervisorAcceptanceResponse,Get-JawsRateLimitAcceptanceFailure

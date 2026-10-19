@@ -202,6 +202,8 @@ if args[:2] == ["provider", "show"]:
     emit({"namespace": flag("--namespace"), "registrationState": "Registered"})
 if args[:2] == ["account", "show"]:
     emit({"id": "22222222-2222-2222-2222-222222222222", "tenantId": "33333333-3333-3333-3333-333333333333"})
+if args[:3] == ["ad", "signed-in-user", "show"]:
+    emit({"id": "55555555-5555-5555-5555-555555555555", "userPrincipalName": "installer@contoso.example"})
 if args[:3] == ["network", "vnet", "show"]:
     emit(world["vnet"]) if "vnet" in world else missing()
 if args[:3] == ["network", "vnet", "create"]:
@@ -532,6 +534,10 @@ Describe 'Step D installer' {
         $log | Should -Match '--ingress internal'
         $log | Should -Match 'src/Jaws\.Browser\.Host/Dockerfile'
         $log | Should -Match 'acr build .*--no-logs'
+        $log | Should -Match 'ad signed-in-user show'
+        $officer = 'role assignment create --subscription 22222222-2222-2222-2222-222222222222 --assignee-object-id 55555555-5555-5555-5555-555555555555 --assignee-principal-type User --role Key Vault Secrets Officer --scope /subscriptions/22222222-2222-2222-2222-222222222222/resourceGroups/rg-jaws-lab1/providers/Microsoft.KeyVault/vaults/kvjawslab1'
+        $log | Should -Match ([regex]::Escape($officer))
+        $log.IndexOf('Key Vault Secrets Officer') | Should -BeLessThan $log.IndexOf('keyvault secret set')
         $log | Should -Match 'jaws-supervisor-lab1/versions\?api-version=v1'
         $log | Should -Not -Match 'jaws-supervisor-lab1/versions/1 .*--method PATCH'
         $log | Should -Not -Match '--method patch'
@@ -549,6 +555,7 @@ Describe 'Step D installer' {
         ([regex]::Matches($log, 'rest --method POST')).Count | Should -Be $firstPosts
         ([regex]::Matches($log, 'containerapp create')).Count | Should -Be 1
         ([regex]::Matches($log, 'acr build')).Count | Should -Be 1
+        ([regex]::Matches($log, 'Key Vault Secrets Officer')).Count | Should -Be 1
         (Get-Content -LiteralPath (Join-Path $script:root 'installer/config/jaws-installation-state.dev.json') -Raw) | Should -Be $script:devBefore
         $catalog = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-specialist-catalog.lab1.generated.json') -Raw | ConvertFrom-Json
         @($catalog.Specialists)[0].ComputeEnvironmentId | Should -Be 'jaws-vm-specialist-lab1'

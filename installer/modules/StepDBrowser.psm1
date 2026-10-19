@@ -265,6 +265,17 @@ function Install-JawsStepDBrowser {
         throw 'JAWS-STEP-D-030: The browser Container App has no managed identity.'
     }
     $vaultId = "/subscriptions/$sub/resourceGroups/$rg/providers/Microsoft.KeyVault/vaults/$($Context.KeyVaultName)"
+    $signedIn = Invoke-JawsBrowserAz -Arguments @('ad','signed-in-user','show','--output','json','--only-show-errors')
+    $installerId = [string](Get-JawsBrowserProperty $signedIn @('id'))
+    if ([string]::IsNullOrWhiteSpace($installerId)) {
+        throw 'JAWS-STEP-D-030: The signed-in account has no object id, so Key Vault secrets were not written.'
+    }
+    $installerRoles = @(Invoke-JawsBrowserAz -Arguments @('role','assignment','list','--subscription',$sub,'--assignee-object-id',$installerId,'--scope',$vaultId,'--output','json','--only-show-errors'))
+    $hasOfficer = @($installerRoles | Where-Object { $_ -and [string]$_.roleDefinitionName -eq 'Key Vault Secrets Officer' }).Count -gt 0
+    if (-not $hasOfficer) {
+        $null = Invoke-JawsBrowserAz -Arguments @('role','assignment','create','--subscription',$sub,'--assignee-object-id',$installerId,'--assignee-principal-type','User','--role','Key Vault Secrets Officer','--scope',$vaultId,'--output','json','--only-show-errors')
+        $writes++
+    }
     foreach ($secretName in @($names.AllowListSecret, $names.CredentialSecret)) {
         $shown = Invoke-JawsBrowserAz -AllowMissing -Arguments @('keyvault','secret','show','--subscription',$sub,'--vault-name',[string]$Context.KeyVaultName,'--name',$secretName,'--output','json','--only-show-errors')
         if ($null -eq $shown) {

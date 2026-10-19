@@ -42,7 +42,7 @@ Install, after `-AcknowledgeStepDInstall`, creates:
 - Foundry toolbox `jaws-browser-tools`, authenticated as managed identity audience `api://jaws-browser`
 - one later Supervisor version that names the toolbox and keeps the Step B digest
 
-The Container App has no public ingress. Ingress is internal on port 8089. Scale is minimum 0 and maximum 3 replicas. The app identity receives Key Vault Secrets User on those two secrets and AcrPull on the registry. The container environment includes `JAWS_BROWSER_TENANT_ID` from the signed-in tenant.
+The Container App has no public ingress. Ingress is internal on port 8089. Scale is minimum 0 and maximum 3 replicas. Before the two secrets are written, Install grants the signed-in account Key Vault Secrets Officer on the vault when that assignment is missing. Step B creates the vault with RBAC authorization and does not grant this data-plane role. The app identity receives Key Vault Secrets User on those two secrets and AcrPull on the registry. The container environment includes `JAWS_BROWSER_TENANT_ID` from the signed-in tenant.
 
 The install receipt records `PlaywrightServiceEndpoint`, `BrowserToolsetVersion`, and `CredentialScopeId`. A passing Install prints `Supervisor image rebuilt: false` and either `Browser allow-list: empty. No navigation will succeed until an operator adds a URL.` or the current entry count. Install does not rebuild the Supervisor image.
 

@@ -133,6 +133,9 @@ if args[:2] == ["acr", "build"]:
         sys.exit(2)
     sys.exit(0)
 if args[:3] == ["acr", "manifest", "show-metadata"]:
+    if os.environ.get("JAWS_STEPB_STUB_MANIFEST_MISSING") == "1":
+        print("manifest unknown", file=sys.stderr)
+        sys.exit(1)
     emit({"digest": "sha256:" + ("a" * 64)})
 if args[:2] == ["acr", "check-name"]:
     candidate = flag("--name", "")
@@ -301,6 +304,55 @@ Describe 'Step B foundation install' {
             $env:JAWS_STEPB_STUB_STATE = $savedState
             $env:JAWS_STEPB_STUB_SUB = $savedSub
             $env:JAWS_STEPB_STUB_ENV = $savedEnv
+            Remove-Item Env:JAWS_STEPB_POLL_SECONDS -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'stops when Supervisor version 1 pins a digest this registry does not contain' {
+        $state = Join-Path $script:stub 'state-missing-digest'
+        $savedPath = $env:PATH
+        $savedState = $env:JAWS_STEPB_STUB_STATE
+        $savedSub = $env:JAWS_STEPB_STUB_SUB
+        $savedEnv = $env:JAWS_STEPB_STUB_ENV
+        $savedMissing = $env:JAWS_STEPB_STUB_MANIFEST_MISSING
+        try {
+            $env:JAWS_STEPB_STUB_STATE = $state
+            $env:JAWS_STEPB_STUB_SUB = $script:sub
+            $env:JAWS_STEPB_STUB_ENV = 'lab1'
+            $env:JAWS_STEPB_STUB_MANIFEST_MISSING = '1'
+            $env:JAWS_STEPB_POLL_SECONDS = '0'
+            $env:PATH = $script:stub + [System.IO.Path]::PathSeparator + '/usr/bin'
+            & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Plan -NonInteractive -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus'
+            $plan = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-stage-b-plan.lab1.offline.generated.json') -Raw | ConvertFrom-Json
+            $receiptPath = Join-Path $script:root 'installer/.local/jaws-step-b-install.lab1.generated.json'
+            if (Test-Path -LiteralPath $receiptPath) { Remove-Item -LiteralPath $receiptPath -Force }
+            New-Item -ItemType Directory -Path $state -Force | Out-Null
+            @{
+                name = 'jaws-supervisor-lab1'
+                status = 'active'
+                draft = $false
+                version = '1'
+                instance_identity = @{ principal_id = '33333333-3333-3333-3333-333333333333' }
+                definition = @{
+                    container_configuration = @{ image = ('jawsacrlab1.azurecr.io/jaws/supervisor@sha256:' + ('b' * 64)) }
+                    environment_variables = @{ AZURE_AI_MODEL_DEPLOYMENT_NAME = 'gpt-5-mini' }
+                }
+            } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $state 'agent') -Encoding utf8
+            { & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Install -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' -ApprovedPlanSha256 $plan.PlanSha256 -AcknowledgeStepBInstall } | Should -Throw '*JAWS-STEP-B-018*did not run az acr build*'
+            $log = Get-Content -LiteralPath (Join-Path $state 'log.txt') -Raw
+            $log | Should -Match 'acr manifest show-metadata'
+            $log | Should -Not -Match 'acr build'
+            $log | Should -Not -Match '/agents\?api-version=v1'
+            $failed = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+            $failed.Result | Should -Be 'FAIL'
+            $failed.Message | Should -Match 'JAWS-STEP-B-018'
+            $failed.Status | Should -BeNullOrEmpty
+        } finally {
+            $env:PATH = $savedPath
+            $env:JAWS_STEPB_STUB_STATE = $savedState
+            $env:JAWS_STEPB_STUB_SUB = $savedSub
+            $env:JAWS_STEPB_STUB_ENV = $savedEnv
+            if ($null -eq $savedMissing) { Remove-Item Env:JAWS_STEPB_STUB_MANIFEST_MISSING -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_MANIFEST_MISSING = $savedMissing }
             Remove-Item Env:JAWS_STEPB_POLL_SECONDS -ErrorAction SilentlyContinue
         }
     }

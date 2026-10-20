@@ -368,6 +368,18 @@ function Invoke-JawsStepBRoleAssignment {
     }
 }
 
+function Test-JawsStepBPinnedDigestInRegistry {
+    param([Parameter(Mandatory)][string]$RegistryName,[Parameter(Mandatory)][string]$Image)
+    if ($Image -notmatch '@(?<digest>sha256:[a-f0-9]{64})$') { return $false }
+    $digest = $Matches['digest']
+    try {
+        $manifest = Invoke-JawsStepBAz -Arguments @('acr','manifest','show-metadata','--registry',$RegistryName,'--name',"jaws/supervisor@$digest",'--output','json','--only-show-errors')
+    } catch {
+        return $false
+    }
+    return ([string]$manifest.digest -eq $digest)
+}
+
 function Get-JawsStepBRegistryDigest {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$RegistryName,[Parameter(Mandatory)][string]$ImageName)
@@ -392,7 +404,7 @@ function Get-JawsStepBAuthorizedWrites {
         [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.KeyVault/vaults'; BoundTo = 'RBAC authorization and purge protection.' },
         [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.ContainerRegistry/registries'; BoundTo = 'Basic SKU, admin disabled, public network enabled.' },
         [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.Authorization/roleAssignments'; BoundTo = 'AcrPull for the project identity and the Supervisor agent identity on this registry only.' },
-        [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Foundry hosted agent version'; BoundTo = 'Supervisor version 1, cpu 1, memory 2Gi. The image is built by az acr build for linux/amd64 and pinned to the registry digest.' }
+        [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Foundry hosted agent version'; BoundTo = 'Supervisor version 1, cpu 1, memory 2Gi. The image is built by az acr build for linux/amd64 and pinned to the registry digest. An existing version 1 is reused only when that digest is in this registry. A missing digest stops Install. The version is not patched.' }
     )
 }
 
@@ -778,6 +790,9 @@ function Invoke-JawsStepBInstall {
     $versionUrl = "$endpoint/agents/$($Scope.AgentName)/versions/1?api-version=v1"
     $existing = Invoke-JawsStepBAz -AllowMissing -Arguments @('rest','--method','GET','--url',$versionUrl,'--resource','https://ai.azure.com','--output','json','--only-show-errors')
     $image = [string](Get-JawsStepBProperty -Object $existing -Names @('definition','container_configuration','image'))
+    if ($null -ne $existing -and -not (Test-JawsStepBPinnedDigestInRegistry -RegistryName ([string]$Scope.RegistryName) -Image $image)) {
+        throw "JAWS-STEP-B-018: Supervisor version 1 pins '$image', and registry $($Scope.RegistryName) does not contain that digest. Foundry versions are immutable, so Install did not run az acr build and did not patch version 1. Delete the Supervisor agent and run Install again."
+    }
     if ($null -eq $existing) {
         Import-Module (Join-Path $PSScriptRoot 'SupervisorPackage.psm1') -Force
         $package = Get-JawsSupervisorPackagePlan -InstallerRoot $InstallerRoot

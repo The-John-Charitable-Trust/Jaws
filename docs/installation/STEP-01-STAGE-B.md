@@ -104,7 +104,7 @@ The same seven fields can be passed as parameters, and a parameter replaces the 
 .\installer\Install-Jaws.ps1 -Mode Install -EnvironmentName your-environment -ResourceGroupName rg-jaws-your-environment -Location eastus -ApprovedPlanSha256 <plan-sha> -QuotaMode Dynamic -AcknowledgeStepBInstall
 ```
 
-A second Install does not patch when the deployment already matches the chosen mode. It also does not build the Supervisor image again once version 1 is active. `Static` on a Standard deployment that already has dynamic quota on sets the property back to false and leaves the Standard SKU in place. The console prints `Model SKU: GlobalStandard` or `Model SKU: Standard`.
+A second Install does not patch when the deployment already matches the chosen mode. It also does not build the Supervisor image again once version 1 is active and that pinned digest is present in this registry. If version 1 pins a digest this registry does not contain, Install stops with `JAWS-STEP-B-018` and does not rebuild or patch that version. Delete the Supervisor agent and run Install again so version 1 is created from an image in this registry. `Static` on a Standard deployment that already has dynamic quota on sets the property back to false and leaves the Standard SKU in place. The console prints `Model SKU: GlobalStandard` or `Model SKU: Standard`.
 
 **Expected result.** `Install-Jaws.ps1` prints:
 
@@ -146,7 +146,8 @@ Install uploads `src/Jaws.Supervisor.Host` and runs `az acr build --platform lin
 | Model quota or unsupported region | `JAWS-STEP-B-MODEL-001`. A quota refusal prints `Issue`, `Action`, and `Quota request: https://aka.ms/oai/stuquotarequest`. Dynamic quota cannot create the deployment when Azure has no quota for capacity 1 |
 | Requested quota mode is not recorded | `JAWS-STEP-B-MODEL-002`. Capacity stays 1. Dynamic uses the regional Standard SKU |
 | Regional Standard SKU is not offered | `JAWS-STEP-B-MODEL-001` before a Dynamic deployment is created. GlobalStandard is not used as a substitute |
-| Registry build fails | `JAWS-STEP-B-021`. Docker is not used. A second run does not build again once Supervisor version 1 is active |
+| Registry build fails | `JAWS-STEP-B-021`. Docker is not used. A second run does not build again once Supervisor version 1 is active and its digest is in this registry |
+| Version 1 pins a digest this registry does not contain | `JAWS-STEP-B-018`. Install does not run `az acr build` and does not patch the version. Delete the Supervisor agent and run Install again |
 | Second run | Same receipt, no second Foundry account or Supervisor |
 | Approved model is not offered | `JAWS-STEP-B-MODEL-001` before the deployment is created |
 | Account, project, deployment, vault, or registry stays provisioning | `JAWS-STEP-B-023` |

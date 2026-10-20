@@ -162,3 +162,13 @@ These checks are not claimed as accepted:
 - signature validation against the live tenant. The host code validates the signature when the tenant id is set, and a local unit test signs a token with a test key. That test does not call the tenant.
 
 CAPTCHA solving, downloads, uploads, multiple tabs, video or audio capture, and specialist-to-Supervisor browser delegation are out of scope.
+
+## Uninstall to stop charges or start a new install
+
+Run this command to delete the whole customer environment, stop its Azure charges, and clear the names before a new complete install. It removes every resource from Steps B, C, and D. It refuses `dev`. If the Key Vault purge is blocked, choose a different vault name on the next install until the purge date.
+
+```powershell
+.\installer\Uninstall-Jaws.ps1 -EnvironmentName your-environment -AcknowledgeJawsUninstall
+```
+
+Details are in [UNINSTALL.md](UNINSTALL.md).

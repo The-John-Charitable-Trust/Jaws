@@ -200,9 +200,15 @@ Accept also prints `FedRAMP open resources` and `Install config` when B3 wrote t
 
 `rg-aiops-lab-test2` has been deleted. An old receipt under `installer/.local` for that name fails Accept with `JAWS-STEP-B-024` because the resource group is gone. The default Key Vault for environment `aiops-lab-test2` stays purge-protected until 2027-01-18. Choose a new `-EnvironmentName` so the generated Key Vault name is different, or keep that environment. Preflight then prints that the Key Vault name is not available and asks for another. `-NonInteractive` does not ask, so pass `-KeyVaultName`. Run Plan, then Preflight, and use the `Plan SHA-256` Preflight prints when a name was replaced. Do not run `Install-JawsFoundryPrivateNetwork.ps1` during this restart. The dev project stays unchanged.
 
-## Remove this environment
+## Uninstall to stop charges or start a new install
 
-`installer/Uninstall-Jaws.ps1 -EnvironmentName your-environment -AcknowledgeJawsUninstall` force-deletes the Foundry agents, purges the account, and deletes the resource group. A purge-protected Key Vault is recorded as blocked and the next install needs a different vault name until the purge date. The command refuses `dev`. Details, including why a resource-group delete alone is not enough, are in [UNINSTALL.md](UNINSTALL.md).
+Step B leaves billable Azure resources. Run this command to delete the whole environment, stop those charges, and clear the names before a new complete install. It force-deletes the Foundry agents, purges the account, and deletes every resource from Steps B, C, and D. It refuses `dev`. A purge-protected Key Vault is recorded as blocked, and the next install needs a different vault name until the purge date.
+
+```powershell
+.\installer\Uninstall-Jaws.ps1 -EnvironmentName your-environment -AcknowledgeJawsUninstall
+```
+
+Details, including why a resource-group delete alone is not enough, are in [UNINSTALL.md](UNINSTALL.md).
 
 ## Actual JAWS implementation source (B)
 

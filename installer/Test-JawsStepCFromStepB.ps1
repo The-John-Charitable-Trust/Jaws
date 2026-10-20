@@ -50,7 +50,10 @@ $body=@{
 } | ConvertTo-Json -Depth 8 -Compress
 Import-Module (Join-Path $root 'modules/DelegationEvidence.psm1') -Force
 Import-Module (Join-Path $root 'modules/MilestoneResult.psm1') -Force
-$response=Invoke-JawsSupervisorAcceptanceResponse -Url "$endpoint/agents/$agent/endpoint/protocols/openai/responses?api-version=v1" -Body $body
+# services.ai.azure.com answers agent reads, then returns "Project not found" for this
+# responses route after the Foundry project is recreated. The account endpoint accepts it.
+$invokeEndpoint="https://$($ctx.FoundryAccountName).cognitiveservices.azure.com/api/projects/$($ctx.ProjectName)"
+$response=Invoke-JawsSupervisorAcceptanceResponse -Url "$invokeEndpoint/agents/$agent/endpoint/protocols/openai/responses?api-version=v1" -Body $body
 $evidence=Get-JawsDelegationEvidence -Response $response
 $outputTypes=@($response.output | ForEach-Object { if($_ -and $_.PSObject.Properties['type']){[string]$_.type}else{'<missing-type>'} })
 $excerpt=((@($evidence.Calls | ForEach-Object { [string]$_.OutputExcerpt })) -join "`n")

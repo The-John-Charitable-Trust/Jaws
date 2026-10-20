@@ -35,6 +35,31 @@ function Read-JawsInstallConfigFile {
     return $values
 }
 
+function ConvertTo-JawsInstallSkipFlag {
+    [CmdletBinding()]
+    param([string]$Name, $Value)
+    if ($null -eq $Value) { return $false }
+    if ($Value -is [bool]) { return [bool]$Value }
+    $text = [string]$Value
+    if ([string]::IsNullOrWhiteSpace($text)) { return $false }
+    if ($text -match '^(?i:true|yes|skip)$') { return $true }
+    if ($text -match '^(?i:false|no)$') { return $false }
+    throw "JAWS-INSTALL-CONFIG-004: $Name must be true or false."
+}
+
+function Read-JawsInstallSkipFlags {
+    [CmdletBinding()]
+    param([string]$Path)
+    $flags = @{ SkipServiceNow = $false; SkipDatadog = $false }
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $flags }
+    $config = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+    foreach ($name in @($flags.Keys)) {
+        $property = $config.PSObject.Properties[$name]
+        if ($null -ne $property) { $flags[$name] = ConvertTo-JawsInstallSkipFlag -Name $name -Value $property.Value }
+    }
+    return $flags
+}
+
 function Read-JawsInstallPrompt {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Label, [switch]$Secret)
@@ -45,12 +70,23 @@ function Read-JawsInstallPrompt {
     return [string](Read-Host -Prompt $Label)
 }
 
+function Resolve-JawsInstallChoice {
+    [CmdletBinding()]
+    param([string]$Answer)
+    $text = [string]$Answer
+    if ($text -match '^(?i:yes|y)$') { return 'configure' }
+    if ($text -match '^(?i:skip|no|n)$') { return 'skip' }
+    throw 'JAWS-INSTALL-CONFIG-004: Answer yes to configure, or skip to leave it unset.'
+}
+
 function Resolve-JawsInstallObservability {
     [CmdletBinding()]
     param(
         [string]$InstallConfig,
         [hashtable]$Parameters,
         [switch]$NonInteractive,
+        [switch]$SkipServiceNow,
+        [switch]$SkipDatadog,
         [scriptblock]$Prompter
     )
     $values = Read-JawsInstallConfigFile -Path $InstallConfig
@@ -61,6 +97,11 @@ function Resolve-JawsInstallObservability {
             }
         }
     }
+    $flags = Read-JawsInstallSkipFlags -Path $InstallConfig
+    $skipServiceNow = [bool]$flags.SkipServiceNow -or [bool]$SkipServiceNow
+    $skipDatadog = [bool]$flags.SkipDatadog -or [bool]$SkipDatadog
+    $serviceNowFields = @('ServiceNowUrl', 'ServiceNowUsername', 'ServiceNowPassword')
+    $datadogFields = @('DatadogSite', 'DatadogApiKey', 'DatadogAppKey', 'DefaultVirtualMachineResourceId')
     $prompt = -not $NonInteractive
     if ($prompt -and $null -eq $Prompter) {
         $prompt = -not [Console]::IsInputRedirected
@@ -73,17 +114,34 @@ function Resolve-JawsInstallObservability {
             }
         }
     }
+    $serviceNowChoice = ''
+    $datadogChoice = ''
     if ($prompt) {
         $labels = @{
             ServiceNowUrl = 'ServiceNow login URL (https://<instance>.service-now.com)'
             ServiceNowUsername = 'ServiceNow username'
             ServiceNowPassword = 'ServiceNow password'
-            DatadogSite = 'Datadog site (for example datadoghq.com)'
+            DatadogSite = 'Datadog site (for example us5.datadoghq.com)'
             DatadogApiKey = 'Datadog API key'
             DatadogAppKey = 'Datadog application key (optional)'
-            DefaultVirtualMachineResourceId = 'Default virtual machine resource id'
+            DefaultVirtualMachineResourceId = 'Virtual machine resource id for the Datadog Agent'
         }
-        foreach ($field in (Get-JawsInstallConfigFields)) {
+        $serviceNowSet = @($serviceNowFields | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$values[$_]) }).Count -gt 0
+        if (-not $skipServiceNow -and -not $serviceNowSet) {
+            $answer = if ($null -ne $Prompter) { [string](& $Prompter 'Configure ServiceNow during this install? (yes/skip)' $false) } else { Read-JawsInstallPrompt -Label 'Configure ServiceNow during this install? (yes/skip)' }
+            $serviceNowChoice = Resolve-JawsInstallChoice -Answer $answer
+            if ($serviceNowChoice -eq 'skip') { $skipServiceNow = $true }
+        }
+        $datadogSet = @($datadogFields | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$values[$_]) }).Count -gt 0
+        if (-not $skipDatadog -and -not $datadogSet) {
+            $answer = if ($null -ne $Prompter) { [string](& $Prompter 'Configure Datadog during this install? (yes/skip). Skip requires no Datadog Agent host.' $false) } else { Read-JawsInstallPrompt -Label 'Configure Datadog during this install? (yes/skip). Skip requires no Datadog Agent host.' }
+            $datadogChoice = Resolve-JawsInstallChoice -Answer $answer
+            if ($datadogChoice -eq 'skip') { $skipDatadog = $true }
+        }
+        $pending = @()
+        if (-not $skipServiceNow) { $pending += $serviceNowFields }
+        if (-not $skipDatadog) { $pending += $datadogFields }
+        foreach ($field in $pending) {
             if ([string]::IsNullOrWhiteSpace($values[$field])) {
                 $secret = $field -in @('ServiceNowPassword', 'DatadogApiKey', 'DatadogAppKey')
                 if ($null -ne $Prompter) {
@@ -94,12 +152,28 @@ function Resolve-JawsInstallObservability {
             }
         }
     }
+    if ($skipServiceNow -and @($serviceNowFields | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$values[$_]) }).Count -gt 0) {
+        throw 'JAWS-INSTALL-CONFIG-002: Skip ServiceNow leaves the ServiceNow login unset. Remove the ServiceNow values, or configure ServiceNow.'
+    }
+    if ($skipDatadog -and @($datadogFields | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$values[$_]) }).Count -gt 0) {
+        throw 'JAWS-INSTALL-CONFIG-003: Skip Datadog leaves Datadog unset and requires no Datadog Agent host. Remove the Datadog values and the virtual machine resource id, or configure Datadog.'
+    }
+    if ($serviceNowChoice -eq 'configure') {
+        $missing = @($serviceNowFields | Where-Object { [string]::IsNullOrWhiteSpace([string]$values[$_]) }).Count -gt 0
+        if ($missing) { throw 'JAWS-INSTALL-CONFIG-006: ServiceNow configuration requires the login URL, username, and password. Answer skip to leave ServiceNow unset.' }
+    }
+    $datadogRequested = ($datadogChoice -eq 'configure') -or (-not $skipDatadog -and @($datadogFields | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$values[$_]) }).Count -gt 0)
+    if ($datadogRequested -and ([string]::IsNullOrWhiteSpace([string]$values['DatadogSite']) -or [string]::IsNullOrWhiteSpace([string]$values['DatadogApiKey']) -or [string]::IsNullOrWhiteSpace([string]$values['DefaultVirtualMachineResourceId']))) {
+        throw 'JAWS-INSTALL-CONFIG-005: Datadog configuration requires the site, the API key, and the virtual machine that hosts the Datadog Agent. Answer skip when no agent host is required.'
+    }
+    $values['SkipServiceNow'] = $skipServiceNow
+    $values['SkipDatadog'] = $skipDatadog
     return $values
 }
 
 function Get-JawsFedRampResourceInventory {
     [CmdletBinding()]
-    param($Receipt, [string]$DefaultVirtualMachineResourceId)
+    param($Receipt, [string]$DefaultVirtualMachineResourceId, [switch]$SkipDatadog)
     $foundry = [string]$Receipt.FoundryAccountName
     $project = [string]$Receipt.ProjectName
     $vault = [string]$Receipt.KeyVaultName
@@ -117,7 +191,11 @@ function Get-JawsFedRampResourceInventory {
         [pscustomobject]@{ Name = "$foundry-diagnostics"; Type = 'Microsoft.Insights/diagnosticSettings'; Step = 'B'; Requirement = 'RequestResponse and Audit logs to a customer workspace.'; CurrentPosture = 'Not created.'; MeetsFedrampModerate = $false },
         [pscustomobject]@{ Name = 'jaws-br-vnet'; Type = 'Microsoft.Network/virtualNetworks'; Step = 'D'; Requirement = 'Delegated subnets, NSG, and private DNS for the internal browser and a private Foundry account.'; CurrentPosture = 'Not created by Step B.'; MeetsFedrampModerate = $false },
         [pscustomobject]@{ Name = 'jaws-browser'; Type = 'Microsoft.App/containerApps'; Step = 'D'; Requirement = 'Internal load balancer only. No public ingress.'; CurrentPosture = 'Not created by Step B.'; MeetsFedrampModerate = $false },
-        [pscustomobject]@{ Name = $(if ([string]::IsNullOrWhiteSpace($vm)) { 'default-virtual-machine' } else { $vm }); Type = 'Microsoft.Compute/virtualMachines'; Step = 'G'; Requirement = 'The Datadog Agent runs on the named default virtual machine. Management stays on a private network path.'; CurrentPosture = $(if ([string]::IsNullOrWhiteSpace($vm)) { 'Default virtual machine was not supplied.' } else { 'Resource id recorded. Datadog Agent is not installed.' }); MeetsFedrampModerate = $false }
+        $(if ($SkipDatadog) {
+            [pscustomobject]@{ Name = 'datadog-agent-host'; Type = 'Microsoft.Compute/virtualMachines'; Step = 'G'; Requirement = 'A Datadog Agent host is required only when Datadog is configured.'; CurrentPosture = 'Datadog was skipped. No Datadog Agent host is required.'; MeetsFedrampModerate = $true }
+        } else {
+            [pscustomobject]@{ Name = $(if ([string]::IsNullOrWhiteSpace($vm)) { 'default-virtual-machine' } else { $vm }); Type = 'Microsoft.Compute/virtualMachines'; Step = 'G'; Requirement = 'The Datadog Agent runs on the named default virtual machine. Management stays on a private network path.'; CurrentPosture = $(if ([string]::IsNullOrWhiteSpace($vm)) { 'Default virtual machine was not supplied.' } else { 'Resource id recorded. Datadog Agent is not installed.' }); MeetsFedrampModerate = $false }
+        })
     )
 }
 
@@ -126,7 +204,9 @@ function New-JawsInstallConfiguration {
     param(
         [Parameter(Mandatory)]$Receipt,
         [Parameter(Mandatory)][hashtable]$Observability,
-        [string[]]$StoredSecretNames
+        [string[]]$StoredSecretNames,
+        [switch]$SkipServiceNow,
+        [switch]$SkipDatadog
     )
     $names = [pscustomobject]@{
         ServiceNowUrl = 'jaws-servicenow-url'
@@ -138,7 +218,7 @@ function New-JawsInstallConfiguration {
         DefaultVirtualMachine = 'jaws-datadog-default-vm'
     }
     $stored = @($StoredSecretNames)
-    $resources = @(Get-JawsFedRampResourceInventory -Receipt $Receipt -DefaultVirtualMachineResourceId ([string]$Observability['DefaultVirtualMachineResourceId']))
+    $resources = @(Get-JawsFedRampResourceInventory -Receipt $Receipt -DefaultVirtualMachineResourceId ([string]$Observability['DefaultVirtualMachineResourceId']) -SkipDatadog:$SkipDatadog)
     $open = @($resources | Where-Object { -not $_.MeetsFedrampModerate })
     [pscustomobject]@{
         SchemaVersion = '1.0'
@@ -149,15 +229,18 @@ function New-JawsInstallConfiguration {
                 UrlSecret = $names.ServiceNowUrl
                 UsernameSecret = $names.ServiceNowUsername
                 PasswordSecret = $names.ServiceNowPassword
-                Configured = ($stored -contains $names.ServiceNowUrl)
+                Skipped = [bool]$SkipServiceNow
+                Configured = (-not $SkipServiceNow -and ($stored -contains $names.ServiceNowUrl))
             }
             Datadog = [pscustomobject]@{
                 ApiKeySecret = $names.DatadogApiKey
                 AppKeySecret = $names.DatadogAppKey
                 SiteSecret = $names.DatadogSite
                 DefaultVirtualMachineSecret = $names.DefaultVirtualMachine
-                Configured = ($stored -contains $names.DatadogApiKey)
-                DefaultVirtualMachineConfigured = ($stored -contains $names.DefaultVirtualMachine)
+                Skipped = [bool]$SkipDatadog
+                Configured = (-not $SkipDatadog -and ($stored -contains $names.DatadogApiKey))
+                DefaultVirtualMachineConfigured = (-not $SkipDatadog -and ($stored -contains $names.DefaultVirtualMachine))
+                AgentHostRequired = (-not $SkipDatadog -and ($stored -contains $names.DatadogApiKey))
             }
         }
         FedRampModerate = [pscustomobject]@{
@@ -179,12 +262,15 @@ function Save-JawsInstallConfiguration {
         [string]$InstallConfig,
         [hashtable]$Parameters,
         [switch]$NonInteractive,
+        [switch]$SkipServiceNow,
+        [switch]$SkipDatadog,
         [switch]$AcknowledgeStepBInstall,
         [scriptblock]$Prompter
     )
-    $values = Resolve-JawsInstallObservability -InstallConfig $InstallConfig -Parameters $Parameters -NonInteractive:$NonInteractive -Prompter $Prompter
+    $values = Resolve-JawsInstallObservability -InstallConfig $InstallConfig -Parameters $Parameters -NonInteractive:$NonInteractive -SkipServiceNow:$SkipServiceNow -SkipDatadog:$SkipDatadog -Prompter $Prompter
     $stored = @()
-    $hasValue = @($values.Values | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }).Count -gt 0
+    $secretFields = @(Get-JawsInstallConfigFields)
+    $hasValue = @($secretFields | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$values[$_]) }).Count -gt 0
     if ($hasValue) {
         Import-Module (Join-Path $InstallerRoot 'modules/ObservabilityIntegration.psm1') -Force
         $result = Set-JawsObservabilityIntegration -EnvironmentName $EnvironmentName -InstallerRoot $InstallerRoot -AcknowledgeObservabilitySecrets:$AcknowledgeStepBInstall -ServiceNowUrl $values['ServiceNowUrl'] -ServiceNowUsername $values['ServiceNowUsername'] -ServiceNowPassword $values['ServiceNowPassword'] -DatadogApiKey $values['DatadogApiKey'] -DatadogAppKey $values['DatadogAppKey'] -DatadogSite $values['DatadogSite'] -DefaultVirtualMachineResourceId $values['DefaultVirtualMachineResourceId']
@@ -192,7 +278,7 @@ function Save-JawsInstallConfiguration {
     }
     $receiptPath = Join-Path $InstallerRoot ".local/jaws-step-b-install.$EnvironmentName.generated.json"
     $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
-    $config = New-JawsInstallConfiguration -Receipt $receipt -Observability $values -StoredSecretNames $stored
+    $config = New-JawsInstallConfiguration -Receipt $receipt -Observability $values -StoredSecretNames $stored -SkipServiceNow:([bool]$values['SkipServiceNow']) -SkipDatadog:([bool]$values['SkipDatadog'])
     $local = Join-Path $InstallerRoot '.local'
     if (-not (Test-Path -LiteralPath $local)) { $null = New-Item -ItemType Directory -Path $local -Force }
     $path = Join-Path $local "jaws-install.$EnvironmentName.generated.json"
@@ -200,11 +286,14 @@ function Save-JawsInstallConfiguration {
     [pscustomobject]@{
         Path = $path
         ServiceNowConfigured = [bool]$config.Observability.ServiceNow.Configured
+        ServiceNowSkipped = [bool]$config.Observability.ServiceNow.Skipped
         DatadogConfigured = [bool]$config.Observability.Datadog.Configured
+        DatadogSkipped = [bool]$config.Observability.Datadog.Skipped
         DefaultVirtualMachineConfigured = [bool]$config.Observability.Datadog.DefaultVirtualMachineConfigured
+        DatadogAgentHostRequired = [bool]$config.Observability.Datadog.AgentHostRequired
         FedRampModerate = [bool]$config.FedRampModerate.Accepted
         OpenResourceCount = [int]$config.FedRampModerate.OpenResourceCount
     }
 }
 
-Export-ModuleMember -Function Get-JawsInstallConfigFields, Read-JawsInstallConfigFile, Resolve-JawsInstallObservability, Get-JawsFedRampResourceInventory, New-JawsInstallConfiguration, Save-JawsInstallConfiguration
+Export-ModuleMember -Function Get-JawsInstallConfigFields, Read-JawsInstallConfigFile, Read-JawsInstallSkipFlags, Resolve-JawsInstallObservability, Get-JawsFedRampResourceInventory, New-JawsInstallConfiguration, Save-JawsInstallConfiguration

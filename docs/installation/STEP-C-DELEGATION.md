@@ -4,11 +4,15 @@ The operator entry point is `installer/Install-JawsThroughStepC.ps1`. Validate i
 
 ## Step B environment
 
-`-EnvironmentName <environment>` reads the Step B receipt and generated state under `installer/.local`. It refuses `dev`, `rg-aiops-lab`, `jaws-foundry-dev`, `jaws-dev`, and `jawsregistrydev001`. The planner is `jaws-investigation-planner-<environment>`. The RemoteA2A connection is `jaws-investigation-a2a-<environment>` with `AgenticIdentityToken`, audience `https://ai.azure.com`, `isSharedToAll` false, and the planner A2A endpoint on `https://<account>.cognitiveservices.azure.com` as its target. `services.ai.azure.com` still answers project reads, and it returns Project not found for this project's A2A agent card, so the toolbox cannot delegate through that host. The dev project stays on `services.ai.azure.com`. An existing customer connection that still targets the planner on that host is moved by Install. The toolbox name remains `jaws-investigation-a2a-tools` inside that project. No hosted Investigation agent is created.
+`-EnvironmentName <environment>` reads the Step B receipt and generated state under `installer/.local`. It refuses `dev`, `rg-aiops-lab`, `jaws-foundry-dev`, `jaws-dev`, and `jawsregistrydev001`. The planner is `jaws-investigation-planner-<environment>`. The RemoteA2A connection is `jaws-investigation-a2a-<environment>` with `AgenticIdentityToken`, audience `https://ai.azure.com`, `isSharedToAll` false, and the planner A2A endpoint on `https://<account>.services.ai.azure.com/api/projects/<project>/agents/<planner>/endpoint/protocols/a2a`. That is the same Foundry-to-Foundry route the dev project uses. The installer does not set an agent-card path and does not set `send_credentials_for_agent_card`. A connection that still targets the planner on `cognitiveservices.azure.com` is moved back to the `services.ai.azure.com` route by Install. The toolbox name remains `jaws-investigation-a2a-tools` inside that project. No hosted Investigation agent is created.
+
+The next functional test uses a new public-egress Foundry account with no `networkInjections`. On that account the `services.ai.azure.com` responses route and the A2A card are the supported path, as they are on the dev project. A half-injected account, with agent injection and public network access left enabled, is not that test. `rg-aiops-lab-test2` was that shape and has been deleted. Do not run `Install-JawsFoundryPrivateNetwork.ps1` before this step prints `TOOL_INVOKED_SUCCEEDED` and `TASK_STATE_COMPLETED`.
+
+A `CLOSED` result is the functional check. FedRAMP Moderate acceptance additionally requires the private-from-create account in [STEP-01-STAGE-B.md](STEP-01-STAGE-B.md), the A2A name resolving to the private endpoint, Entra authentication only, and no account key in the connection. The public-egress test leaves that criterion open. `Customer installation accepted` stays false either way. Do not adopt a Supervisor route whose latest version is already past version 1 (`JAWS-INSTALL-C-007`) or a toolbox that already has versions (`JAWS-TOOLBOX-006`). Start from the new Step B receipt.
 
 Install, with `-AcknowledgeStepCInstall`, may post one Supervisor version after version 1. That version uses the Step B image digest and sets `JAWS_INVESTIGATION_TOOLBOX_NAME`. Version 1 is read back and must still be the Step B digest without that variable. The dev project rule that the routed digest differs from version 1 stays on the default command, where the accepted route is Supervisor v5.
 
-A `CLOSED` result from this path is the functional check for that environment. It is a customer installation acceptance only after a live fresh-subscription run is recorded. Offline tests in `tests/installer/StepCInstall.Tests.ps1` do not supply that record.
+Offline tests in `tests/installer/StepCInstall.Tests.ps1` do not supply a fresh-subscription receipt. Customer installation acceptance still requires that live record, including the FedRAMP Moderate criterion above.
 
 ## Microsoft-supported pattern
 
@@ -22,7 +26,10 @@ The closed dev-project implementation follows the Foundry A2A and hosted-toolbox
 
 Official references:
 - https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/tools/agent-to-agent
+- https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/enable-agent-to-agent-endpoint
+- https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/agent-to-agent-authentication
 - https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/tools/use-toolbox-hosted-agent
+- https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/networking-options
 
 ## Current incremental implementation
 `Install-JawsStepC.ps1` supports `DelegationPlan`, `DelegationInstall`, and `DelegationVerify`, invoking new connection and toolbox modules. The connection uses the Azure ARM resource API; the toolbox uses the Foundry v1 data plane.

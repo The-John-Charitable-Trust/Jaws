@@ -12,9 +12,9 @@ function Get-JawsStepCA2AEndpoint {
     if ($ProjectEndpoint -notmatch '^https://(?<account>[a-z0-9-]+)\.services\.ai\.azure\.com/api/projects/(?<project>[a-z0-9-]+)$') {
         throw 'JAWS-DELEGATE-010: Project endpoint is not a Step B Foundry project URL.'
     }
-    # services.ai.azure.com answers project reads, then returns "Project not found" for the
-    # A2A agent card after this project is recreated. The account endpoint serves that card.
-    return "https://$($Matches.account).cognitiveservices.azure.com/api/projects/$($Matches.project)"
+    # Foundry-to-Foundry A2A uses this services.ai.azure.com project route for every environment.
+    # On a private-from-create account the same name resolves to the private endpoint.
+    return $ProjectEndpoint
 }
 
 function Get-JawsStepCReservedNames {

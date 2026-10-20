@@ -12,6 +12,8 @@ Step B creates the foundation for one environment in the subscription already se
 
 The example blueprint stays a template. Its subscription id remains `00000000-0000-0000-0000-000000000000`. The installer copies the signed-in subscription into the plan. `dev` and `rg-aiops-lab` are refused so the accepted development project is left unchanged.
 
+The account this command creates has public egress and no `networkInjections`. That is the shape of the dev account and the shape of the next functional test. It is not the FedRAMP Moderate account. The FedRAMP account is created private, before any project or agent exists: public network access disabled, a private endpoint, private DNS for `privatelink.services.ai.azure.com`, `privatelink.cognitiveservices.azure.com`, and `privatelink.openai.azure.com`, and a dedicated `/24` delegated to `Microsoft.App/environments`. Injection cannot be added later. The current Key Vault uses RBAC and purge protection and is publicly reachable. The current registry is Basic with admin disabled and is publicly reachable. FedRAMP Moderate for those resources adds a private endpoint on each, and the registry is Premium because Basic has no private endpoint. Local authentication on the Foundry account is disabled, and RequestResponse and Audit diagnostics are enabled. The installer does not create that private account yet.
+
 These resources are billable. Install does nothing unless `-AcknowledgeStepBInstall` and the plan digest from the plan command are both present.
 
 ## Prerequisites
@@ -146,7 +148,13 @@ The report is `installer/.local/jaws-step-b-acceptance.your-environment.generate
 
 ## Acceptance
 
-`STEP-B ACCEPTANCE PASS` is the only Step B acceptance line. `STEP-B INSTALL PASS` records the installer receipt. A local stand-in for Azure CLI can exercise the commands, and that exercise is not a fresh-subscription receipt. Step B stays unaccepted until B4 prints `STEP-B ACCEPTANCE PASS` against a real subscription that is not the dev project.
+`STEP-B ACCEPTANCE PASS` is the functional acceptance line. `STEP-B INSTALL PASS` records the installer receipt. A local stand-in for Azure CLI can exercise the commands, and that exercise is not a fresh-subscription receipt. Step B stays functionally unaccepted until B4 prints `STEP-B ACCEPTANCE PASS` against a real subscription that is not the dev project.
+
+- B-09: FedRAMP Moderate. The Foundry account in the signed-in subscription has public network access disabled, a private endpoint, the three private DNS zones named above, and agent injection chosen at create time. Key Vault has public access disabled, a private endpoint, RBAC, and purge protection. The registry has admin disabled and a private endpoint. Local authentication is disabled. RequestResponse and Audit diagnostics are on. A public-egress `STEP-B ACCEPTANCE PASS` leaves this criterion open and leaves `Customer installation accepted` false.
+
+## Restart
+
+`rg-aiops-lab-test2` has been deleted. An old receipt under `installer/.local` for that name will fail Accept with `JAWS-STEP-B-024` because the resource group is gone. Run Plan, Preflight, and Install again before Accept. Reuse the name `aiops-lab-test2` only on that new Install. Pull `main` after the A2A host change is merged, so Step C keeps the planner on `services.ai.azure.com`. Do not run `Install-JawsFoundryPrivateNetwork.ps1` during this restart. The dev project stays unchanged.
 
 ## Actual JAWS implementation source (B)
 

@@ -73,6 +73,11 @@ Pester `tests/installer/StepA.Tests.ps1` exercises a stand-in Azure CLI. That is
 - A-04: `Azure writes: 0`, and no file is added under `installer/config/`.
 - A-05: The discovery receipt exists. The test script's `Live Azure read: false` line is not a second Azure read.
 - A-06: Greenfield Step A is not accepted until a real subscription prints `STEP-A DISCOVERY PASS`.
+- A-07: FedRAMP Moderate. Discovery creates no resource. The receipt is read with the inventory, and any Foundry account, Key Vault, registry, storage account, or container app that is publicly reachable is recorded before Step B. An empty subscription has nothing to record. Step A does not authorize the subscription.
+
+## Restart
+
+`rg-aiops-lab-test2` has been deleted. A discovery receipt for that name is historical. Run Discover again on the subscription you will test, then continue with Step B Plan. Do not point Discover at `installer/config/jaws-installation-state.dev.json` for that test.
 
 ## Actual JAWS implementation source (A)
 

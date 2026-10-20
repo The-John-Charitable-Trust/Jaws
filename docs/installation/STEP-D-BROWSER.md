@@ -50,9 +50,11 @@ The install receipt records `PlaywrightServiceEndpoint`, `BrowserToolsetVersion`
 
 ## Foundry virtual-network injection
 
-A Foundry account created without `networkInjections` sends tool calls from Microsoft's network. Those calls cannot reach the internal load balancer. Injection is set when the account is created and cannot be added later.
+A Foundry account created without `networkInjections` sends tool calls from Microsoft's network. Those calls cannot reach the internal load balancer. Injection is set when the account is created and cannot be added later. Foundry's built-in browser automation is not supported under network isolation. The JAWS browser is this internal OpenAPI app, which is the supported private path.
 
-`Install-JawsFoundryPrivateNetwork.ps1 -AcknowledgeFoundryReplacement` deletes that account, purges the soft-deleted name, and creates it again with agent injection into `jaws-foundry-agents`. The Foundry data-plane endpoint stays publicly reachable so this installer can keep calling it from the operator machine. Browser traffic from the agent leaves through the virtual network. The command removes the project, the model deployment, the Supervisor, and the Investigation toolbox with the account. Re-run Step B Install, Step C Install, and Step D Install afterward. Without the acknowledgement, or for `-EnvironmentName dev`, it throws `JAWS-STEP-D-044` and writes nothing. The private-path check throws `JAWS-STEP-D-043` when the account has no agent injection, and it does not call the Supervisor.
+`Install-JawsFoundryPrivateNetwork.ps1 -AcknowledgeFoundryReplacement` deletes that account, purges the soft-deleted name, and creates it again with agent injection into `jaws-foundry-agents` while public network access stays enabled. That combination is the half-injected account that broke Step C on `aiops-lab-test2`. It is not a FedRAMP Moderate account, and it is not the next test. Do not run it before Step C prints `TOOL_INVOKED_SUCCEEDED` and `TASK_STATE_COMPLETED`. The FedRAMP account is created private from the start, with public network access disabled, a private endpoint, and private DNS, as described in [STEP-01-STAGE-B.md](STEP-01-STAGE-B.md). The A2A and responses names stay on `services.ai.azure.com` and resolve to that private endpoint. The operator machine is in that virtual network or peered to it.
+
+The command removes the project, the model deployment, the Supervisor, and the Investigation toolbox with the account. Re-run Step B Install, Step C Install, and Step D Install afterward, and only after the Step C functional line exists on the account you intend to replace. Without the acknowledgement, or for `-EnvironmentName dev`, it throws `JAWS-STEP-D-044` and writes nothing. The private-path check throws `JAWS-STEP-D-043` when the account has no agent injection, and it does not call the Supervisor. Responses calls for the private path and the capability check use `services.ai.azure.com`.
 
 If the new account create reports that the name is still reserved, wait 5 minutes and run the same command once. Do not retry in a loop. If it is still reserved, wait another 5 minutes and run it once more.
 
@@ -60,7 +62,9 @@ The Step B re-run uses the digest already recorded for this environment. Open `i
 
 ## Test environment aiops-lab-test2
 
-Use `-EnvironmentName aiops-lab-test2` on every command. `aiopslabtest2` is only the compact form used by the Container Apps resources. It is not the environment name and it is not the Foundry account name.
+`rg-aiops-lab-test2` has been deleted. The names below are the names a new Install of that environment uses. They are not a live account until Step B Install runs again. An Accept against the old receipt fails because the resource group is gone. `aiopslabtest2` is only the compact form used by the Container Apps resources. It is not the environment name and it is not the Foundry account name.
+
+The next test is public-egress Step B, then Step C on `services.ai.azure.com`, then Step D. Skip `Install-JawsFoundryPrivateNetwork.ps1` until Step C has printed `TASK_STATE_COMPLETED` on that new account.
 
 | Use this | Name |
 | --- | --- |
@@ -73,19 +77,20 @@ Use `-EnvironmentName aiops-lab-test2` on every command. `aiopslabtest2` is only
 | Container Apps environment | `jaws-br-env-aiopslabtest2` |
 | Virtual network | `jaws-br-vnet-aiopslabtest2` |
 
-Resource group, location, quota mode, and plan digest come from `installer/.local/jaws-step-b-install.aiops-lab-test2.generated.json`.
+After the new Step B Install, resource group, location, quota mode, and plan digest are in `installer/.local/jaws-step-b-install.aiops-lab-test2.generated.json`. The plan digest is also the `Plan SHA-256` line from Step B Plan.
 
 ```powershell
 git checkout main
 git pull origin main
-.\installer\Install-JawsFoundryPrivateNetwork.ps1 -EnvironmentName aiops-lab-test2 -AcknowledgeFoundryReplacement
+.\installer\Install-Jaws.ps1 -Mode Install -EnvironmentName aiops-lab-test2 -ResourceGroupName rg-aiops-lab-test2 -Location eastus -ApprovedPlanSha256 <PlanSha256> -AcknowledgeStepBInstall
+.\installer\Install-Jaws.ps1 -Mode Accept -EnvironmentName aiops-lab-test2 -ResourceGroupName rg-aiops-lab-test2 -Location eastus
+.\installer\Install-JawsThroughStepC.ps1 -Mode Install -EnvironmentName aiops-lab-test2 -AcknowledgeStepCInstall
+.\installer\Install-JawsThroughStepC.ps1 -Mode Validate -EnvironmentName aiops-lab-test2 -AcknowledgeInferenceCharges
 ```
 
-Expected: `STEP-D FOUNDRY NETWORK PASS`, `Foundry account replaced: True`, `Customer installation accepted: false`, and `Next step: Step B Install`. If the name is still reserved, wait 5 minutes and run that command once.
+Run the Step D commands only after that Validate prints `TASK_STATE_COMPLETED`. Copy `PlanSha256` from the new Step B plan, not from a receipt left on the test VM for the deleted account.
 
 ```powershell
-.\installer\Install-Jaws.ps1 -Mode Install -EnvironmentName aiops-lab-test2 -ResourceGroupName <ResourceGroupName> -Location <Location> -ApprovedPlanSha256 <PlanSha256> -QuotaMode <QuotaMode> -AcknowledgeStepBInstall
-.\installer\Install-JawsThroughStepC.ps1 -Mode Install -EnvironmentName aiops-lab-test2 -AcknowledgeStepCInstall
 .\installer\Install-JawsStepD.ps1 -Mode Install -EnvironmentName aiops-lab-test2 -AcknowledgeStepDInstall
 .\installer\Install-JawsStepD.ps1 -Mode Accept -EnvironmentName aiops-lab-test2
 .\installer\Publish-JawsSupervisorBrowserImage.ps1 -EnvironmentName aiops-lab-test2 -AcknowledgeSupervisorBrowserImage
@@ -138,6 +143,13 @@ Credential selectors whose names contain `password`, `passwd`, `secret`, or `tok
 Evidence JSONL records `requested_by`, `delegation_id`, the action, target, outcome, duration, and a screenshot reference. It does not record typed text or passwords.
 
 A task stops after 10 minutes or 50 steps. The service returns `allow_list_rejected`, `browser_timeout`, `browser_unreachable`, `credential_not_registered`, or `credential_signature_required`. Downloads are disabled. A fourth concurrent session fails immediately with `browser_queue_timeout`. There is no wait queue.
+
+## Acceptance criteria
+
+- D-00: Functional. Accept prints `STEP-D ACCEPTANCE PASS`, `Ready for next step: false`, and `Next step: Step E is not installable`. `Customer installation accepted` stays false.
+- D-01: Supervisor version 1 stays the Step B digest and does not receive `JAWS_BROWSER_TOOLBOX_NAME`. Install prints `Supervisor image rebuilt: false`.
+- D-02: The Container App has no public endpoint. The allow-list starts empty. Browser tools are listed only on the virtual-machine specialist.
+- D-03: FedRAMP Moderate. The browser is the internal OpenAPI app on a Foundry account created with public network access disabled, a private endpoint, private DNS, and agent injection. Key Vault secrets and the registry use private endpoints. The virtual-machine specialist and the later observability server are reached as private MCP or OpenAPI. No public specialist URL is created. The public-egress Step D run leaves this criterion open. `Install-JawsFoundryPrivateNetwork.ps1` does not close it.
 
 ## What this release does not prove
 

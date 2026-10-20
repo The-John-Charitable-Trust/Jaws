@@ -920,7 +920,7 @@ function Invoke-JawsBrowserPrivatePath {
     if ([string]::IsNullOrWhiteSpace((Test-JawsFoundryAgentInjection $foundry))) {
         throw 'JAWS-STEP-D-043: Foundry has no agent virtual-network injection, so it cannot reach the private browser. Run Install-JawsFoundryPrivateNetwork.ps1 -AcknowledgeFoundryReplacement. No Supervisor call was made.'
     }
-    $endpoint = "https://$([string]$stepB.FoundryAccountName).cognitiveservices.azure.com/api/projects/$([string]$stepB.ProjectName)"
+    $endpoint = "https://$([string]$stepB.FoundryAccountName).services.ai.azure.com/api/projects/$([string]$stepB.ProjectName)"
     $supervisor = [string]$stepB.AgentName
     $model = [string]$stepB.ModelDeploymentName
     $url = "$endpoint/agents/$supervisor/endpoint/protocols/openai/responses?api-version=v1"
@@ -997,7 +997,7 @@ function Invoke-JawsBrowserCapability {
         throw 'JAWS-STEP-D-039: Add that URL with Set-JawsBrowserAllowList.ps1 before capability acceptance. No Supervisor call was made.'
     }
     $stepB = Get-JawsBrowserStepBReceipt -InstallerRoot $InstallerRoot -EnvironmentName $EnvironmentName
-    $endpoint = "https://$([string]$stepB.FoundryAccountName).cognitiveservices.azure.com/api/projects/$([string]$stepB.ProjectName)"
+    $endpoint = "https://$([string]$stepB.FoundryAccountName).services.ai.azure.com/api/projects/$([string]$stepB.ProjectName)"
     $supervisor = [string]$stepB.AgentName
     $model = [string]$stepB.ModelDeploymentName
     $invokeUrl = "$endpoint/agents/$supervisor/endpoint/protocols/openai/responses?api-version=v1"

@@ -253,8 +253,8 @@ Describe 'Step C install correction policy' {
         Get-JawsStepCCorrection -Gate Connection -ErrorMessage 'JAWS-DELEGATE-003: Expected prompt-agent connection missing or mismatched.' -Mode Install | Should -Be 'CreateConnection'
         Get-JawsStepCCorrection -Gate Connection -ErrorMessage 'JAWS-DELEGATE-004: Connection still targets the hosted Investigation agent. Foundry rejects A2A operations on hosted agents. Run -Mode Retarget with the plan SHA.' -Mode Install | Should -Be 'RetargetConnection'
         Get-JawsStepCCorrection -Gate Connection -ErrorMessage 'JAWS-DELEGATE-004: Existing connection differs; refusing to overwrite.' -Mode Install | Should -BeNullOrEmpty
-        Get-JawsStepCFromStepBCorrection -Gate Connection -ErrorMessage 'JAWS-DELEGATE-010: RemoteA2A connection targets the services.ai.azure.com A2A route.' -Mode Validate | Should -BeNullOrEmpty
-        Get-JawsStepCFromStepBCorrection -Gate Connection -ErrorMessage 'JAWS-DELEGATE-010: RemoteA2A connection targets the services.ai.azure.com A2A route.' -Mode Install | Should -Be 'RetargetConnectionHost'
+        Get-JawsStepCFromStepBCorrection -Gate Connection -ErrorMessage 'JAWS-DELEGATE-010: RemoteA2A connection targets the cognitiveservices.azure.com account host.' -Mode Validate | Should -BeNullOrEmpty
+        Get-JawsStepCFromStepBCorrection -Gate Connection -ErrorMessage 'JAWS-DELEGATE-010: RemoteA2A connection targets the cognitiveservices.azure.com account host.' -Mode Install | Should -Be 'RetargetConnectionHost'
     }
     It 'repairs only the known toolbox and role gaps' {
         Get-JawsStepCCorrection -Gate Toolbox -ErrorMessage 'JAWS-TOOLBOX-007: Toolbox version not verifiable.' -Mode Install | Should -Be 'CreateToolbox'
@@ -491,8 +491,8 @@ Describe 'Step C from a Step B environment' {
         $log | Should -Not -Match 'jaws-investigation-dev'
         $connection = Get-Content -LiteralPath (Join-Path $script:state 'connection.json') -Raw
         $connection | Should -Match '"isSharedToAll":false'
-        $connection | Should -Match 'https://jaws-foundry-lab1\.cognitiveservices\.azure\.com/api/projects/jaws-lab1/agents/jaws-investigation-planner-lab1/endpoint/protocols/a2a'
-        $connection | Should -Not -Match 'services\.ai\.azure\.com/.*/protocols/a2a'
+        $connection | Should -Match 'https://jaws-foundry-lab1\.services\.ai\.azure\.com/api/projects/jaws-lab1/agents/jaws-investigation-planner-lab1/endpoint/protocols/a2a'
+        $connection | Should -Not -Match 'cognitiveservices\.azure\.com/.*/protocols/a2a'
         $receipt = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-step-c-install.lab1.generated.json') -Raw | ConvertFrom-Json
         $receipt.SupervisorVersionPosted | Should -BeTrue
         $receipt.SupervisorV1Modified | Should -BeFalse
@@ -501,7 +501,7 @@ Describe 'Step C from a Step B environment' {
         @($receipt.Corrections) | Should -Contain 'PublishSupervisorRoute'
     }
 
-    It 'moves a planner connection off the services.ai.azure.com A2A route' {
+    It 'moves a planner connection off the cognitiveservices.azure.com account host' {
         Write-StepBFixture
         $connId = "/subscriptions/$($script:sub)/resourceGroups/rg-jaws-lab1/providers/Microsoft.CognitiveServices/accounts/jaws-foundry-lab1/projects/jaws-lab1/connections/jaws-investigation-a2a-lab1"
         @{
@@ -516,7 +516,7 @@ Describe 'Step C from a Step B environment' {
                     category = 'RemoteA2A'
                     audience = 'https://ai.azure.com'
                     isSharedToAll = $false
-                    target = 'https://jaws-foundry-lab1.services.ai.azure.com/api/projects/jaws-lab1/agents/jaws-investigation-planner-lab1/endpoint/protocols/a2a'
+                    target = 'https://jaws-foundry-lab1.cognitiveservices.azure.com/api/projects/jaws-lab1/agents/jaws-investigation-planner-lab1/endpoint/protocols/a2a'
                     sharedUserList = @()
                     metadata = @{ ApiType = 'Azure' }
                 }
@@ -529,8 +529,8 @@ Describe 'Step C from a Step B environment' {
         $output | Should -Match 'Step C install: VALIDATED'
         $output | Should -Not -Match 'JAWS-DELEGATE-010'
         $connection = Get-Content -LiteralPath (Join-Path $script:state 'connection.json') -Raw
-        $connection | Should -Match 'https://jaws-foundry-lab1\.cognitiveservices\.azure\.com/api/projects/jaws-lab1/agents/jaws-investigation-planner-lab1/endpoint/protocols/a2a'
-        $connection | Should -Not -Match 'services\.ai\.azure\.com/.*/protocols/a2a'
+        $connection | Should -Match 'https://jaws-foundry-lab1\.services\.ai\.azure\.com/api/projects/jaws-lab1/agents/jaws-investigation-planner-lab1/endpoint/protocols/a2a'
+        $connection | Should -Not -Match 'cognitiveservices\.azure\.com/.*/protocols/a2a'
         $receipt = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-step-c-install.lab1.generated.json') -Raw | ConvertFrom-Json
         @($receipt.Corrections) | Should -Contain 'RetargetConnectionHost'
         $receipt.CustomerInstallationAccepted | Should -BeFalse
@@ -548,7 +548,7 @@ Describe 'Step C from a Step B environment' {
         $output | Should -Match 'Evidence: '
         $output | Should -Not -Match 'Live Azure read: true'
         $log = Get-Content -LiteralPath (Join-Path $script:state 'log.txt') -Raw
-        $log | Should -Match 'https://jaws-foundry-lab1\.cognitiveservices\.azure\.com/api/projects/jaws-lab1/agents/jaws-supervisor-lab1/endpoint/protocols/openai/responses\?api-version=v1'
+        $log | Should -Match 'https://jaws-foundry-lab1\.services\.ai\.azure\.com/api/projects/jaws-lab1/agents/jaws-supervisor-lab1/endpoint/protocols/openai/responses\?api-version=v1'
         $report = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-step-c-final-acceptance.lab1.generated.json') -Raw | ConvertFrom-Json
         $report.Status | Should -Be 'PASS'
         $report.TaskState | Should -Be 'TASK_STATE_COMPLETED'
@@ -641,7 +641,7 @@ Describe 'Step C from a Step B environment' {
         Write-StepBFixture
         $endpoint = 'https://jaws-foundry-lab1.services.ai.azure.com/api/projects/jaws-lab1'
         $connId = "/subscriptions/$($script:sub)/resourceGroups/rg-jaws-lab1/providers/Microsoft.CognitiveServices/accounts/jaws-foundry-lab1/projects/jaws-lab1/connections/jaws-investigation-a2a-lab1"
-        $target = 'https://jaws-foundry-lab1.cognitiveservices.azure.com/api/projects/jaws-lab1/agents/jaws-investigation-planner-lab1/endpoint/protocols/a2a'
+        $target = 'https://jaws-foundry-lab1.services.ai.azure.com/api/projects/jaws-lab1/agents/jaws-investigation-planner-lab1/endpoint/protocols/a2a'
         @{
             planner = $true
             patched = $true

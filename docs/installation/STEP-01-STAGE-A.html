@@ -41,6 +41,7 @@ az account set --subscription "&lt;your-subscription-id&gt;"
 </ul>
 <h2>Acceptance</h2>
 <p>Offline Pester covers the empty-subscription path with a stand-in Azure CLI. A fresh-subscription receipt has not been archived, so greenfield Step A is not accepted. Dev-project reconciliation remains the previously accepted Step A evidence.</p>
+<p><strong>A-07, FedRAMP Moderate.</strong> Discovery creates no resource. Read the receipt against the inventory and record any Foundry account, Key Vault, registry, storage account, or container app that is publicly reachable before Step B. An empty subscription has nothing to record. Step A does not authorize the subscription. <code>rg-aiops-lab-test2</code> has been deleted. Run Discover again before the next Step B plan.</p>
 <p><a href="STEP-01-STAGE-A.md">Markdown copy</a> · <a href="STEP-01-STAGE-B.md">Step B</a></p>
 </section>
 </main>

@@ -23,6 +23,7 @@ function Get-JawsStepCCorrection {
   'Connection' {
    if($ErrorMessage -match 'JAWS-DELEGATE-003'){ return 'CreateConnection' }
    if($ErrorMessage -match 'JAWS-DELEGATE-004: Connection still targets the hosted'){ return 'RetargetConnection' }
+   if($ErrorMessage -match 'JAWS-DELEGATE-010'){ return 'RetargetConnectionHost' }
   }
   'Toolbox' {
    if($ErrorMessage -match 'JAWS-TOOLBOX-007'){ return 'CreateToolbox' }
@@ -50,6 +51,7 @@ function Get-JawsStepCFromStepBCorrection {
   'Connection' {
    if($ErrorMessage -match 'JAWS-DELEGATE-003'){ return 'CreateConnection' }
    if($ErrorMessage -match 'JAWS-DELEGATE-004: Connection still targets the hosted'){ return 'RetargetConnection' }
+   if($ErrorMessage -match 'JAWS-DELEGATE-010'){ return 'RetargetConnectionHost' }
   }
   'Toolbox' {
    if($ErrorMessage -match 'JAWS-TOOLBOX-007'){ return 'CreateToolbox' }

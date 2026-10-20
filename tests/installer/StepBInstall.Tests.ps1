@@ -140,7 +140,9 @@ if args[:2] == ["acr", "check-name"]:
     emit({"nameAvailable": candidate not in taken})
 if args[:3] == ["role", "assignment", "list"]:
     if "--assignee-object-id" in args:
-        emit([load("role")] if exists("role") else [])
+        assignee = flag("--assignee-object-id", "")
+        roles = load("roles") if exists("roles") else {}
+        emit([roles[assignee]] if assignee in roles else [])
     emit([{"roleDefinitionName": os.environ.get("JAWS_STEPB_STUB_ROLE", "Owner"), "scope": "/subscriptions/" + sub}])
 if args[:3] == ["role", "assignment", "create"]:
     attempts = 0
@@ -151,7 +153,11 @@ if args[:3] == ["role", "assignment", "create"]:
     if attempts < 2:
         print("PrincipalNotFound: principal not found", file=sys.stderr)
         sys.exit(3)
-    payload = {"roleDefinitionName": "AcrPull", "principalId": principal, "scope": "registry"}
+    assignee = flag("--assignee-object-id", principal)
+    payload = {"roleDefinitionName": "AcrPull", "principalId": assignee, "scope": "registry"}
+    roles = load("roles") if exists("roles") else {}
+    roles[assignee] = payload
+    save("roles", roles)
     save("role", payload)
     emit(payload)
 if args[:1] == ["rest"] and "--method" in args:
@@ -197,7 +203,7 @@ if args[:1] == ["rest"] and "--method" in args:
     with open(body_flag[1:], encoding="utf-8") as handle:
         body = json.load(handle)
     image = body["definition"]["container_configuration"]["image"]
-    payload = {"name": body["name"], "status": "active", "draft": False, "version": "1", "definition": {"container_configuration": {"image": image}}}
+    payload = {"name": body["name"], "status": "active", "draft": False, "version": "1", "instance_identity": {"principal_id": "33333333-3333-3333-3333-333333333333", "client_id": "33333333-3333-3333-3333-333333333333"}, "definition": {"container_configuration": {"image": image}}}
     save("agent", payload)
     emit(payload)
 print("unexpected " + " ".join(args), file=sys.stderr)
@@ -247,6 +253,7 @@ Describe 'Step B foundation install' {
             ([regex]::Matches($log, 'cognitiveservices account create')).Count | Should -Be 1
             ([regex]::Matches($log, '/agents\?api-version=v1')).Count | Should -Be 1
             ([regex]::Matches($log, 'acr build')).Count | Should -Be 1
+            $log | Should -Match '33333333-3333-3333-3333-333333333333'
             $log | Should -Match 'acr build --registry jawsacrlab1'
             $log | Should -Match '--platform linux/amd64'
             $log | Should -Match '--file .+src/Jaws\.Supervisor\.Host/Dockerfile'

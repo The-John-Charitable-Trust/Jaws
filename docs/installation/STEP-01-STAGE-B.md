@@ -7,7 +7,7 @@ Step B creates the foundation for one environment in the subscription already se
 - model deployment at capacity 1: GlobalStandard when quota mode is Static, regional Standard when Install is given `-QuotaMode Dynamic`
 - Key Vault with RBAC and purge protection
 - Basic registry with admin disabled
-- AcrPull for the project identity
+- AcrPull for the project identity and for the Supervisor agent identity. The hosted agent runtime pulls the image with the agent identity.
 - hosted Supervisor version 1, pinned to the registry image digest
 
 The example blueprint stays a template. Its subscription id remains `00000000-0000-0000-0000-000000000000`. The installer copies the signed-in subscription into the plan. `dev` and `rg-aiops-lab` are refused so the accepted development project is left unchanged.

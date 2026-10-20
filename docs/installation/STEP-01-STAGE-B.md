@@ -73,6 +73,8 @@ Authorized writes: bounded
 
 The report is `installer/.local/jaws-step-b-preflight.your-environment.generated.json`. It lists the only writes Install is allowed to attempt. Model quota stays deferred until the Foundry account exists, and the install then refuses a model the account does not offer. Azure Policy deny effects are listed as not simulated. A caller with Contributor but without Owner, User Access Administrator, or Role Based Access Control Administrator stops at `JAWS-STEP-B-026`. No resource group is created. Install repeats this check before its first write, so an old report cannot skip it.
 
+When the Foundry account, Key Vault, or registry name is already taken, Preflight prints `is not available` and asks `Enter another` name. An invalid answer is printed and the prompt repeats. The accepted name is saved into the plan, and Preflight prints the new `Plan SHA-256`. Use that digest for Install. `-NonInteractive` does not ask. It stops at `JAWS-STEP-B-026` and names `-FoundryAccountName`, `-KeyVaultName`, or `-AcrName`. Install asks the same question before its first write.
+
 ## B2. Package
 
 Optional check that the Supervisor host publishes before the install spends money.
@@ -194,7 +196,7 @@ Accept also prints `FedRAMP open resources` and `Install config` when B3 wrote t
 
 ## Restart
 
-`rg-aiops-lab-test2` has been deleted. An old receipt under `installer/.local` for that name fails Accept with `JAWS-STEP-B-024` because the resource group is gone. The default Key Vault for environment `aiops-lab-test2` stays purge-protected until 2027-01-18. Choose a new `-EnvironmentName` so the generated Key Vault name is different, or keep that environment and pass `-KeyVaultName`. Run Plan, copy the new `Plan SHA-256`, then run Preflight and Install. Do not run `Install-JawsFoundryPrivateNetwork.ps1` during this restart. The dev project stays unchanged.
+`rg-aiops-lab-test2` has been deleted. An old receipt under `installer/.local` for that name fails Accept with `JAWS-STEP-B-024` because the resource group is gone. The default Key Vault for environment `aiops-lab-test2` stays purge-protected until 2027-01-18. Choose a new `-EnvironmentName` so the generated Key Vault name is different, or keep that environment. Preflight then prints that the Key Vault name is not available and asks for another. `-NonInteractive` does not ask, so pass `-KeyVaultName`. Run Plan, then Preflight, and use the `Plan SHA-256` Preflight prints when a name was replaced. Do not run `Install-JawsFoundryPrivateNetwork.ps1` during this restart. The dev project stays unchanged.
 
 ## Actual JAWS implementation source (B)
 

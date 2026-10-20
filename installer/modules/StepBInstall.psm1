@@ -403,11 +403,96 @@ function Test-JawsStepBNameAvailable {
     return ($value -eq $true)
 }
 
+function Test-JawsStepBFoundryDomainFree {
+    param([Parameter(Mandatory)][string]$Name,[Parameter(Mandatory)][string]$SubscriptionId,[Parameter(Mandatory)][string]$Directory,[Parameter(Mandatory)][string]$EnvironmentName)
+    $bodyFile = Join-Path $Directory "jaws-step-b-name.$EnvironmentName.json"
+    @{ subdomainName = $Name; type = 'Microsoft.CognitiveServices/accounts'; kind = 'AIServices' } | ConvertTo-Json -Compress | Set-Content -LiteralPath $bodyFile -Encoding ascii
+    $check = Invoke-JawsStepBAz -Arguments @('rest','--method','POST','--url',"https://management.azure.com/subscriptions/$SubscriptionId/providers/Microsoft.CognitiveServices/checkDomainAvailability?api-version=2024-10-01",'--body',"@$bodyFile",'--output','json','--only-show-errors')
+    return ((Get-JawsStepBProperty -Object $check -Names @('isSubdomainAvailable')) -eq $true)
+}
+
+function Test-JawsStepBKeyVaultNameFree {
+    param([Parameter(Mandatory)][string]$Name,[Parameter(Mandatory)][string]$SubscriptionId,[Parameter(Mandatory)][string]$Directory,[Parameter(Mandatory)][string]$EnvironmentName)
+    $bodyFile = Join-Path $Directory "jaws-step-b-vault-name.$EnvironmentName.json"
+    @{ name = $Name; type = 'Microsoft.KeyVault/vaults' } | ConvertTo-Json -Compress | Set-Content -LiteralPath $bodyFile -Encoding ascii
+    $check = Invoke-JawsStepBAz -Arguments @('rest','--method','POST','--url',"https://management.azure.com/subscriptions/$SubscriptionId/providers/Microsoft.KeyVault/checkNameAvailability?api-version=2022-07-01",'--body',"@$bodyFile",'--output','json','--only-show-errors')
+    return (Test-JawsStepBNameAvailable $check)
+}
+
+function Test-JawsStepBRegistryNameFree {
+    param([Parameter(Mandatory)][string]$Name)
+    $check = Invoke-JawsStepBAz -Arguments @('acr','check-name','--name',$Name,'--output','json','--only-show-errors')
+    return (Test-JawsStepBNameAvailable $check)
+}
+
+function Update-JawsStepBPlanFile {
+    param([string]$PlanFile,$Scope)
+    if ([string]::IsNullOrWhiteSpace($PlanFile) -or -not (Test-Path -LiteralPath $PlanFile -PathType Leaf)) { return }
+    $saved = Get-Content -LiteralPath $PlanFile -Raw | ConvertFrom-Json
+    if (-not $saved.PSObject.Properties['InstallScope']) { return }
+    foreach ($field in @('FoundryAccountName','ProjectName','KeyVaultName','RegistryName','AgentName','PlanSha256')) {
+        $saved.InstallScope.$field = [string]$Scope.$field
+    }
+    if ($saved.PSObject.Properties['PlanSha256']) { $saved.PlanSha256 = [string]$Scope.PlanSha256 }
+    $saved | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $PlanFile -Encoding utf8
+}
+
+function Resolve-JawsStepBTakenName {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]$Scope,
+        [Parameter(Mandatory)][string]$Field,
+        [Parameter(Mandatory)][string]$Label,
+        [Parameter(Mandatory)][string]$ParameterName,
+        [Parameter(Mandatory)][scriptblock]$Available,
+        [switch]$NonInteractive,
+        [scriptblock]$Prompter
+    )
+    $canPrompt = ($null -ne $Prompter) -or (Test-JawsStepBConsolePrompt -NonInteractive:$NonInteractive)
+    if (-not $canPrompt) { return $false }
+    $current = [string]$Scope.$Field
+    $previous = ''
+    for ($attempt = 0; $attempt -lt 10; $attempt++) {
+        $message = "$Label '$current' is not available."
+        if ($previous) { $message = "$previous $message" }
+        Write-Host $message
+        $entered = if ($Prompter) { & $Prompter $message "Enter another $Label" } else { Read-Host "Enter another $Label" }
+        if ([string]::IsNullOrWhiteSpace([string]$entered)) {
+            throw "JAWS-STEP-B-027: $Label is required. Pass -$ParameterName or answer the prompt."
+        }
+        $candidate = ([string]$entered).Trim()
+        try {
+            $rebuilt = New-JawsStepBInstallScope -SubscriptionId ([string]$Scope.SubscriptionId) -ResourceGroupName ([string]$Scope.ResourceGroupName) -Location ([string]$Scope.Location) -EnvironmentName ([string]$Scope.EnvironmentName) -ModelName ([string]$Scope.ModelName) -ModelVersion ([string]$Scope.ModelVersion) -FoundryAccountName $(if ($ParameterName -eq 'FoundryAccountName') { $candidate } else { [string]$Scope.FoundryAccountName }) -ProjectName ([string]$Scope.ProjectName) -KeyVaultName $(if ($ParameterName -eq 'KeyVaultName') { $candidate } else { [string]$Scope.KeyVaultName }) -AcrName $(if ($ParameterName -eq 'AcrName') { $candidate } else { [string]$Scope.RegistryName }) -SupervisorAgentName ([string]$Scope.AgentName)
+        } catch {
+            $previous = $_.Exception.Message
+            Write-Host $previous
+            continue
+        }
+        $accepted = [string]$rebuilt.$Field
+        if (-not (& $Available $accepted)) {
+            $current = $accepted
+            continue
+        }
+        $Scope.FoundryAccountName = [string]$rebuilt.FoundryAccountName
+        $Scope.ProjectName = [string]$rebuilt.ProjectName
+        $Scope.KeyVaultName = [string]$rebuilt.KeyVaultName
+        $Scope.RegistryName = [string]$rebuilt.RegistryName
+        $Scope.AgentName = [string]$rebuilt.AgentName
+        $Scope.PlanSha256 = [string]$rebuilt.PlanSha256
+        Write-Host "$Label '$accepted' is available."
+        return $true
+    }
+    return $false
+}
+
 function Invoke-JawsStepBPreflight {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]$Scope,
-        [Parameter(Mandatory)][string]$InstallerRoot
+        [Parameter(Mandatory)][string]$InstallerRoot,
+        [string]$PlanFile,
+        [switch]$NonInteractive,
+        [scriptblock]$Prompter
     )
     $devState = Join-Path $InstallerRoot 'config/jaws-installation-state.dev.json'
     $devBefore = Get-Content -LiteralPath $devState -Raw
@@ -464,15 +549,18 @@ function Invoke-JawsStepBPreflight {
     }
     $local = Join-Path $InstallerRoot '.local'
     if (-not (Test-Path -LiteralPath $local)) { New-Item -ItemType Directory -Path $local | Out-Null }
+    $namesRevised = $false
     $foundry = Invoke-JawsStepBAz -AllowMissing -Arguments @('cognitiveservices','account','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.FoundryAccountName,'--output','json','--only-show-errors')
     if ($null -eq $foundry) {
-        $bodyFile = Join-Path $local "jaws-step-b-name.$($Scope.EnvironmentName).json"
-        @{ subdomainName = [string]$Scope.FoundryAccountName; type = 'Microsoft.CognitiveServices/accounts'; kind = 'AIServices' } | ConvertTo-Json -Compress | Set-Content -LiteralPath $bodyFile -Encoding ascii
         try {
-            $check = Invoke-JawsStepBAz -Arguments @('rest','--method','POST','--url',"https://management.azure.com/subscriptions/$sub/providers/Microsoft.CognitiveServices/checkDomainAvailability?api-version=2024-10-01",'--body',"@$bodyFile",'--output','json','--only-show-errors')
-            $domainOk = (Get-JawsStepBProperty -Object $check -Names @('isSubdomainAvailable')) -eq $true
-            if (-not $domainOk) { $reasons.Add("Foundry custom domain '$($Scope.FoundryAccountName)' is not available.") }
+            $domainOk = Test-JawsStepBFoundryDomainFree -Name ([string]$Scope.FoundryAccountName) -SubscriptionId $sub -Directory $local -EnvironmentName ([string]$Scope.EnvironmentName)
+            if (-not $domainOk) {
+                $foundryFree = { param($Name) Test-JawsStepBFoundryDomainFree -Name $Name -SubscriptionId $sub -Directory $local -EnvironmentName ([string]$Scope.EnvironmentName) }
+                $replaced = Resolve-JawsStepBTakenName -Scope $Scope -Field 'FoundryAccountName' -Label 'Foundry account name' -ParameterName 'FoundryAccountName' -NonInteractive:$NonInteractive -Prompter $Prompter -Available $foundryFree
+                if ($replaced) { $namesRevised = $true } else { $reasons.Add("Foundry custom domain '$($Scope.FoundryAccountName)' is not available. Pass -FoundryAccountName.") }
+            }
         } catch {
+            if ($_.Exception.Message -match '^JAWS-STEP-B-027:') { throw }
             $reasons.Add("Could not check Foundry custom domain availability. $($_.Exception.Message)")
         }
         $skuFile = Join-Path $local "jaws-step-b-sku.$($Scope.EnvironmentName).json"
@@ -491,12 +579,15 @@ function Invoke-JawsStepBPreflight {
     }
     $vault = Invoke-JawsStepBAz -AllowMissing -Arguments @('keyvault','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.KeyVaultName,'--output','json','--only-show-errors')
     if ($null -eq $vault) {
-        $bodyFile = Join-Path $local "jaws-step-b-vault-name.$($Scope.EnvironmentName).json"
-        @{ name = [string]$Scope.KeyVaultName; type = 'Microsoft.KeyVault/vaults' } | ConvertTo-Json -Compress | Set-Content -LiteralPath $bodyFile -Encoding ascii
         try {
-            $check = Invoke-JawsStepBAz -Arguments @('rest','--method','POST','--url',"https://management.azure.com/subscriptions/$sub/providers/Microsoft.KeyVault/checkNameAvailability?api-version=2022-07-01",'--body',"@$bodyFile",'--output','json','--only-show-errors')
-            if (-not (Test-JawsStepBNameAvailable $check)) { $reasons.Add("Key Vault name '$($Scope.KeyVaultName)' is not available.") }
+            $vaultFree = Test-JawsStepBKeyVaultNameFree -Name ([string]$Scope.KeyVaultName) -SubscriptionId $sub -Directory $local -EnvironmentName ([string]$Scope.EnvironmentName)
+            if (-not $vaultFree) {
+                $vaultStillFree = { param($Name) Test-JawsStepBKeyVaultNameFree -Name $Name -SubscriptionId $sub -Directory $local -EnvironmentName ([string]$Scope.EnvironmentName) }
+                $replaced = Resolve-JawsStepBTakenName -Scope $Scope -Field 'KeyVaultName' -Label 'Key Vault name' -ParameterName 'KeyVaultName' -NonInteractive:$NonInteractive -Prompter $Prompter -Available $vaultStillFree
+                if ($replaced) { $namesRevised = $true } else { $reasons.Add("Key Vault name '$($Scope.KeyVaultName)' is not available. Pass -KeyVaultName.") }
+            }
         } catch {
+            if ($_.Exception.Message -match '^JAWS-STEP-B-027:') { throw }
             $reasons.Add("Could not check Key Vault name availability. $($_.Exception.Message)")
         }
     } elseif (-not (Test-JawsStepBOwned -Resource $vault -EnvironmentName $Scope.EnvironmentName)) {
@@ -505,9 +596,14 @@ function Invoke-JawsStepBPreflight {
     $registry = Invoke-JawsStepBAz -AllowMissing -Arguments @('acr','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.RegistryName,'--output','json','--only-show-errors')
     if ($null -eq $registry) {
         try {
-            $check = Invoke-JawsStepBAz -Arguments @('acr','check-name','--name',[string]$Scope.RegistryName,'--output','json','--only-show-errors')
-            if (-not (Test-JawsStepBNameAvailable $check)) { $reasons.Add("Registry name '$($Scope.RegistryName)' is not available.") }
+            $registryFree = Test-JawsStepBRegistryNameFree -Name ([string]$Scope.RegistryName)
+            if (-not $registryFree) {
+                $registryStillFree = { param($Name) Test-JawsStepBRegistryNameFree -Name $Name }
+                $replaced = Resolve-JawsStepBTakenName -Scope $Scope -Field 'RegistryName' -Label 'Registry name' -ParameterName 'AcrName' -NonInteractive:$NonInteractive -Prompter $Prompter -Available $registryStillFree
+                if ($replaced) { $namesRevised = $true } else { $reasons.Add("Registry name '$($Scope.RegistryName)' is not available. Pass -AcrName.") }
+            }
         } catch {
+            if ($_.Exception.Message -match '^JAWS-STEP-B-027:') { throw }
             $reasons.Add("Could not check registry name availability. $($_.Exception.Message)")
         }
     } elseif (-not (Test-JawsStepBOwned -Resource $registry -EnvironmentName $Scope.EnvironmentName) -or $registry.adminUserEnabled -ne $false) {
@@ -521,6 +617,7 @@ function Invoke-JawsStepBPreflight {
     } catch {
         $policyNote = $_.Exception.Message
     }
+    if ($namesRevised) { Update-JawsStepBPlanFile -PlanFile $PlanFile -Scope $Scope }
     $ready = $reasons.Count -eq 0
     $report = [pscustomobject]@{
         SchemaVersion = '1.0'
@@ -548,7 +645,7 @@ function Invoke-JawsStepBPreflight {
     if ((Get-Content -LiteralPath $devState -Raw) -ne $devBefore) {
         throw 'JAWS-STEP-B-022: Step B preflight changed the dev installation state.'
     }
-    return [pscustomobject]@{ Report = $report; ReportPath = $reportPath; Ready = $ready }
+    return [pscustomobject]@{ Report = $report; ReportPath = $reportPath; Ready = $ready; NamesRevised = [bool]$namesRevised }
 }
 
 function Invoke-JawsStepBInstall {
@@ -558,20 +655,33 @@ function Invoke-JawsStepBInstall {
         [Parameter(Mandatory)][string]$ApprovedPlanSha256,
         [Parameter(Mandatory)][string]$InstallerRoot,
         [ValidateSet('Static','Dynamic')][string]$QuotaMode = 'Static',
+        [string]$PlanFile,
+        [switch]$NonInteractive,
         [switch]$AcknowledgeStepBInstall
     )
     if (-not $AcknowledgeStepBInstall) {
         throw 'JAWS-STEP-B-010: Step B install requires -AcknowledgeStepBInstall. No Azure writes were attempted.'
     }
-    $recomputed = Get-JawsStepBScopeSha256 -Scope $Scope
-    if ($ApprovedPlanSha256 -cnotmatch '^[a-f0-9]{64}$' -or $ApprovedPlanSha256 -cne $recomputed -or $ApprovedPlanSha256 -cne [string]$Scope.PlanSha256) {
+    $approvedSha = Get-JawsStepBScopeSha256 -Scope $Scope
+    if ($ApprovedPlanSha256 -cnotmatch '^[a-f0-9]{64}$' -or $ApprovedPlanSha256 -cne $approvedSha -or $ApprovedPlanSha256 -cne [string]$Scope.PlanSha256) {
         throw 'JAWS-STEP-B-011: Approved plan digest does not match this scope. No Azure writes were attempted.'
     }
     $devState = Join-Path $InstallerRoot 'config/jaws-installation-state.dev.json'
     $devBefore = Get-Content -LiteralPath $devState -Raw
-    $preflight = Invoke-JawsStepBPreflight -Scope $Scope -InstallerRoot $InstallerRoot
+    $preflight = Invoke-JawsStepBPreflight -Scope $Scope -InstallerRoot $InstallerRoot -PlanFile $PlanFile -NonInteractive:$NonInteractive
     if (-not $preflight.Ready) {
         throw "JAWS-STEP-B-026: Step B preflight is not ready. No Azure writes were attempted. $($preflight.Report.Reasons -join ' ')"
+    }
+    $recomputed = Get-JawsStepBScopeSha256 -Scope $Scope
+    if ([string]$Scope.PlanSha256 -cne $recomputed) {
+        throw 'JAWS-STEP-B-011: Replaced resource names do not match the revised plan digest. No Azure writes were attempted.'
+    }
+    if ($preflight.NamesRevised) {
+        Write-Host 'Resource name replaced.'
+        Write-Host "Foundry account: $($Scope.FoundryAccountName)"
+        Write-Host "Key Vault: $($Scope.KeyVaultName)"
+        Write-Host "Registry: $($Scope.RegistryName)"
+        Write-Host "Plan SHA-256: $recomputed"
     }
     $account = Invoke-JawsStepBAz -Arguments @('account','show','--output','json','--only-show-errors')
     if ([string]$account.id -ine [string]$Scope.SubscriptionId) {

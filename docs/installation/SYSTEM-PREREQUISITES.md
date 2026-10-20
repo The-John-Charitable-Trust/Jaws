@@ -6,6 +6,28 @@
 - **Git** for source control and **Azure CLI** (`az --version`) for authenticated Azure deployment.
 - **Microsoft Entra access** with permissions appropriate to the targeted JAWS subscription, Foundry project, Container Registry and role assignments. No registry admin user required.
 
+## Datadog Agent host
+
+A virtual machine is required in advance only when Step B Install configures Datadog. The installer does not create that machine and does not install the Datadog Agent. It records the existing resource id and tags the machine `jaws-datadog-default=true`. Skipping Datadog leaves `Datadog agent host required: false` and does not ask for a virtual machine. ServiceNow does not require one. The operator workstation that runs PowerShell can be a separate physical Windows 11 computer.
+
+Create the host in the same subscription before Install, then supply its resource id when Install asks for Datadog:
+
+```text
+/subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.Compute/virtualMachines/<vm-name>
+```
+
+| Requirement | Minimum |
+| --- | --- |
+| Operating system | Windows 11, or Windows Server 2016, 2019, 2022, or 2025, x64. These are the platforms Datadog Agent 7 supports. |
+| Compute | 2 vCPU and 8 GiB RAM. `Standard_D2s_v3` meets this minimum: 2 vCPU and 8 GiB. The current test host `jaws-stepb-test` is that size, Windows 11 Pro, in `eastus`. |
+| Disk | 4 GiB free on the operating-system disk. Datadog documents about 870 MB for the Windows Agent, 2 GB for the initial install, and another 2 GB while an upgrade keeps the previous install. |
+| Network | Outbound HTTPS to the Datadog site chosen at install, such as `us5.datadoghq.com`. |
+| Permission | The signed-in account can read the virtual machine and merge the `jaws-datadog-default` tag. |
+
+`installer/Test-JawsPrerequisites.ps1` checks the workstation. It does not check this host. A missing site, API key, or resource id stops Datadog configuration at `JAWS-INSTALL-CONFIG-005`. A resource id that is not a virtual machine id stops at `JAWS-OBS-007`.
+
+Sources: [Datadog Agent supported platforms](https://docs.datadoghq.com/agent/supported_platforms/?tab=windows), [Datadog Agent overhead](https://docs.datadoghq.com/agent/), [Datadog Agent install disk space](https://docs.datadoghq.com/agent/fleet_automation/upgrade_agents/), and [Dsv3 sizes](https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/general-purpose/dsv3-series).
+
 ## Step B image build
 
 Step B Install builds the Supervisor image in Azure Container Registry with `az acr build --platform linux/amd64` and reads the digest back from the registry. That command needs the Azure CLI and permission to push to the registry. It does not need Docker Desktop, WSL 2, or a local .NET SDK.

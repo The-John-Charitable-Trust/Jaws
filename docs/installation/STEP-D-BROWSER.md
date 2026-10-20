@@ -1,6 +1,6 @@
 # Step D browser control
 
-Browser control is part of Step D. Step E stays allow-listed Azure MCP investigation and has no installer. Accept, and a passing capability check, still print `Ready for next step: false` and `Next step: Step E is not installable`.
+Browser control is part of Step D. Step E is the Teams channel in [STEP-E-TEAMS.md](STEP-E-TEAMS.md). Accept, and a passing capability check, print `Ready for next step: true` and `Next step: Step E Validate`.
 
 `Customer installation accepted` stays false. A Pester pass uses a CLI stand-in. It is not a fresh-subscription receipt, a live page load, or a vault login.
 
@@ -97,7 +97,7 @@ Run the Step D commands only after that Validate prints `TASK_STATE_COMPLETED`. 
 .\installer\Test-JawsBrowserPrivatePath.ps1 -EnvironmentName aiops-lab-test2 -AcknowledgeBrowserPrivatePath
 ```
 
-Install prints `Browser network: private`. Accept prints `Ready for next step: false` and `Next step: Step E is not installable`. The private-path pass prints `STEP-D PRIVATE PATH PASS` and `Navigation attempted: false`. `Customer installation accepted` stays false on every one of those commands.
+Install prints `Browser network: private`. Accept prints `Ready for next step: true` and `Next step: Step E Validate`. The private-path pass prints `STEP-D PRIVATE PATH PASS` and `Navigation attempted: false`. `Customer installation accepted` stays false on every one of those commands.
 
 ## Supervisor image
 
@@ -132,7 +132,7 @@ Expected: `Browser allow-list: Add` or `Remove`, `Azure writes: 1`, and `Custome
 
 The prompt asks the Supervisor to open a session, navigate to that URL, extract a value, and try one URL that is not on the list. Navigate needs the session from browser open. A pass requires the tool output to contain both `EXTRACTED_VALUE` and `allow_list_rejected`. Otherwise the command throws `JAWS-STEP-D-042`.
 
-Expected on a pass: `STEP-D BROWSER CAPABILITY PASS`, `Customer installation accepted: false`, `Ready for next step: false`, and `Next step: Step E is not installable`. Evidence: `installer/.local/jaws-step-d-browser-capability.<environment>.generated.json`. The receipt sets `LiveNavigationClaimed`, `VaultLoginClaimed`, and `SignatureValidationClaimed` to false. A stand-in that prints those markers is not a live page load.
+Expected on a pass: `STEP-D BROWSER CAPABILITY PASS`, `Customer installation accepted: false`, `Ready for next step: true`, and `Next step: Step E Validate`. Evidence: `installer/.local/jaws-step-d-browser-capability.<environment>.generated.json`. The receipt sets `LiveNavigationClaimed`, `VaultLoginClaimed`, and `SignatureValidationClaimed` to false. A stand-in that prints those markers is not a live page load.
 
 ## Tools and session limit
 
@@ -146,7 +146,7 @@ A task stops after 10 minutes or 50 steps. The service returns `allow_list_rejec
 
 ## Acceptance criteria
 
-- D-00: Functional. Accept prints `STEP-D ACCEPTANCE PASS`, `Ready for next step: false`, and `Next step: Step E is not installable`. `Customer installation accepted` stays false.
+- D-00: Functional. Accept prints `STEP-D ACCEPTANCE PASS`, `Ready for next step: true`, and `Next step: Step E Validate`. `Customer installation accepted` stays false.
 - D-01: Supervisor version 1 stays the Step B digest and does not receive `JAWS_BROWSER_TOOLBOX_NAME`. Install prints `Supervisor image rebuilt: false`.
 - D-02: The Container App has no public endpoint. The allow-list starts empty. Browser tools are listed only on the virtual-machine specialist.
 - D-03: FedRAMP Moderate. The browser is the internal OpenAPI app on a Foundry account created with public network access disabled, a private endpoint, private DNS, and agent injection. Key Vault secrets and the registry use private endpoints. The virtual-machine specialist and the later observability server are reached as private MCP or OpenAPI. No public specialist URL is created. The public-egress Step D run leaves this criterion open. `Install-JawsFoundryPrivateNetwork.ps1` does not close it.

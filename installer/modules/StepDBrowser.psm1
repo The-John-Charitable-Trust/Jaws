@@ -1041,8 +1041,8 @@ function Invoke-JawsBrowserCapability {
     return [pscustomobject]@{
         Passed = $true
         EvidencePath = $path
-        ReadyForNextStep = $false
-        NextStep = 'Step E is not installable'
+        ReadyForNextStep = $true
+        NextStep = 'Step E Validate'
         AzureWrites = 0
     }
 }

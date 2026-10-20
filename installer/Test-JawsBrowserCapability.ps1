@@ -29,7 +29,7 @@ try {
     Write-Host 'Customer installation accepted: false'
     Write-Host 'Azure writes: 0'
     Write-Host 'Ready for next step stays false because Step E has no installer.'
-    Write-JawsMilestoneResult -Result PASS -ReadyForNextStep $false -NextStep 'Step E is not installable' -EvidencePath $evidencePath
+    Write-JawsMilestoneResult -Result PASS -ReadyForNextStep $true -NextStep 'Step E Validate' -EvidencePath $evidencePath
 } catch {
     $structured = $false
     if (Test-Path -LiteralPath $evidencePath -PathType Leaf) {

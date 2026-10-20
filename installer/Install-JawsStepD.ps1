@@ -25,7 +25,7 @@ $label=if($Mode -eq 'Accept'){'ACCEPTANCE'}else{$Mode.ToUpperInvariant()}
 $next=switch($Mode){
     'Validate'{'Step D Install'}
     'Install'{'Step D Accept'}
-    'Accept'{'Step E is not installable'}
+    'Accept'{'Step E Validate'}
 }
 try {
     $result=switch($Mode){

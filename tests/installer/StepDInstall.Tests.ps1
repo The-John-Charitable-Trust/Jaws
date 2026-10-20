@@ -373,6 +373,8 @@ if args[:3] == ["cognitiveservices", "account", "show"]:
     if foundry == "deleted":
         missing()
     emit(default_foundry(flag("--name")))
+if args[:4] == ["cognitiveservices", "account", "project", "delete"]:
+    emit({})
 if args[:3] == ["cognitiveservices", "account", "delete"]:
     if "--yes" not in args:
         print("foundry delete requires --yes", file=sys.stderr)
@@ -699,8 +701,8 @@ Describe 'Step D installer' {
         $accept | Should -Match 'STEP-D ACCEPTANCE PASS'
         $accept | Should -Match 'Customer installation accepted: false'
         $accept | Should -Match 'Result: PASS'
-        $accept | Should -Match 'Ready for next step: false'
-        $accept | Should -Match 'Next step: Step E is not installable'
+        $accept | Should -Match 'Ready for next step: true'
+        $accept | Should -Match 'Next step: Step E Validate'
         $accept | Should -Match 'Evidence: .+jaws-step-d-acceptance\.lab1\.generated\.json'
         $report = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-step-d-acceptance.lab1.generated.json') -Raw | ConvertFrom-Json
         $report.Result | Should -Be 'PASS'
@@ -1044,8 +1046,8 @@ Describe 'Step D installer' {
         $done = & $capability -EnvironmentName 'cap1' -Url $url -AcknowledgeBrowserCapability *>&1 | Out-String
         $done | Should -Match 'STEP-D BROWSER CAPABILITY PASS'
         $done | Should -Match 'Customer installation accepted: false'
-        $done | Should -Match 'Ready for next step: false'
-        $done | Should -Match 'Next step: Step E is not installable'
+        $done | Should -Match 'Ready for next step: true'
+        $done | Should -Match 'Next step: Step E Validate'
         $world = Get-Content -LiteralPath $worldPath -Raw | ConvertFrom-Json
         $urlPattern = [regex]::Escape($url)
         [string]$world.'last-response-body' | Should -Match $urlPattern

@@ -135,7 +135,9 @@ if args[:2] == ["acr", "build"]:
 if args[:3] == ["acr", "manifest", "show-metadata"]:
     emit({"digest": "sha256:" + ("a" * 64)})
 if args[:2] == ["acr", "check-name"]:
-    emit({"nameAvailable": True})
+    candidate = flag("--name", "")
+    taken = [item for item in os.environ.get("JAWS_STEPB_STUB_NAME_TAKEN", "").split(",") if item]
+    emit({"nameAvailable": candidate not in taken})
 if args[:3] == ["role", "assignment", "list"]:
     if "--assignee-object-id" in args:
         emit([load("role")] if exists("role") else [])
@@ -158,7 +160,13 @@ if args[:1] == ["rest"] and "--method" in args:
     if method == "POST" and "checkSkuAvailability" in url:
         emit({"value": [{"skuName": "S0", "skuAvailable": True}]})
     if method == "POST" and ("checkNameAvailability" in url or "checkDomainAvailability" in url):
-        emit({"nameAvailable": True, "isSubdomainAvailable": True})
+        body_flag = args[args.index("--body") + 1]
+        with open(body_flag[1:], encoding="utf-8") as handle:
+            body = json.load(handle)
+        candidate = body.get("name") or body.get("subdomainName") or ""
+        taken = [item for item in os.environ.get("JAWS_STEPB_STUB_NAME_TAKEN", "").split(",") if item]
+        available = candidate not in taken
+        emit({"nameAvailable": available, "isSubdomainAvailable": available})
     if method == "GET" and "/versions/1" in url and not exists("agent"):
         print(os.environ.get(
             "JAWS_STEPB_STUB_AGENT_MISSING",
@@ -621,6 +629,72 @@ Describe 'Step B foundation install' {
             $env:JAWS_STEPB_STUB_STATE = $savedState
             $env:JAWS_STEPB_STUB_SUB = $savedSub
             $env:JAWS_STEPB_STUB_ENV = $savedEnv
+        }
+    }
+
+    It 'prompts for another name when the generated name is taken' {
+        $state = Join-Path $script:stub 'state-taken-name'
+        $savedPath = $env:PATH
+        $savedState = $env:JAWS_STEPB_STUB_STATE
+        $savedSub = $env:JAWS_STEPB_STUB_SUB
+        $savedEnv = $env:JAWS_STEPB_STUB_ENV
+        $savedTaken = $env:JAWS_STEPB_STUB_NAME_TAKEN
+        try {
+            $env:JAWS_STEPB_STUB_STATE = $state
+            $env:JAWS_STEPB_STUB_SUB = $script:sub
+            $env:JAWS_STEPB_STUB_ENV = 'name1'
+            $env:JAWS_STEPB_STUB_NAME_TAKEN = 'kvjawsname1'
+            $env:PATH = $script:stub + [System.IO.Path]::PathSeparator + '/usr/bin'
+            $scope = New-JawsStepBInstallScope -SubscriptionId $script:sub -ResourceGroupName 'rg-jaws-name1' -Location 'eastus' -EnvironmentName 'name1' -ModelName 'gpt-5-mini' -ModelVersion '2025-08-07'
+            $originalSha = $scope.PlanSha256
+            $blocked = Invoke-JawsStepBPreflight -Scope $scope -InstallerRoot (Join-Path $script:root 'installer') -NonInteractive
+            $blocked.Ready | Should -BeFalse
+            $blocked.NamesRevised | Should -BeFalse
+            ($blocked.Report.Reasons -join ' ') | Should -Match 'Key Vault name ''kvjawsname1'' is not available. Pass -KeyVaultName.'
+            $scope.KeyVaultName | Should -Be 'kvjawsname1'
+            $scope.PlanSha256 | Should -Be $originalSha
+            $planPath = Join-Path $script:root 'installer/.local/jaws-stage-b-plan.name1.offline.generated.json'
+            @{ PlanSha256 = $scope.PlanSha256; InstallScope = $scope } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $planPath -Encoding utf8
+            $script:takenAnswers = [System.Collections.Generic.Queue[string]]::new()
+            $script:takenAnswers.Enqueue('x')
+            $script:takenAnswers.Enqueue('kvjawsname1b')
+            $script:takenPrompt = ''
+            $collected = @(Invoke-JawsStepBPreflight -Scope $scope -InstallerRoot (Join-Path $script:root 'installer') -PlanFile $planPath -Prompter { param($Message, $Prompt) $script:takenPrompt += "$Message`n$Prompt`n"; $script:takenAnswers.Dequeue() } *>&1)
+            $replaced = $collected | Where-Object { $_.PSObject.Properties.Name -contains 'Ready' } | Select-Object -First 1
+            $hostText = @(
+                $collected | ForEach-Object {
+                    if ($_ -is [System.Management.Automation.InformationRecord]) {
+                        $data = $_.MessageData
+                        if ($data -and $data.PSObject.Properties.Name -contains 'Message') { [string]$data.Message } else { [string]$_ }
+                    }
+                }
+            ) -join "`n"
+            $script:takenPrompt = "$script:takenPrompt`n$hostText"
+            $script:takenPrompt | Should -Match 'Key Vault name ''kvjawsname1'' is not available\.'
+            $script:takenPrompt | Should -Match 'Enter another Key Vault name'
+            $script:takenPrompt | Should -Match 'JAWS-STEP-B-027'
+            $script:takenPrompt | Should -Match 'Key Vault name ''kvjawsname1b'' is available\.'
+            $replaced.Ready | Should -BeTrue
+            $replaced.NamesRevised | Should -BeTrue
+            $replaced.Report.AzureWrites | Should -Be 0
+            $scope.KeyVaultName | Should -Be 'kvjawsname1b'
+            $scope.FoundryAccountName | Should -Be 'jaws-foundry-name1'
+            $scope.PlanSha256 | Should -Not -Be $originalSha
+            $savedPlan = Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json
+            $savedPlan.InstallScope.KeyVaultName | Should -Be 'kvjawsname1b'
+            $savedPlan.PlanSha256 | Should -Be $scope.PlanSha256
+            $log = Get-Content -LiteralPath (Join-Path $state 'log.txt') -Raw
+            $log | Should -Not -Match 'group create'
+        } finally {
+            $env:PATH = $savedPath
+            if ($null -eq $savedState) { Remove-Item Env:JAWS_STEPB_STUB_STATE -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_STATE = $savedState }
+            if ($null -eq $savedSub) { Remove-Item Env:JAWS_STEPB_STUB_SUB -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_SUB = $savedSub }
+            if ($null -eq $savedEnv) { Remove-Item Env:JAWS_STEPB_STUB_ENV -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_ENV = $savedEnv }
+            if ($null -eq $savedTaken) { Remove-Item Env:JAWS_STEPB_STUB_NAME_TAKEN -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_NAME_TAKEN = $savedTaken }
+            $nameLocal = Join-Path $script:root 'installer/.local'
+            if (Test-Path -LiteralPath $nameLocal) {
+                Get-ChildItem -LiteralPath $nameLocal -Filter '*name1*' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+            }
         }
     }
 

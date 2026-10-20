@@ -228,7 +228,13 @@ if ($Mode -eq 'Preflight') {
         throw 'JAWS-STEP-B-016: The saved plan has no install scope. Re-run Plan with -EnvironmentName, -ResourceGroupName, and -Location.'
     }
     Assert-JawsStepBPlanNames -Scope $saved.InstallScope -BoundParameters $PSBoundParameters
-    $checked = Invoke-JawsStepBPreflight -Scope $saved.InstallScope -InstallerRoot $PSScriptRoot
+    $checked = Invoke-JawsStepBPreflight -Scope $saved.InstallScope -InstallerRoot $PSScriptRoot -PlanFile $planPath -NonInteractive:$NonInteractive
+    if ($checked.NamesRevised) {
+        Write-Host 'Resource name replaced.'
+        Write-Host "Foundry account: $($saved.InstallScope.FoundryAccountName)"
+        Write-Host "Key Vault: $($saved.InstallScope.KeyVaultName)"
+        Write-Host "Registry: $($saved.InstallScope.RegistryName)"
+    }
     if (-not $checked.Ready) {
         Write-JawsMilestoneResult -Result FAIL -ReadyForNextStep $false -NextStep 'Step B Install' -EvidencePath $checked.ReportPath
         throw "JAWS-STEP-B-026: Step B preflight is not ready. No Azure writes were attempted. $($checked.Report.Reasons -join ' ')"
@@ -266,7 +272,7 @@ if ($Mode -eq 'Install') {
     }
     $installEvidence = Join-Path $PSScriptRoot ".local/jaws-step-b-install.$EnvironmentName.generated.json"
     try {
-        $installed = Invoke-JawsStepBInstall -Scope $saved.InstallScope -ApprovedPlanSha256 $ApprovedPlanSha256 -InstallerRoot $PSScriptRoot -QuotaMode $QuotaMode -AcknowledgeStepBInstall:$AcknowledgeStepBInstall
+        $installed = Invoke-JawsStepBInstall -Scope $saved.InstallScope -ApprovedPlanSha256 $ApprovedPlanSha256 -InstallerRoot $PSScriptRoot -PlanFile $planPath -QuotaMode $QuotaMode -NonInteractive:$NonInteractive -AcknowledgeStepBInstall:$AcknowledgeStepBInstall
         Import-Module (Join-Path $PSScriptRoot 'modules/InstallConfig.psm1') -Force
         $installParameters = @{
             ServiceNowUrl = $ServiceNowUrl

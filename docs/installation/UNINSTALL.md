@@ -30,16 +30,28 @@ Without that receipt, pass the same names yourself:
 
 ## Delete order
 
-1. Every Foundry agent on the project, with `DELETE .../agents/{name}?api-version=v1&force=true`.
-2. Every toolbox and every connection on that project.
-3. The Foundry project.
-4. The Foundry account, then `az cognitiveservices account purge` in the environment location.
-5. Container apps in the resource group, then their managed environments.
-6. The environment Key Vault: delete, then purge.
-7. The resource group. The command polls `az group exists` until the group is gone. If it is still present, the command stops at `JAWS-UNINSTALL-011`. Foundry agents have already been deleted at that point.
-8. Files under `installer/.local` whose names contain `.<environment>.`, except the uninstall receipt itself.
+The command deletes the resources each installed step creates. Steps A, E, F, G, H, and I create no Azure resources. A later resource placed in this resource group or on this Foundry project is deleted by the same sweep.
 
-A virtual machine inside that resource group is deleted with the group. That includes a Datadog Agent host created in the environment resource group. Virtual machines outside the group are left in place. `jaws-stepb-test` in `rg-jaws-stepb-test` is outside `rg-aiops-lab-test2` and is not deleted.
+| Step | What is deleted |
+| --- | --- |
+| B | Resource group, Foundry account and its purge, project, model deployment, Key Vault and its purge, container registry and the Supervisor image, AcrPull role assignments, and every Supervisor agent version. |
+| C | Investigation planner agent, RemoteA2A connection, investigation toolbox, later Supervisor versions, and the Foundry Agent Consumer role assignment at project scope. |
+| D | Virtual-machine specialist agent, browser virtual network and both subnets, Container Apps environment, browser Container App, browser image, browser toolbox, browser Key Vault secrets, later Supervisor versions, and the specialist AcrPull and Key Vault roles. |
+| Datadog tag | The `jaws-datadog-default` tag. A virtual machine inside the environment resource group is deleted with that group. A virtual machine outside the group, including `jaws-stepb-test`, is left in place and only loses that tag. |
+
+Order of the Azure calls:
+
+1. Every Foundry agent on the project, with `DELETE .../agents/{name}?api-version=v1&force=true`. This covers the Supervisor, the investigation planner, and the virtual-machine specialist.
+2. Every toolbox and every connection on that project.
+3. Every model deployment on the Foundry account, then every project, then the account, then `az cognitiveservices account purge`.
+4. Container apps, then their managed environments.
+5. Resource locks in the group.
+6. Role assignments whose scope is the resource group or a resource inside it. An assignment inherited from the subscription is left.
+7. Every remaining resource in the group, children before parents: container apps, virtual machines, managed environments, private endpoints, network interfaces, the Foundry account if a record remains, Key Vaults, the virtual network, then the container registry. Another Foundry account found in the group is deleted and purged as well.
+8. Each Key Vault name: delete, then purge.
+9. The `jaws-datadog-default` tag when the recorded virtual machine is outside this resource group.
+10. The resource group. The command polls `az group exists` until the group is gone. If it is still present, the command stops at `JAWS-UNINSTALL-011`.
+11. Files under `installer/.local` whose names contain `.<environment>.`, except the uninstall receipt itself. That removes the Step A, B, C, and D receipts for this environment.
 
 ## Why agents are force-deleted first
 
@@ -52,8 +64,8 @@ A vault with purge protection cannot be purged before its scheduled date. Uninst
 ## What is left unchanged
 
 - `installer/config/jaws-installation-state.dev.json`. If that file changes, Uninstall stops at `JAWS-UNINSTALL-012`.
-- Resources outside the environment resource group.
-- The operator machine `jaws-stepb-test`.
+- Resources outside the environment resource group, except the `jaws-datadog-default` tag on the recorded Datadog host.
+- The operator machine `jaws-stepb-test`. Uninstall does not delete that virtual machine. If it carries `jaws-datadog-default`, only that tag is removed.
 
 ## Receipt
 

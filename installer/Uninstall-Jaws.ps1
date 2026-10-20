@@ -32,6 +32,11 @@ try {
     Write-Host "Agents deleted: $($receipt.AgentsDeleted.Count)"
     Write-Host "Toolboxes deleted: $($receipt.ToolboxesDeleted.Count)"
     Write-Host "Connections deleted: $($receipt.ConnectionsDeleted.Count)"
+    Write-Host "Deployments deleted: $($receipt.DeploymentsDeleted.Count)"
+    Write-Host "Projects deleted: $($receipt.ProjectsDeleted.Count)"
+    Write-Host "Role assignments deleted: $($receipt.RoleAssignmentsDeleted.Count)"
+    Write-Host "Resources deleted: $($receipt.ResourcesDeleted.Count)"
+    Write-Host "Datadog tag removed: $($receipt.DatadogTagRemoved.ToString().ToLowerInvariant())"
     Write-Host "Foundry purged: $($receipt.FoundryPurged.ToString().ToLowerInvariant())"
     Write-Host "Key Vault purge: $($receipt.KeyVaultPurge)"
     if (-not [string]::IsNullOrWhiteSpace([string]$receipt.KeyVaultPurgeNotBefore)) {

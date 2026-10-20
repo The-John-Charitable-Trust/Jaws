@@ -509,6 +509,8 @@ Describe 'Step C from a Step B environment' {
         $output | Should -Match 'Next step: Step D Validate'
         $output | Should -Match 'Evidence: '
         $output | Should -Not -Match 'Live Azure read: true'
+        $log = Get-Content -LiteralPath (Join-Path $script:state 'log.txt') -Raw
+        $log | Should -Match 'https://jaws-foundry-lab1\.cognitiveservices\.azure\.com/api/projects/jaws-lab1/agents/jaws-supervisor-lab1/endpoint/protocols/openai/responses\?api-version=v1'
         $report = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-step-c-final-acceptance.lab1.generated.json') -Raw | ConvertFrom-Json
         $report.Status | Should -Be 'PASS'
         $report.TaskState | Should -Be 'TASK_STATE_COMPLETED'

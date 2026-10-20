@@ -1,6 +1,8 @@
 # Step B foundation install. Writes only after an exact plan digest and -AcknowledgeStepBInstall.
 # Refuses the accepted dev project names. Does not call the Step C repair scripts.
+# NetworkProfile Public keeps the historical plan digest. Private adds one digest line.
 Set-StrictMode -Version Latest
+$script:JawsStepBPrivateProfile = $false
 
 function ConvertFrom-JawsStepBJson {
     [CmdletBinding()]
@@ -70,7 +72,8 @@ function New-JawsStepBInstallScope {
         [string]$ProjectName,
         [string]$KeyVaultName,
         [string]$AcrName,
-        [string]$SupervisorAgentName
+        [string]$SupervisorAgentName,
+        [ValidateSet('Public','Private')][string]$NetworkProfile = 'Public'
     )
     $parsed = [guid]::Empty
     if (-not [guid]::TryParse($SubscriptionId, [ref]$parsed) -or $parsed -eq [guid]::Empty) {
@@ -119,6 +122,7 @@ function New-JawsStepBInstallScope {
         KeyVaultName = [string]$names.KeyVaultName
         RegistryName = [string]$names.RegistryName
         AgentName = [string]$names.AgentName
+        NetworkProfile = $NetworkProfile
     }
     $scope | Add-Member -NotePropertyName PlanSha256 -NotePropertyValue (Get-JawsStepBScopeSha256 -Scope $scope)
     return $scope
@@ -141,8 +145,24 @@ function Get-JawsStepBScopeSha256 {
         [string]$Scope.KeyVaultName,
         [string]$Scope.RegistryName,
         [string]$Scope.AgentName
-    ) -join "`n"
-    return (Get-JawsStepBSha256 -Text $canonical)
+    )
+    $profile = 'Public'
+    if ($null -ne $Scope -and $Scope.PSObject.Properties['NetworkProfile'] -and -not [string]::IsNullOrWhiteSpace([string]$Scope.NetworkProfile)) {
+        $profile = [string]$Scope.NetworkProfile
+    }
+    if ($profile -eq 'Private') { $canonical += 'NetworkProfile=Private' }
+    return (Get-JawsStepBSha256 -Text ($canonical -join "`n"))
+}
+
+function Get-JawsStepBNetworkProfile {
+    param($Scope)
+    if ($null -eq $Scope -or -not $Scope.PSObject.Properties['NetworkProfile']) { return 'Public' }
+    $value = [string]$Scope.NetworkProfile
+    if ([string]::IsNullOrWhiteSpace($value)) { return 'Public' }
+    if ($value -notin @('Public','Private')) {
+        throw "JAWS-STEP-B-028: Network profile '$value' is not Public or Private."
+    }
+    return $value
 }
 
 function Test-JawsStepBConsolePrompt {
@@ -214,6 +234,10 @@ function Invoke-JawsStepBAz {
             $action = 'Request a quota increase for this model and region, then run Install again. Dynamic quota does not apply until this capacity-1 deployment exists. Static uses GlobalStandard capacity 1. Dynamic uses the regional Standard SKU at capacity 1.'
             Write-JawsOperatorIssue -Issue $issue -Action $action -QuotaRequest
             throw "JAWS-STEP-B-MODEL-001: Model quota blocked the deployment. $action Quota request: $(Get-JawsQuotaRequestUrl). $issue"
+        }
+        $joined = $Arguments -join ' '
+        if ($script:JawsStepBPrivateProfile -and $joined -match 'services\.ai\.azure\.com' -and $text -match 'resolve|Name or service not known|No such host is known|getaddrinfo|timed out|Connection refused|Network is unreachable|nodename|Temporary failure|Failed to establish|Could not resolve') {
+            throw "JAWS-STEP-B-029: The private profile data plane is not reachable from this computer. Connect the point-to-site VPN and run the same Install again. $text"
         }
         throw "JAWS-STEP-B-AZ-001: az $($Arguments -join ' ') failed ($code). $text"
     }
@@ -517,7 +541,9 @@ function Invoke-JawsStepBPreflight {
     $rg = [string]$Scope.ResourceGroupName
     $user = [string](Get-JawsStepBProperty -Object $account -Names @('user','name'))
     if ([string]::IsNullOrWhiteSpace($user)) { $reasons.Add('The signed-in account has no user name, so role assignments cannot be checked.') }
-    foreach ($namespace in @('Microsoft.CognitiveServices','Microsoft.KeyVault','Microsoft.ContainerRegistry')) {
+    $providerNames = @('Microsoft.CognitiveServices','Microsoft.KeyVault','Microsoft.ContainerRegistry')
+    if ((Get-JawsStepBNetworkProfile $Scope) -eq 'Private') { $providerNames += @('Microsoft.Network','Microsoft.App') }
+    foreach ($namespace in $providerNames) {
         try {
             $provider = Invoke-JawsStepBAz -Arguments @('provider','show','--namespace',$namespace,'--subscription',$sub,'--output','json','--only-show-errors')
             if ([string]$provider.registrationState -ne 'Registered') {
@@ -648,7 +674,17 @@ function Invoke-JawsStepBPreflight {
         PolicySimulation = 'NotPerformed'
         PolicyAssignmentCount = $policyCount
         PolicyReadError = $policyNote
-        AuthorizedWrites = @(Get-JawsStepBAuthorizedWrites)
+        AuthorizedWrites = @(
+            @(Get-JawsStepBAuthorizedWrites) + $(if ((Get-JawsStepBNetworkProfile $Scope) -eq 'Private') {
+                @(
+                    [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.Network/virtualNetworks'; BoundTo = 'jaws-br-vnet and the private-profile subnets, including GatewaySubnet and the DNS resolver subnet.' },
+                    [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.Network/privateEndpoints'; BoundTo = 'One private endpoint for the Foundry account, group id account.' },
+                    [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.Network/privateDnsZones'; BoundTo = 'privatelink.cognitiveservices.azure.com, privatelink.openai.azure.com, and privatelink.services.ai.azure.com.' },
+                    [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.Network/virtualNetworkGateways'; BoundTo = 'Point-to-site VPN so this computer can reach the private data plane. No jump VM.' },
+                    [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.Network/dnsResolvers'; BoundTo = 'Inbound endpoint used as the VPN client DNS server.' }
+                )
+            } else { @() })
+        )
         Reasons = @($reasons)
         AuthorizationScope = 'The plan SHA-256 binds the resource names, subscription, and model. This report binds the read-only permission and provider checks. Neither one authorizes an unbounded mutation or an unbounded cost. Model quota is checked again after the Foundry account exists and before the deployment is created. Azure Policy deny effects are not simulated.'
     }
@@ -671,6 +707,7 @@ function Invoke-JawsStepBInstall {
         [switch]$NonInteractive,
         [switch]$AcknowledgeStepBInstall
     )
+    $script:JawsStepBPrivateProfile = $false
     if (-not $AcknowledgeStepBInstall) {
         throw 'JAWS-STEP-B-010: Step B install requires -AcknowledgeStepBInstall. No Azure writes were attempted.'
     }
@@ -702,6 +739,9 @@ function Invoke-JawsStepBInstall {
     $writes = 0
     $sub = [string]$Scope.SubscriptionId
     $rg = [string]$Scope.ResourceGroupName
+    $networkProfile = Get-JawsStepBNetworkProfile $Scope
+    $privateLayout = $null
+    $privateAccess = $null
     $tags = @('application=JAWS','managedBy=JAWS-Installer',"environment=$($Scope.EnvironmentName)")
     $group = Invoke-JawsStepBAz -AllowMissing -Arguments @('group','show','--subscription',$sub,'--name',$rg,'--output','json','--only-show-errors')
     if ($null -eq $group) {
@@ -710,12 +750,24 @@ function Invoke-JawsStepBInstall {
     } elseif ([string]$group.location -ine [string]$Scope.Location) {
         throw 'JAWS-STEP-B-012: Resource group exists in a different location. Nothing was changed.'
     }
+    if ($networkProfile -eq 'Private') {
+        $privateLayout = Install-JawsStepBPrivateLayout -Scope $Scope
+        $writes += [int]$privateLayout.AzureWrites
+    }
     $foundry = Invoke-JawsStepBAz -AllowMissing -Arguments @('cognitiveservices','account','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.FoundryAccountName,'--output','json','--only-show-errors')
-    if ($null -eq $foundry) {
+    if ($networkProfile -eq 'Private') {
+        $created = New-JawsStepBPrivateFoundryAccount -Scope $Scope -InstallerRoot $InstallerRoot -SubnetId $privateLayout.AgentsSubnetId
+        $writes += [int]$created.AzureWrites
+        if ($null -eq $foundry) { $foundry = $created.Account }
+    } elseif ($null -eq $foundry) {
         $foundry = Invoke-JawsStepBAz -Arguments (@('cognitiveservices','account','create','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.FoundryAccountName,'--kind','AIServices','--sku','S0','--location',[string]$Scope.Location,'--custom-domain',[string]$Scope.FoundryAccountName,'--assign-identity','--allow-project-management','true','--yes','--output','json','--only-show-errors','--tags') + $tags)
         $writes++
     } elseif (-not (Test-JawsStepBOwned -Resource $foundry -EnvironmentName $Scope.EnvironmentName)) {
         throw 'JAWS-STEP-B-012: Foundry account exists and is not owned by this installer. Refusing adoption.'
+    }
+    if ($networkProfile -eq 'Private') {
+        $privateAccess = Install-JawsStepBPrivateAccess -Scope $Scope -Layout $privateLayout
+        $writes += [int]$privateAccess.AzureWrites
     }
     $foundryShow = @('cognitiveservices','account','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.FoundryAccountName,'--output','json','--only-show-errors')
     $foundry = Wait-JawsStepBProvisioned -Arguments $foundryShow -Label 'Foundry account'
@@ -786,6 +838,14 @@ function Invoke-JawsStepBInstall {
         $writes++
     }
     $login = "$($Scope.RegistryName).azurecr.io"
+    if ($networkProfile -eq 'Private') {
+        $script:JawsStepBPrivateProfile = $true
+        $reachable = Test-JawsStepBPrivateDataPlaneReachable -Scope $Scope
+        if (-not $reachable) {
+            $script:JawsStepBPrivateProfile = $false
+            return (New-JawsStepBPrivatePause -Scope $Scope -InstallerRoot $InstallerRoot -Layout $privateLayout -Access $privateAccess -AzureWrites $writes -PlanSha256 $recomputed)
+        }
+    }
     $endpoint = "https://$($Scope.FoundryAccountName).services.ai.azure.com/api/projects/$($Scope.ProjectName)"
     $versionUrl = "$endpoint/agents/$($Scope.AgentName)/versions/1?api-version=v1"
     $existing = Invoke-JawsStepBAz -AllowMissing -Arguments @('rest','--method','GET','--url',$versionUrl,'--resource','https://ai.azure.com','--output','json','--only-show-errors')
@@ -916,6 +976,7 @@ function Invoke-JawsStepBInstall {
         AgentVersion = '1'
         AgentStatus = 'active'
         AzureWrites = $writes
+        NetworkProfile = $networkProfile
         StatePath = $statePath
     }
     $receiptPath = Join-Path $local "jaws-step-b-install.$($Scope.EnvironmentName).generated.json"
@@ -923,7 +984,8 @@ function Invoke-JawsStepBInstall {
     if ((Get-Content -LiteralPath $devState -Raw) -ne $devBefore) {
         throw 'JAWS-STEP-B-022: Step B install changed the dev installation state.'
     }
-    return [pscustomobject]@{ Receipt = $receipt; ReceiptPath = $receiptPath; StatePath = $statePath }
+    $script:JawsStepBPrivateProfile = $false
+    return [pscustomobject]@{ Paused = $false; Receipt = $receipt; ReceiptPath = $receiptPath; StatePath = $statePath }
 }
 
 function Assert-JawsStepBPlanNames {
@@ -934,7 +996,8 @@ function Assert-JawsStepBPlanNames {
         @{ Parameter = 'ProjectName'; Field = 'ProjectName' },
         @{ Parameter = 'KeyVaultName'; Field = 'KeyVaultName' },
         @{ Parameter = 'AcrName'; Field = 'RegistryName' },
-        @{ Parameter = 'SupervisorAgentName'; Field = 'AgentName' }
+        @{ Parameter = 'SupervisorAgentName'; Field = 'AgentName' },
+        @{ Parameter = 'NetworkProfile'; Field = 'NetworkProfile' }
     )) {
         if (-not $BoundParameters.ContainsKey($pair.Parameter)) { continue }
         $supplied = [string]$BoundParameters[$pair.Parameter]
@@ -978,6 +1041,9 @@ function Invoke-JawsStepBAccept {
         throw "JAWS-STEP-B-006: Step B install receipt not found: $receiptPath"
     }
     $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+    if ([string]$receipt.Status -eq 'STEP_B_PRIVATE_PAUSED') {
+        throw 'JAWS-STEP-B-029: Step B Install paused before the Supervisor was created. Connect the point-to-site VPN on this computer and run the same Install again. Accept was not attempted.'
+    }
     $account = Invoke-JawsStepBAz -Arguments @('account','show','--output','json','--only-show-errors')
     if ([string]$account.id -ine [string]$receipt.SubscriptionId) {
         throw 'JAWS-STEP-B-019: Azure CLI subscription differs from the install receipt. No resources were changed.'
@@ -988,7 +1054,13 @@ function Invoke-JawsStepBAccept {
         $savedPlan = Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json
         if ($savedPlan.PSObject.Properties['InstallScope']) { $planScope = $savedPlan.InstallScope }
     }
-    $scope = New-JawsStepBInstallScope -SubscriptionId ([string]$account.id) -ResourceGroupName $ResourceGroupName -Location $Location -EnvironmentName $EnvironmentName -ModelName $ModelName -ModelVersion $ModelVersion -FoundryAccountName (Get-JawsStepBResolvedName -Supplied $FoundryAccountName -PlanScope $planScope -Field 'FoundryAccountName') -ProjectName (Get-JawsStepBResolvedName -Supplied $ProjectName -PlanScope $planScope -Field 'ProjectName') -KeyVaultName (Get-JawsStepBResolvedName -Supplied $KeyVaultName -PlanScope $planScope -Field 'KeyVaultName') -AcrName (Get-JawsStepBResolvedName -Supplied $AcrName -PlanScope $planScope -Field 'RegistryName') -SupervisorAgentName (Get-JawsStepBResolvedName -Supplied $SupervisorAgentName -PlanScope $planScope -Field 'AgentName')
+    $savedProfile = 'Public'
+    if ($null -ne $planScope -and $planScope.PSObject.Properties['NetworkProfile'] -and -not [string]::IsNullOrWhiteSpace([string]$planScope.NetworkProfile)) {
+        $savedProfile = [string]$planScope.NetworkProfile
+    } elseif ($receipt.PSObject.Properties['NetworkProfile'] -and [string]$receipt.NetworkProfile -eq 'Private') {
+        $savedProfile = 'Private'
+    }
+    $scope = New-JawsStepBInstallScope -SubscriptionId ([string]$account.id) -ResourceGroupName $ResourceGroupName -Location $Location -EnvironmentName $EnvironmentName -ModelName $ModelName -ModelVersion $ModelVersion -FoundryAccountName (Get-JawsStepBResolvedName -Supplied $FoundryAccountName -PlanScope $planScope -Field 'FoundryAccountName') -ProjectName (Get-JawsStepBResolvedName -Supplied $ProjectName -PlanScope $planScope -Field 'ProjectName') -KeyVaultName (Get-JawsStepBResolvedName -Supplied $KeyVaultName -PlanScope $planScope -Field 'KeyVaultName') -AcrName (Get-JawsStepBResolvedName -Supplied $AcrName -PlanScope $planScope -Field 'RegistryName') -SupervisorAgentName (Get-JawsStepBResolvedName -Supplied $SupervisorAgentName -PlanScope $planScope -Field 'AgentName') -NetworkProfile $savedProfile
     $mismatch = @()
     if ([string]$receipt.PlanSha256 -cne [string]$scope.PlanSha256) { $mismatch += 'plan digest' }
     foreach ($name in @('ResourceGroupName','FoundryAccountName','ProjectName','ModelDeploymentName','ModelName','ModelVersion','KeyVaultName','RegistryName','AgentName')) {
@@ -1011,6 +1083,14 @@ function Invoke-JawsStepBAccept {
         if (-not (Test-JawsStepBOwned -Resource $foundry -EnvironmentName $scope.EnvironmentName)) { $reasons += 'Foundry account is not installer-owned' }
         $domain = [string](Get-JawsStepBProperty -Object $foundry -Names @('properties','customSubDomainName'))
         if (-not [string]::IsNullOrWhiteSpace($domain) -and $domain -ne [string]$scope.FoundryAccountName) { $reasons += 'Foundry custom domain differs' }
+        if ((Get-JawsStepBNetworkProfile $scope) -eq 'Private') {
+            Import-Module (Join-Path $PSScriptRoot 'StepDBrowser.psm1') -Force
+            $preview = Get-JawsStepBFoundryPreview -Scope $scope
+            $layout = StepDBrowser\Get-JawsBrowserNetworkPlan -EnvironmentName ([string]$scope.EnvironmentName)
+            $subnetId = "/subscriptions/$sub/resourceGroups/$rg/providers/Microsoft.Network/virtualNetworks/$($layout.VnetName)/subnets/$($layout.AgentsSubnet)"
+            $problem = Test-JawsStepBPrivateFoundryPosture -Account $preview -SubnetId $subnetId
+            if (-not [string]::IsNullOrWhiteSpace($problem)) { $reasons += "private posture drifted: $problem" }
+        }
     }
     $project = Invoke-JawsStepBAz -AllowMissing -Arguments @('cognitiveservices','account','project','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$scope.FoundryAccountName,'--project-name',[string]$scope.ProjectName,'--output','json','--only-show-errors')
     $principal = [string](Get-JawsStepBProperty -Object $project -Names @('identity','principalId'))
@@ -1111,4 +1191,5 @@ function Invoke-JawsStepBAccept {
     return [pscustomobject]@{ Report = $report; ReportPath = $reportPath }
 }
 
-Export-ModuleMember -Function New-JawsStepBInstallScope,Get-JawsStepBScopeSha256,Resolve-JawsStepBPlanTarget,Get-JawsStepBAuthorizedWrites,Assert-JawsStepBPlanNames,Invoke-JawsStepBPreflight,Invoke-JawsStepBInstall,Invoke-JawsStepBAccept
+. (Join-Path $PSScriptRoot 'StepBPrivateNetwork.ps1')
+Export-ModuleMember -Function New-JawsStepBInstallScope,Get-JawsStepBScopeSha256,Get-JawsStepBNetworkProfile,Resolve-JawsStepBPlanTarget,Get-JawsStepBAuthorizedWrites,Assert-JawsStepBPlanNames,Invoke-JawsStepBPreflight,Invoke-JawsStepBInstall,Invoke-JawsStepBAccept,Get-JawsStepBFoundryPreview,Test-JawsStepBPrivateFoundryPosture

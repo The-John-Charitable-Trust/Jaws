@@ -6,9 +6,9 @@ Azure provisioning and readiness are implemented in PowerShell; the hosted Super
 
 ## installer/modules/StepBInstall.psm1
 
-[View complete JAWS source](https://github.com/The-John-Charitable-Trust/Jaws/blob/main/installer/modules/StepBInstall.psm1) · Reviewed blob `9b005536f6c132285eedb76a4757355461f49543`
+[View complete JAWS source](https://github.com/The-John-Charitable-Trust/Jaws/blob/main/installer/modules/StepBInstall.psm1). The digest function below is the current source. Later excerpts in this file keep the earlier snapshot, blob `9b005536f6c132285eedb76a4757355461f49543`, and their line numbers have moved.
 
-**Source lines 96–120:**
+**Source lines 131–155.** A public plan keeps this historical digest. A private plan appends `NetworkProfile=Private` after the agent name.
 
 ```powershell
 function Get-JawsStepBScopeSha256 {
@@ -28,14 +28,14 @@ function Get-JawsStepBScopeSha256 {
         [string]$Scope.KeyVaultName,
         [string]$Scope.RegistryName,
         [string]$Scope.AgentName
-    ) -join "`n"
-    return (Get-JawsStepBSha256 -Text $canonical)
+    )
+    $profile = 'Public'
+    if ($null -ne $Scope -and $Scope.PSObject.Properties['NetworkProfile'] -and -not [string]::IsNullOrWhiteSpace([string]$Scope.NetworkProfile)) {
+        $profile = [string]$Scope.NetworkProfile
+    }
+    if ($profile -eq 'Private') { $canonical += 'NetworkProfile=Private' }
+    return (Get-JawsStepBSha256 -Text ($canonical -join "`n"))
 }
-
-function Invoke-JawsStepBAz {
-    [CmdletBinding()]
-    param([Parameter(Mandatory)][string[]]$Arguments,[switch]$AllowMissing)
-    if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
 ```
 
 **Source lines 279–316:**

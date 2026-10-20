@@ -136,7 +136,7 @@ The receipt for either mode is `installer/.local/jaws-step-c-install.<environmen
 
 ## Restart
 
-Pull `main` before this run. The customer A2A target on that commit is `services.ai.azure.com`. Run Step C only after a new Step B Install has written a receipt for the environment you are testing. `rg-aiops-lab-test2` has been deleted, so an old receipt for that name is not a live account. If you reuse the name, Install Step B again first. Leave any previous Supervisor version and toolbox behind with the deleted account. Step C refuses to post a route when latest is already past version 1, and it refuses to add a toolbox version when versions already exist. Do not run `Install-JawsFoundryPrivateNetwork.ps1` before the functional line above is printed. Step D waits for that line.
+Pull `main` before this run. The customer A2A target on that commit is `services.ai.azure.com`. Run Step C only after a new Step B Install has written a receipt for the environment you are testing. `rg-aiops-lab-test2` has been deleted, so an old receipt for that name is not a live account. If you reuse the name, Install Step B again first. Leave any previous Supervisor version and toolbox behind with the deleted account. Step C refuses to post a route when latest is already past version 1, and it refuses to add a toolbox version when versions already exist. Do not run `Install-JawsFoundryPrivateNetwork.ps1`. On a private-profile account, run this step from the same computer after the Step B VPN is connected. Step D waits for that line.
 
 ## Uninstall to stop charges or start a new install
 

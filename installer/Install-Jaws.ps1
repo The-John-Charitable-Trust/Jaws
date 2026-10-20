@@ -20,6 +20,7 @@ param(
     [string]$AcrName,
     [string]$SupervisorAgentName,
     [ValidateSet('Static','Dynamic')][string]$QuotaMode='Static',
+    [ValidateSet('Public','Private')][string]$NetworkProfile='Public',
     [switch]$AcknowledgeStepBInstall,
     [string]$ApprovedPlanSha256,
     [string]$InstallConfig,
@@ -120,7 +121,7 @@ if ($Mode -eq 'Plan') {
         $EnvironmentName = [string]$planTarget.EnvironmentName
         $ResourceGroupName = [string]$planTarget.ResourceGroupName
         $Location = [string]$planTarget.Location
-        $installScope = New-JawsStepBInstallScope -SubscriptionId $offlinePlan.SubscriptionId -ResourceGroupName $ResourceGroupName -Location $Location -EnvironmentName $EnvironmentName -ModelName $ModelName -ModelVersion $ModelVersion -FoundryAccountName $FoundryAccountName -ProjectName $ProjectName -KeyVaultName $KeyVaultName -AcrName $AcrName -SupervisorAgentName $SupervisorAgentName
+        $installScope = New-JawsStepBInstallScope -SubscriptionId $offlinePlan.SubscriptionId -ResourceGroupName $ResourceGroupName -Location $Location -EnvironmentName $EnvironmentName -ModelName $ModelName -ModelVersion $ModelVersion -FoundryAccountName $FoundryAccountName -ProjectName $ProjectName -KeyVaultName $KeyVaultName -AcrName $AcrName -SupervisorAgentName $SupervisorAgentName -NetworkProfile $NetworkProfile
         $offlinePlan | Add-Member -NotePropertyName InstallScope -NotePropertyValue $installScope -Force
         $offlinePlan | Add-Member -NotePropertyName PlanSha256 -NotePropertyValue $installScope.PlanSha256 -Force
         $offlinePlan.ResourceGroupName = $installScope.ResourceGroupName
@@ -205,6 +206,12 @@ if ($Mode -eq 'Plan') {
             Write-Host "Project: $($planResult.InstallScope.ProjectName)"
             Write-Host "Model: $($planResult.InstallScope.ModelName) $($planResult.InstallScope.ModelVersion)"
             Write-Host "Quota mode: $QuotaMode"
+            Write-Host "Network profile: $($planResult.InstallScope.NetworkProfile)"
+            if ([string]$planResult.InstallScope.NetworkProfile -eq 'Private') {
+                Write-Host 'Private network: jaws-br-vnet, jaws-br-apps, jaws-foundry-agents, jaws-private-endpoints, GatewaySubnet, jaws-dns-inbound'
+                Write-Host 'Private account: public network access disabled, agent injection, private endpoint, three private DNS zones'
+                Write-Host 'Operator path: point-to-site VPN from this computer. No jump VM.'
+            }
             Write-Host "Key Vault: $($planResult.InstallScope.KeyVaultName)"
             Write-Host "Registry: $($planResult.InstallScope.RegistryName)"
             Write-Host "Agent: $($planResult.InstallScope.AgentName)"
@@ -273,6 +280,21 @@ if ($Mode -eq 'Install') {
     $installEvidence = Join-Path $PSScriptRoot ".local/jaws-step-b-install.$EnvironmentName.generated.json"
     try {
         $installed = Invoke-JawsStepBInstall -Scope $saved.InstallScope -ApprovedPlanSha256 $ApprovedPlanSha256 -InstallerRoot $PSScriptRoot -PlanFile $planPath -QuotaMode $QuotaMode -NonInteractive:$NonInteractive -AcknowledgeStepBInstall:$AcknowledgeStepBInstall
+        if ($installed.Paused) {
+            $paused = $installed.Receipt
+            Write-Host 'STEP-B INSTALL PAUSED'
+            Write-Host 'Network profile: Private'
+            Write-Host 'Private posture: verified'
+            Write-Host 'Supervisor created: false'
+            Write-Host "Point-to-site VPN: $($paused.VpnGatewayName)"
+            Write-Host "DNS resolver: $($paused.DnsResolverInboundIp)"
+            Write-Host 'Connect that VPN on this computer. Set its DNS server to the resolver address. Then run this same Install command again.'
+            Write-Host "Azure writes: $($paused.AzureWrites)"
+            Write-Host 'FedRAMP Moderate: false'
+            Write-Host "Receipt: $($installed.ReceiptPath)"
+            Write-JawsMilestoneResult -Result PASS -ReadyForNextStep $false -NextStep 'Step B Install' -EvidencePath $installed.ReceiptPath
+            return
+        }
         Import-Module (Join-Path $PSScriptRoot 'modules/InstallConfig.psm1') -Force
         $installParameters = @{
             ServiceNowUrl = $ServiceNowUrl

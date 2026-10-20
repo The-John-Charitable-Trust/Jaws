@@ -1,8 +1,8 @@
-# Recreate the Step B Foundry account with agent virtual-network injection.
-# The browser stays on an internal-only Container Apps environment. Foundry cannot
-# call that environment until the account is created with networkInjections.
-# This command deletes the existing account. Re-run Step B, Step C, and Step D after it.
-# A CLI stand-in is not a live Azure receipt.
+# DEPRECATED. Do not run this command.
+# It deletes the Foundry account and recreates it with agent injection while
+# public network access stays Enabled. That half-state is not the private profile.
+# Create a private account with Install-Jaws.ps1 -NetworkProfile Private.
+# This file stays until CJ decides to remove it. A CLI stand-in is not a live Azure receipt.
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$EnvironmentName,

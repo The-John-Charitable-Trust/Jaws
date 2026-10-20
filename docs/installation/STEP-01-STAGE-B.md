@@ -12,7 +12,7 @@ Step B creates the foundation for one environment in the subscription already se
 
 The example blueprint stays a template. Its subscription id remains `00000000-0000-0000-0000-000000000000`. The installer copies the signed-in subscription into the plan. `dev` and `rg-aiops-lab` are refused so the accepted development project is left unchanged.
 
-The account this command creates has public egress and no `networkInjections`. That is the shape of the dev account and the shape of the next functional test. It is not the FedRAMP Moderate account. The FedRAMP account is created private, before any project or agent exists: public network access disabled, a private endpoint, private DNS for `privatelink.services.ai.azure.com`, `privatelink.cognitiveservices.azure.com`, and `privatelink.openai.azure.com`, and a dedicated `/24` delegated to `Microsoft.App/environments`. Injection cannot be added later. The current Key Vault uses RBAC and purge protection and is publicly reachable. The current registry is Basic with admin disabled and is publicly reachable. FedRAMP Moderate for those resources adds a private endpoint on each, and the registry is Premium because Basic has no private endpoint. Local authentication on the Foundry account is disabled, and RequestResponse and Audit diagnostics are enabled. The installer does not create that private account yet.
+`-NetworkProfile` is `Public` or `Private`. The default is `Public`. A public plan keeps the historical digest: the account has public egress and no `networkInjections`. A private plan adds one digest line, so a public approval cannot be replayed as a private install. The private profile creates the account private from the start: `publicNetworkAccess` disabled, agent injection on `jaws-foundry-agents`, a private endpoint, and private DNS for `privatelink.services.ai.azure.com`, `privatelink.cognitiveservices.azure.com`, and `privatelink.openai.azure.com`. Injection cannot be added later. Key Vault and the registry stay public in this profile. `FedRAMP Moderate` stays false. `Install-JawsFoundryPrivateNetwork.ps1` is deprecated and is not this profile.
 
 These resources are billable. Install does nothing unless `-AcknowledgeStepBInstall` and the plan digest from the plan command are both present.
 
@@ -32,7 +32,7 @@ These resources are billable. Install does nothing unless `-AcknowledgeStepBInst
 
 `your-environment` is the name you choose. On an interactive console, leave `-EnvironmentName` off and Plan asks `Environment name`. Enter at the next two prompts uses resource group `rg-jaws-<environment>` and location `eastus`. `-NonInteractive` does not ask, so pass all three. The name is 2–21 characters, starts with a lowercase letter, and uses lowercase letters, digits, and hyphens. `dev` is reserved. That name selects the default Foundry account, project, Key Vault, registry, and Supervisor. A new environment name is how a second install avoids a Key Vault name left behind by an earlier one.
 
-**Expected result.** Both commands print `STEP-B PLAN PASS`, `Environment`, `Subscription source: AzureCli`, `Install authorized: false`, `Quota mode: Static`, `Key Vault`, and `Plan SHA-256`. Azure writes stay 0. The report is `installer/.local/jaws-stage-b-plan.your-environment.offline.generated.json`. The digest binds the subscription, names, and model. It does not include the quota mode, and it does not authorize every mutation or an open-ended cost. Pass `-QuotaMode Dynamic` on Plan to print that choice before Install. The value used at Install is the one that is applied.
+**Expected result.** Both commands print `STEP-B PLAN PASS`, `Environment`, `Subscription source: AzureCli`, `Install authorized: false`, `Quota mode: Static`, `Network profile: Public`, `Key Vault`, and `Plan SHA-256`. Azure writes stay 0. The report is `installer/.local/jaws-stage-b-plan.your-environment.offline.generated.json`. The digest binds the subscription, names, and model. It does not include the quota mode. It does include `NetworkProfile=Private` when that profile is requested, and a private plan's digest differs from the public plan for the same names. Pass `-QuotaMode Dynamic` on Plan to print that choice before Install. The value used at Install is the one that is applied. Pass `-NetworkProfile Private` on Plan to select the private profile. Install reads that choice from the saved plan.
 
 Plan prints the names it will create. Omit a name parameter to keep the generated default. The resource group and region are the `-ResourceGroupName` and `-Location` you already pass. The model deployment name is `-ModelName`.
 
@@ -128,7 +128,27 @@ FedRAMP open resources: 10
 Install config: installer/.local/jaws-install.your-environment.generated.json
 ```
 
-`ServiceNow stored` and `Datadog stored` are `false` when those products were skipped or their values were not supplied. `Datadog agent host required` is `false` when Datadog is skipped. `FedRAMP Moderate: false` is expected on this public-egress install. The open-resource count is the number of inventory rows that do not meet the criterion. A skipped Datadog row is closed because no agent host is required. `Quota mode: Dynamic` replaces the quota line when Install was given `-QuotaMode Dynamic`. Microsoft documents the property at [Azure OpenAI dynamic quota](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/dynamic-quota).
+`ServiceNow stored` and `Datadog stored` are `false` when those products were skipped or their values were not supplied. `Datadog agent host required` is `false` when Datadog is skipped. `FedRAMP Moderate: false` is expected. The open-resource count is the number of inventory rows that do not meet the criterion. A skipped Datadog row is closed because no agent host is required. `Quota mode: Dynamic` replaces the quota line when Install was given `-QuotaMode Dynamic`. Microsoft documents the property at [Azure OpenAI dynamic quota](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/dynamic-quota).
+
+## Private profile
+
+Run every command on your computer with Azure CLI. There is no jump VM. Plan and the first Install can run before the VPN exists. The Install creates the virtual network, the private account, the private endpoint, the DNS zones, a point-to-site VPN gateway, and a DNS private resolver. It then stops before the Supervisor create if this computer cannot reach `services.ai.azure.com`.
+
+```powershell
+.\installer\Install-Jaws.ps1 -Mode Plan -NonInteractive -EnvironmentName your-environment -ResourceGroupName rg-jaws-your-environment -Location eastus -NetworkProfile Private
+.\installer\Install-Jaws.ps1 -Mode Preflight -EnvironmentName your-environment -ResourceGroupName rg-jaws-your-environment -Location eastus
+.\installer\Install-Jaws.ps1 -Mode Install -EnvironmentName your-environment -ResourceGroupName rg-jaws-your-environment -Location eastus -ApprovedPlanSha256 <plan-sha> -AcknowledgeStepBInstall
+```
+
+Use the `Plan SHA-256` from the private plan. A public digest stops at `JAWS-STEP-B-011`.
+
+The address table lives in one place: `10.42.0.0/16`, apps `10.42.0.0/23`, agents `10.42.2.0/24`, private endpoints `10.42.3.0/24`, `GatewaySubnet` `10.42.5.0/27`, DNS inbound `10.42.6.0/28`. The VPN client pool is `172.16.201.0/24`. The gateway uses Entra ID and the Azure VPN client audience `41b23e61-6c1e-4545-b367-cd054e0ed4b4`.
+
+**Expected first Install.** `STEP-B INSTALL PAUSED`, `Private posture: verified`, `Supervisor created: false`, the gateway name `jaws-vpn-<compact>`, and the resolver address. Connect that VPN on this computer and set its DNS server to the resolver address. Run the same Install command again. The second run adopts the account with no further account write and creates the Supervisor. It prints `STEP-B INSTALL PASS`. Accept then runs on this same computer.
+
+An existing account whose preview read is not exactly that posture stops at `JAWS-STEP-B-028` and is left unchanged. A data-plane call that fails after the VPN should be connected stops at `JAWS-STEP-B-029`. Microsoft documents the account shape in [How to use a virtual network with the Azure AI Foundry Agent Service](https://learn.microsoft.com/en-us/azure/ai-foundry/agents/how-to/virtual-networks).
+
+Key Vault and the registry stay reachable on the public network in this profile. `FedRAMP Moderate` stays false.
 
 `Test-JawsStepB.ps1 -Mode Install` prints the same install lines and then `Live Azure read: false`. That score checks the receipt file. It does not re-read Azure and it is not acceptance.
 
@@ -143,6 +163,8 @@ Install uploads `src/Jaws.Supervisor.Host` and runs `az acr build --platform lin
 | Resource name does not match the saved plan | `JAWS-STEP-B-016`, no Azure writes |
 | Custom resource name is invalid | `JAWS-STEP-B-027`, no Azure writes |
 | Existing resource without the installer tags | `JAWS-STEP-B-012`, no adoption |
+| Existing Foundry account does not match the private profile | `JAWS-STEP-B-028`, the account is not changed |
+| Private data plane is not reachable from this computer | `STEP-B INSTALL PAUSED` before the Supervisor exists. After the VPN is connected, a later data-plane failure is `JAWS-STEP-B-029` |
 | Model quota or unsupported region | `JAWS-STEP-B-MODEL-001`. A quota refusal prints `Issue`, `Action`, and `Quota request: https://aka.ms/oai/stuquotarequest`. Dynamic quota cannot create the deployment when Azure has no quota for capacity 1 |
 | Requested quota mode is not recorded | `JAWS-STEP-B-MODEL-002`. Capacity stays 1. Dynamic uses the regional Standard SKU |
 | Regional Standard SKU is not offered | `JAWS-STEP-B-MODEL-001` before a Dynamic deployment is created. GlobalStandard is not used as a substitute |
@@ -198,7 +220,7 @@ Accept also prints `FedRAMP open resources` and `Install config` when B3 wrote t
 
 ## Restart
 
-`rg-aiops-lab-test2` has been deleted. An old receipt under `installer/.local` for that name fails Accept with `JAWS-STEP-B-024` because the resource group is gone. The default Key Vault for environment `aiops-lab-test2` stays purge-protected until 2027-01-18. Choose a new `-EnvironmentName` so the generated Key Vault name is different, or keep that environment. Preflight then prints that the Key Vault name is not available and asks for another. `-NonInteractive` does not ask, so pass `-KeyVaultName`. Run Plan, then Preflight, and use the `Plan SHA-256` Preflight prints when a name was replaced. Do not run `Install-JawsFoundryPrivateNetwork.ps1` during this restart. The dev project stays unchanged.
+`rg-aiops-lab-test2` has been deleted. An old receipt under `installer/.local` for that name fails Accept with `JAWS-STEP-B-024` because the resource group is gone. On 20 October 2026 the only JAWS resources left in subscription `c52f597b-7753-45b4-a764-67e290dcfd5e` are four soft-deleted Key Vault names. Azure will not purge them early. The two deleted that evening, `kv-jaws-lab-test2` (purge `2027-01-18T22:06:00Z`) and `kv-jaws-dev-001` (purge `2027-01-18T22:05:39Z`), have purge protection. The two older names, `kvjawsaiopslabtest2` (purge `2027-01-18T04:29:10Z`) and `kvjawsaiopslabtest` (purge `2027-01-17T00:22:58Z`), return `DeletedVaultPurge`, the same refusal recorded in October. Azure auto-purges them on 17 and 18 January 2027, and the names stay reserved until then. Choose a new `-EnvironmentName` so the generated Key Vault name is different, or pass `-KeyVaultName`. `kv-jaws-dev-001` is also reserved and stops at `JAWS-STEP-B-017`. Preflight prints that a taken name is not available and asks for another. `-NonInteractive` does not ask, so pass `-KeyVaultName`. Run Plan, then Preflight, and use the `Plan SHA-256` Preflight prints when a name was replaced. `Install-JawsFoundryPrivateNetwork.ps1` is deprecated. Do not run it. A private rebuild uses `-NetworkProfile Private` on Plan. The dev project state file stays unchanged.
 
 ## Uninstall to stop charges or start a new install
 

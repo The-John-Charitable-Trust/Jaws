@@ -66,10 +66,15 @@ Optional check that the Supervisor host publishes before the install spends mone
 
 ## B3. Install
 
+Copy `installer/config/jaws.install.example.json` to `installer/.local/jaws.install.your-environment.json` and fill the ServiceNow login URL, username, and password there. Add the Datadog site, API key, and application key when you have them, and the resource id of the default virtual machine. Leave a field empty when you do not have that value yet. The filled file stays under `.local` and is not committed. Secret values are written to the Step B Key Vault. The generated file `installer/.local/jaws-install.your-environment.generated.json` records the secret names and one FedRAMP Moderate row for each Azure resource. It does not record a password, an API key, or the ServiceNow URL.
+
 ```powershell
-.\installer\Install-Jaws.ps1 -Mode Install -EnvironmentName your-environment -ResourceGroupName rg-jaws-your-environment -Location eastus -ApprovedPlanSha256 <plan-sha> -AcknowledgeStepBInstall
+Copy-Item .\installer\config\jaws.install.example.json .\installer\.local\jaws.install.your-environment.json
+.\installer\Install-Jaws.ps1 -Mode Install -EnvironmentName your-environment -ResourceGroupName rg-jaws-your-environment -Location eastus -ApprovedPlanSha256 <plan-sha> -AcknowledgeStepBInstall -InstallConfig .\installer\.local\jaws.install.your-environment.json
 .\installer\Test-JawsStepB.ps1 -Mode Install
 ```
+
+The same seven fields can be passed as parameters, and a parameter replaces the matching field in the file. On an interactive console, Install asks for each field that is still empty. `az vm run-command` cannot answer those prompts, so use the file. `-NonInteractive` does not ask. Install with every field empty still prints `STEP-B INSTALL PASS`, stores nothing in Key Vault, and writes the FedRAMP inventory with `ServiceNow stored: false` and `Datadog stored: false`. A partial ServiceNow login, or a Datadog key without its site, fails the install milestone after the foundation exists. Fix the file and run Install again. `Set-JawsObservabilityIntegration.ps1` remains available for a later update of the same secrets.
 
 `-QuotaMode` is `Static` or `Dynamic`. The default is `Static`. Static creates GlobalStandard capacity 1 (1,000 tokens per minute) and leaves dynamic quota off. Requests above that rate are refused. `Dynamic` does not change the plan digest or the capacity. It creates the regional Standard SKU, because Azure rejects `dynamicThrottlingEnabled` on GlobalStandard. After that deployment exists, Install sets `properties.dynamicThrottlingEnabled` to true with `az rest --method patch` and API version `2023-10-01-preview`. Azure may then serve more than the capacity-1 rate when it has spare capacity. Those extra tokens are billed at the normal rate, and dynamic quota has no throughput ceiling. Turning the property on has no separate fee. If a GlobalStandard deployment is already present, Dynamic Install deletes it and creates the Standard deployment under the same name. A later Dynamic Install does not delete a deployment that is already Standard. Use the same plan digest:
 
@@ -90,13 +95,19 @@ Quota mode: Static
 Agent: jaws-supervisor-your-environment
 Agent version: 1
 Agent status: active
+ServiceNow stored: true
+Datadog stored: false
+Default virtual machine stored: true
+FedRAMP Moderate: false
+FedRAMP open resources: 10
+Install config: installer/.local/jaws-install.your-environment.generated.json
 ```
 
-`Quota mode: Dynamic` replaces that line when Install was given `-QuotaMode Dynamic`. Microsoft documents the property at [Azure OpenAI dynamic quota](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/dynamic-quota).
+`ServiceNow stored` and `Datadog stored` are `false` when those values were not supplied. `FedRAMP Moderate: false` is expected on this public-egress install. The open-resource count is the number of inventory rows that do not meet the criterion. `Quota mode: Dynamic` replaces the quota line when Install was given `-QuotaMode Dynamic`. Microsoft documents the property at [Azure OpenAI dynamic quota](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/dynamic-quota).
 
 `Test-JawsStepB.ps1 -Mode Install` prints the same install lines and then `Live Azure read: false`. That score checks the receipt file. It does not re-read Azure and it is not acceptance.
 
-Install uploads `src/Jaws.Supervisor.Host` and runs `az acr build --platform linux/amd64`. `--file` is the package plan's full Dockerfile path. When that argument is set, Azure CLI checks it from the current directory, so a bare `Dockerfile` name is not used. It does not run `docker build`, `docker tag`, or `docker push`. The image line ends in `@sha256:` and a 64-character digest read back from the registry. The receipt is `installer/.local/jaws-step-b-install.your-environment.generated.json`. The generated state file is `installer/.local/jaws-installation-state.your-environment.generated.json`. `installer/config/jaws-installation-state.dev.json` is unchanged.
+Install uploads `src/Jaws.Supervisor.Host` and runs `az acr build --platform linux/amd64`. `--file` is the package plan's full Dockerfile path. When that argument is set, Azure CLI checks it from the current directory, so a bare `Dockerfile` name is not used. It does not run `docker build`, `docker tag`, or `docker push`. The image line ends in `@sha256:` and a 64-character digest read back from the registry. The receipt is `installer/.local/jaws-step-b-install.your-environment.generated.json`. The install config, with secret names and the FedRAMP inventory, is `installer/.local/jaws-install.your-environment.generated.json`. The generated state file is `installer/.local/jaws-installation-state.your-environment.generated.json`. `installer/config/jaws-installation-state.dev.json` is unchanged.
 
 | Condition | Result |
 | --- | --- |
@@ -113,6 +124,9 @@ Install uploads `src/Jaws.Supervisor.Host` and runs `az acr build --platform lin
 | Approved model is not offered | `JAWS-STEP-B-MODEL-001` before the deployment is created |
 | Account, project, deployment, vault, or registry stays provisioning | `JAWS-STEP-B-023` |
 | Hosted Supervisor does not become active | `JAWS-STEP-B-018` |
+| `-InstallConfig` path is missing | `JAWS-INSTALL-CONFIG-001`, before the first write |
+| ServiceNow URL, username, and password are not supplied together | `JAWS-OBS-003`, after the foundation exists |
+| Datadog key and site are not supplied together | `JAWS-OBS-006`, after the foundation exists |
 
 ## B4. Accept the foundation
 
@@ -142,15 +156,16 @@ Agent: jaws-supervisor-your-environment
 Agent version: 1
 Agent status: active
 Dev state: unchanged
+FedRAMP Moderate: false
 ```
 
-The report is `installer/.local/jaws-step-b-acceptance.your-environment.generated.json`. A receipt file whose resources are not in the signed-in subscription throws `JAWS-STEP-B-024` and does not print `STEP-B ACCEPTANCE PASS`.
+Accept also prints `FedRAMP open resources` and `Install config` when B3 wrote the inventory. A public-egress pass still prints `STEP-B ACCEPTANCE PASS`. That line is the functional result. `FedRAMP Moderate: false` means B-09 stays open. The report is `installer/.local/jaws-step-b-acceptance.your-environment.generated.json`. A receipt file whose resources are not in the signed-in subscription throws `JAWS-STEP-B-024` and does not print `STEP-B ACCEPTANCE PASS`.
 
 ## Acceptance
 
 `STEP-B ACCEPTANCE PASS` is the functional acceptance line. `STEP-B INSTALL PASS` records the installer receipt. A local stand-in for Azure CLI can exercise the commands, and that exercise is not a fresh-subscription receipt. Step B stays functionally unaccepted until B4 prints `STEP-B ACCEPTANCE PASS` against a real subscription that is not the dev project.
 
-- B-09: FedRAMP Moderate. The Foundry account in the signed-in subscription has public network access disabled, a private endpoint, the three private DNS zones named above, and agent injection chosen at create time. Key Vault has public access disabled, a private endpoint, RBAC, and purge protection. The registry has admin disabled and a private endpoint. Local authentication is disabled. RequestResponse and Audit diagnostics are on. A public-egress `STEP-B ACCEPTANCE PASS` leaves this criterion open and leaves `Customer installation accepted` false.
+- B-09: FedRAMP Moderate. The Foundry account in the signed-in subscription has public network access disabled, a private endpoint, the three private DNS zones named above, and agent injection chosen at create time. Key Vault has public access disabled, a private endpoint, RBAC, and purge protection. The registry has admin disabled and a private endpoint. Local authentication is disabled. RequestResponse and Audit diagnostics are on. The install config lists the resource group, Foundry account, project, model deployment, Key Vault, registry, project identity, hosted Supervisor, diagnostics, virtual network, browser Container App, and default virtual machine. A public-egress `STEP-B ACCEPTANCE PASS` leaves this criterion open and leaves `Customer installation accepted` false. The inventory is a customer configuration record. It is not a FedRAMP authorization.
 
 ## Restart
 

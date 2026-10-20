@@ -9,5 +9,12 @@
   "KeyVaultName": "<key-vault>",
   "ExpectedModelName": "gpt-5-mini",
   "ExpectedModelVersion": "2025-08-07",
-  "TenantScan": "All enabled subscriptions visible to the signed-in identity in the selected subscription tenant"
+  "TenantScan": "All enabled subscriptions visible to the signed-in identity in the selected subscription tenant",
+  "ServiceNowUrl": "",
+  "ServiceNowUsername": "",
+  "ServiceNowPassword": "",
+  "DatadogSite": "",
+  "DatadogApiKey": "",
+  "DatadogAppKey": "",
+  "DefaultVirtualMachineResourceId": ""
 }

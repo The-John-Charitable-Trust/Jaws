@@ -17,6 +17,14 @@ param(
     [ValidateSet('Static','Dynamic')][string]$QuotaMode='Static',
     [switch]$AcknowledgeStepBInstall,
     [string]$ApprovedPlanSha256,
+    [string]$InstallConfig,
+    [string]$ServiceNowUrl,
+    [string]$ServiceNowUsername,
+    [string]$ServiceNowPassword,
+    [string]$DatadogSite,
+    [string]$DatadogApiKey,
+    [string]$DatadogAppKey,
+    [string]$DefaultVirtualMachineResourceId,
     [string]$StateFile,
     [switch]$NonInteractive
 )
@@ -233,9 +241,23 @@ if ($Mode -eq 'Install') {
     if (-not $saved.PSObject.Properties['InstallScope']) {
         throw 'JAWS-STEP-B-016: The saved plan has no install scope. Re-run Plan with -EnvironmentName, -ResourceGroupName, and -Location.'
     }
+    if (-not [string]::IsNullOrWhiteSpace($InstallConfig) -and -not (Test-Path -LiteralPath $InstallConfig -PathType Leaf)) {
+        throw "JAWS-INSTALL-CONFIG-001: Install config was not found at $InstallConfig."
+    }
     $installEvidence = Join-Path $PSScriptRoot ".local/jaws-step-b-install.$EnvironmentName.generated.json"
     try {
         $installed = Invoke-JawsStepBInstall -Scope $saved.InstallScope -ApprovedPlanSha256 $ApprovedPlanSha256 -InstallerRoot $PSScriptRoot -QuotaMode $QuotaMode -AcknowledgeStepBInstall:$AcknowledgeStepBInstall
+        Import-Module (Join-Path $PSScriptRoot 'modules/InstallConfig.psm1') -Force
+        $installParameters = @{
+            ServiceNowUrl = $ServiceNowUrl
+            ServiceNowUsername = $ServiceNowUsername
+            ServiceNowPassword = $ServiceNowPassword
+            DatadogSite = $DatadogSite
+            DatadogApiKey = $DatadogApiKey
+            DatadogAppKey = $DatadogAppKey
+            DefaultVirtualMachineResourceId = $DefaultVirtualMachineResourceId
+        }
+        $installConfigResult = Save-JawsInstallConfiguration -EnvironmentName $EnvironmentName -InstallerRoot $PSScriptRoot -InstallConfig $InstallConfig -Parameters $installParameters -NonInteractive:$NonInteractive -AcknowledgeStepBInstall:$AcknowledgeStepBInstall
     } catch {
         Save-JawsMilestoneFailure -Path $installEvidence -Message $_.Exception.Message -Started $jawsMilestoneStarted
         Write-JawsMilestoneResult -Result FAIL -ReadyForNextStep $false -NextStep 'Step B Accept' -EvidencePath $installEvidence
@@ -256,6 +278,12 @@ if ($Mode -eq 'Install') {
     Write-Host "Azure writes: $($done.AzureWrites)"
     Write-Host "State: $($installed.StatePath)"
     Write-Host "Receipt: $($installed.ReceiptPath)"
+    Write-Host "ServiceNow stored: $($installConfigResult.ServiceNowConfigured.ToString().ToLowerInvariant())"
+    Write-Host "Datadog stored: $($installConfigResult.DatadogConfigured.ToString().ToLowerInvariant())"
+    Write-Host "Default virtual machine stored: $($installConfigResult.DefaultVirtualMachineConfigured.ToString().ToLowerInvariant())"
+    Write-Host 'FedRAMP Moderate: false'
+    Write-Host "FedRAMP open resources: $($installConfigResult.OpenResourceCount)"
+    Write-Host "Install config: $($installConfigResult.Path)"
     Write-JawsMilestoneResult -Result PASS -ReadyForNextStep $true -NextStep 'Step B Accept' -EvidencePath $installed.ReceiptPath
     return
 }
@@ -291,6 +319,15 @@ if ($Mode -eq 'Accept') {
     Write-Host 'Agent status: active'
     Write-Host 'Dev state: unchanged'
     Write-Host "Receipt: $($live.ReceiptPath)"
+    $fedRampConfig = Join-Path $PSScriptRoot ".local/jaws-install.$EnvironmentName.generated.json"
+    Write-Host 'FedRAMP Moderate: false'
+    if (Test-Path -LiteralPath $fedRampConfig -PathType Leaf) {
+        $fedRamp = Get-Content -LiteralPath $fedRampConfig -Raw | ConvertFrom-Json
+        Write-Host "FedRAMP open resources: $($fedRamp.FedRampModerate.OpenResourceCount)"
+        Write-Host "Install config: $fedRampConfig"
+    } else {
+        Write-Host 'Install config: not written'
+    }
     Write-JawsMilestoneResult -Result PASS -ReadyForNextStep $true -NextStep 'Step C Validate' -EvidencePath $accepted.ReportPath
     return
 }

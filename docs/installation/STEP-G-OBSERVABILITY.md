@@ -1,6 +1,6 @@
 # Observability integration secrets
 
-Step G, the observability specialist and its MCP server, is not installable. This command stores the ServiceNow developer instance and the Datadog parameters in the Step B Key Vault, and it marks one virtual machine as the default Datadog host. It does not install the Datadog Agent and it does not create the specialist.
+Step G, the observability specialist and its MCP server, is not installable. Step B Install requests the ServiceNow developer instance and the Datadog parameters, stores the values in the Step B Key Vault, and marks one virtual machine as the default Datadog host. It does not install the Datadog Agent and it does not create the specialist. The standalone command below writes the same secrets after Install when a value changes.
 
 The current test default is virtual machine `jaws-stepb-test` in resource group `rg-jaws-stepb-test`. That machine is Windows. Its resource id is:
 
@@ -26,7 +26,17 @@ The MCP manifest names these secrets. It does not contain the values. The eviden
 
 ServiceNow URL, username, and password are stored together. The Datadog API key and site are stored together. The application key is optional. The default virtual machine can be stored on its own.
 
-## Command
+## Install
+
+Copy `installer/config/jaws.install.example.json` to `installer/.local/jaws.install.your-environment.json`. Fill `ServiceNowUrl`, `ServiceNowUsername`, and `ServiceNowPassword`. Add `DatadogSite`, `DatadogApiKey`, and `DatadogAppKey` when you have them, and `DefaultVirtualMachineResourceId` for the default host. Pass that file to Step B Install:
+
+```powershell
+.\installer\Install-Jaws.ps1 -Mode Install -EnvironmentName your-environment -ResourceGroupName rg-jaws-your-environment -Location eastus -ApprovedPlanSha256 <plan-sha> -AcknowledgeStepBInstall -InstallConfig .\installer\.local\jaws.install.your-environment.json
+```
+
+Install prints `ServiceNow stored`, `Datadog stored`, `Default virtual machine stored`, `FedRAMP Moderate: false`, and `FedRAMP open resources`. The generated config is `installer/.local/jaws-install.your-environment.generated.json`. It names the secrets and lists every Azure resource in the FedRAMP inventory. It does not contain the password, the API key, or the ServiceNow URL. `FedRampModerate.Accepted` stays false while any resource is still public. That record is customer configuration. It is not a FedRAMP authorization. An interactive console asks for each empty field. `az vm run-command` cannot answer those prompts, so use the file. Leaving every field empty still lets the functional install pass and stores nothing.
+
+## Later update
 
 Run this after Step B Install has written the receipt for the environment. Supply the ServiceNow values you have. Add the Datadog parameters when you have them. Do not commit the values.
 
@@ -46,7 +56,7 @@ Expected: `Observability integration: recorded`, `Datadog Agent installed: false
 
 ## Acceptance criteria
 
-- G-00: The command writes only the secret names above into the Step B vault. The evidence file contains no password and no API key.
+- G-00: Install and the later-update command write only the secret names above into the Step B vault. The evidence file and `jaws-install.<environment>.generated.json` contain no password and no API key.
 - G-01: The default virtual machine resource id is `jaws-stepb-test` for the current test, and that machine carries `jaws-datadog-default=true`.
 - G-02: FedRAMP Moderate. The vault is the private Step B vault. The observability identity, when Step G exists, receives Key Vault Secrets User on these secrets and no broader vault role. The Datadog Agent on the virtual machine is the telemetry collector. JAWS still has one observability specialist and does not publish a public specialist URL.
 - G-03: Step G remains uninstalled. A secret receipt is not a specialist, an MCP server, or a Datadog Agent installation.

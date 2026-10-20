@@ -145,6 +145,54 @@ function Get-JawsStepBScopeSha256 {
     return (Get-JawsStepBSha256 -Text $canonical)
 }
 
+function Test-JawsStepBConsolePrompt {
+    param([switch]$NonInteractive)
+    if ($NonInteractive) { return $false }
+    if ([Console]::IsInputRedirected) { return $false }
+    foreach ($frame in @(Get-PSCallStack)) {
+        if ($frame.Command -in @('Invoke-Pester', 'Describe', 'Context', 'It')) { return $false }
+    }
+    return $true
+}
+
+function Resolve-JawsStepBPlanTarget {
+    [CmdletBinding()]
+    param(
+        [string]$EnvironmentName,
+        [string]$ResourceGroupName,
+        [string]$Location,
+        [switch]$EnvironmentSupplied,
+        [switch]$ResourceGroupSupplied,
+        [switch]$LocationSupplied,
+        [switch]$NonInteractive,
+        [scriptblock]$Prompter
+    )
+    if ($EnvironmentSupplied -and $ResourceGroupSupplied -and $LocationSupplied) {
+        return [pscustomobject]@{ Complete = $true; EnvironmentName = $EnvironmentName; ResourceGroupName = $ResourceGroupName; Location = $Location }
+    }
+    $canPrompt = ($null -ne $Prompter) -or (Test-JawsStepBConsolePrompt -NonInteractive:$NonInteractive)
+    if (-not $canPrompt) {
+        return [pscustomobject]@{ Complete = $false; EnvironmentName = $EnvironmentName; ResourceGroupName = $ResourceGroupName; Location = $Location }
+    }
+    if (-not $EnvironmentSupplied) {
+        $entered = if ($Prompter) { & $Prompter 'Environment name (2-21 characters, lowercase letters, digits, and hyphens)' } else { Read-Host 'Environment name (2-21 characters, lowercase letters, digits, and hyphens)' }
+        if ([string]::IsNullOrWhiteSpace([string]$entered)) {
+            throw 'JAWS-STEP-B-014: Environment name is required. Pass -EnvironmentName or answer the prompt.'
+        }
+        $EnvironmentName = ([string]$entered).Trim()
+    }
+    if (-not $ResourceGroupSupplied) {
+        $suggested = "rg-jaws-$EnvironmentName"
+        $entered = if ($Prompter) { & $Prompter "Resource group name [$suggested]" } else { Read-Host "Resource group name [$suggested]" }
+        $ResourceGroupName = if ([string]::IsNullOrWhiteSpace([string]$entered)) { $suggested } else { ([string]$entered).Trim() }
+    }
+    if (-not $LocationSupplied) {
+        $entered = if ($Prompter) { & $Prompter 'Location [eastus]' } else { Read-Host 'Location [eastus]' }
+        $Location = if ([string]::IsNullOrWhiteSpace([string]$entered)) { 'eastus' } else { ([string]$entered).Trim() }
+    }
+    return [pscustomobject]@{ Complete = $true; EnvironmentName = $EnvironmentName; ResourceGroupName = $ResourceGroupName; Location = $Location }
+}
+
 function Invoke-JawsStepBAz {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string[]]$Arguments,[switch]$AllowMissing)
@@ -921,4 +969,4 @@ function Invoke-JawsStepBAccept {
     return [pscustomobject]@{ Report = $report; ReportPath = $reportPath }
 }
 
-Export-ModuleMember -Function New-JawsStepBInstallScope,Get-JawsStepBScopeSha256,Get-JawsStepBAuthorizedWrites,Assert-JawsStepBPlanNames,Invoke-JawsStepBPreflight,Invoke-JawsStepBInstall,Invoke-JawsStepBAccept
+Export-ModuleMember -Function New-JawsStepBInstallScope,Get-JawsStepBScopeSha256,Resolve-JawsStepBPlanTarget,Get-JawsStepBAuthorizedWrites,Assert-JawsStepBPlanNames,Invoke-JawsStepBPreflight,Invoke-JawsStepBInstall,Invoke-JawsStepBAccept

@@ -114,8 +114,12 @@ if ($Mode -eq 'Plan') {
     $offlinePlan = New-JawsOfflineDeploymentPlan @planArgs
     $exampleAfter = Get-Content -LiteralPath $examplePath -Raw
     if ($exampleAfter -ne $exampleBefore) { throw 'JAWS-PLAN-012: Plan mode rewrote the example blueprint.' }
-    if ($PSBoundParameters.ContainsKey('EnvironmentName') -and $PSBoundParameters.ContainsKey('ResourceGroupName') -and $PSBoundParameters.ContainsKey('Location')) {
-        Import-Module (Join-Path $PSScriptRoot 'modules/StepBInstall.psm1') -Force
+    Import-Module (Join-Path $PSScriptRoot 'modules/StepBInstall.psm1') -Force
+    $planTarget = Resolve-JawsStepBPlanTarget -EnvironmentName $EnvironmentName -ResourceGroupName $ResourceGroupName -Location $Location -EnvironmentSupplied:($PSBoundParameters.ContainsKey('EnvironmentName')) -ResourceGroupSupplied:($PSBoundParameters.ContainsKey('ResourceGroupName')) -LocationSupplied:($PSBoundParameters.ContainsKey('Location')) -NonInteractive:$NonInteractive
+    if ($planTarget.Complete) {
+        $EnvironmentName = [string]$planTarget.EnvironmentName
+        $ResourceGroupName = [string]$planTarget.ResourceGroupName
+        $Location = [string]$planTarget.Location
         $installScope = New-JawsStepBInstallScope -SubscriptionId $offlinePlan.SubscriptionId -ResourceGroupName $ResourceGroupName -Location $Location -EnvironmentName $EnvironmentName -ModelName $ModelName -ModelVersion $ModelVersion -FoundryAccountName $FoundryAccountName -ProjectName $ProjectName -KeyVaultName $KeyVaultName -AcrName $AcrName -SupervisorAgentName $SupervisorAgentName
         $offlinePlan | Add-Member -NotePropertyName InstallScope -NotePropertyValue $installScope -Force
         $offlinePlan | Add-Member -NotePropertyName PlanSha256 -NotePropertyValue $installScope.PlanSha256 -Force
@@ -186,6 +190,9 @@ if ($Mode -eq 'Plan') {
         Write-Host 'STEP-B PLAN PASS'
         Write-Host "Subscription: $($planResult.SubscriptionId)"
         Write-Host "Subscription source: $($planResult.SubscriptionSource)"
+        if ($planResult.PSObject.Properties['InstallScope']) {
+            Write-Host "Environment: $($planResult.InstallScope.EnvironmentName)"
+        }
         Write-Host "Resource group: $($planResult.ResourceGroupName)"
         Write-Host "Location: $($planResult.Location)"
         Write-Host "Status: $($planResult.Status)"

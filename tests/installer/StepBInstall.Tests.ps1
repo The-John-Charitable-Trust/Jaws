@@ -624,6 +624,27 @@ Describe 'Step B foundation install' {
         }
     }
 
+    It 'asks for an environment name and fills the resource group and location' {
+        $kept = Resolve-JawsStepBPlanTarget -EnvironmentName 'lab1' -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' -EnvironmentSupplied -ResourceGroupSupplied -LocationSupplied -NonInteractive
+        $kept.Complete | Should -BeTrue
+        $kept.EnvironmentName | Should -Be 'lab1'
+        $kept.ResourceGroupName | Should -Be 'rg-jaws-lab1'
+        $skipped = Resolve-JawsStepBPlanTarget -NonInteractive
+        $skipped.Complete | Should -BeFalse
+        $answers = [System.Collections.Generic.Queue[string]]::new()
+        $answers.Enqueue('customer1')
+        $answers.Enqueue('')
+        $answers.Enqueue('westus')
+        $asked = Resolve-JawsStepBPlanTarget -Prompter { param($Label) $answers.Dequeue() }
+        $asked.Complete | Should -BeTrue
+        $asked.EnvironmentName | Should -Be 'customer1'
+        $asked.ResourceGroupName | Should -Be 'rg-jaws-customer1'
+        $asked.Location | Should -Be 'westus'
+        $blank = [System.Collections.Generic.Queue[string]]::new()
+        $blank.Enqueue('   ')
+        { Resolve-JawsStepBPlanTarget -Prompter { param($Label) $blank.Dequeue() } } | Should -Throw '*JAWS-STEP-B-014*'
+    }
+
     It 'lets the operator replace generated resource names and keeps the defaults otherwise' {
         $default = New-JawsStepBInstallScope -SubscriptionId $script:sub -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' -EnvironmentName 'lab1' -ModelName 'gpt-5-mini' -ModelVersion '2025-08-07'
         $default.FoundryAccountName | Should -Be 'jaws-foundry-lab1'

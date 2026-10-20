@@ -391,7 +391,7 @@ function Get-JawsStepBAuthorizedWrites {
         [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.CognitiveServices/accounts/deployments'; BoundTo = 'The approved OpenAI model name and version, capacity 1. Static uses GlobalStandard. Dynamic uses the regional Standard SKU and then sets dynamicThrottlingEnabled. An existing GlobalStandard deployment is replaced when Install uses Dynamic. Quota mode does not change the plan digest. The plan is not changed if that model is absent.' },
         [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.KeyVault/vaults'; BoundTo = 'RBAC authorization and purge protection.' },
         [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.ContainerRegistry/registries'; BoundTo = 'Basic SKU, admin disabled, public network enabled.' },
-        [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.Authorization/roleAssignments'; BoundTo = 'AcrPull for this project identity on this registry only.' },
+        [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Microsoft.Authorization/roleAssignments'; BoundTo = 'AcrPull for the project identity and the Supervisor agent identity on this registry only.' },
         [pscustomobject]@{ Action = 'CreateIfMissing'; Type = 'Foundry hosted agent version'; BoundTo = 'Supervisor version 1, cpu 1, memory 2Gi. The image is built by az acr build for linux/amd64 and pinned to the registry digest.' }
     )
 }
@@ -839,6 +839,16 @@ function Invoke-JawsStepBInstall {
     if ([string]$existing.status -ne 'active' -or $draft -eq $true -or $observedImage -cne $image) {
         throw 'JAWS-STEP-B-018: Hosted Supervisor version 1 is not active on the approved image digest.'
     }
+    $agentPrincipal = [string](Get-JawsStepBProperty -Object $existing -Names @('instance_identity','principal_id'))
+    if ([string]::IsNullOrWhiteSpace($agentPrincipal)) {
+        throw 'JAWS-STEP-B-020: Supervisor agent identity is missing. AcrPull was not assigned to the agent.'
+    }
+    $agentRoles = @(Invoke-JawsStepBAz -Arguments @('role','assignment','list','--subscription',$sub,'--assignee-object-id',$agentPrincipal,'--scope',$registryId,'--include-inherited','--fill-principal-name','false','--output','json','--only-show-errors'))
+    $agentPull = @($agentRoles | Where-Object { $_ -and [string]$_.roleDefinitionName -in @('AcrPull','Container Registry Repository Reader') }).Count -gt 0
+    if (-not $agentPull) {
+        $null = Invoke-JawsStepBRoleAssignment -Arguments @('role','assignment','create','--subscription',$sub,'--assignee-object-id',$agentPrincipal,'--assignee-principal-type','ServicePrincipal','--role','AcrPull','--scope',$registryId,'--output','json','--only-show-errors')
+        $writes++
+    }
     if ($observedImage -notmatch '@(sha256:[a-f0-9]{64})$') { throw 'JAWS-STEP-B-018: Hosted Supervisor image is not digest-pinned.' }
     $digest = $Matches[1]
     $image = $observedImage
@@ -1029,6 +1039,13 @@ function Invoke-JawsStepBAccept {
     $endpoint = "https://$($scope.FoundryAccountName).services.ai.azure.com/api/projects/$($scope.ProjectName)"
     $versionUrl = "$endpoint/agents/$($scope.AgentName)/versions/1?api-version=v1"
     $agent = Invoke-JawsStepBAz -AllowMissing -Arguments @('rest','--method','GET','--url',$versionUrl,'--resource','https://ai.azure.com','--output','json','--only-show-errors')
+    $agentPrincipal = [string](Get-JawsStepBProperty -Object $agent -Names @('instance_identity','principal_id'))
+    if ([string]::IsNullOrWhiteSpace($agentPrincipal)) { $reasons += 'Supervisor agent identity is missing' }
+    else {
+        $agentRoles = @(Invoke-JawsStepBAz -Arguments @('role','assignment','list','--subscription',$sub,'--assignee-object-id',$agentPrincipal,'--scope',$registryId,'--include-inherited','--fill-principal-name','false','--output','json','--only-show-errors'))
+        $agentPull = @($agentRoles | Where-Object { $_ -and [string]$_.roleDefinitionName -in @('AcrPull','Container Registry Repository Reader') }).Count -gt 0
+        if (-not $agentPull) { $reasons += 'Supervisor agent identity is missing AcrPull' }
+    }
     $image = [string](Get-JawsStepBProperty -Object $agent -Names @('definition','container_configuration','image'))
     $draft = Get-JawsStepBProperty -Object $agent -Names @('draft')
     if ($null -eq $agent) { $reasons += 'hosted Supervisor version 1 is missing' }

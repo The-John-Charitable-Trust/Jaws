@@ -1,7 +1,7 @@
 BeforeAll {
     $script:root = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
     $script:sub = '22222222-2222-2222-2222-222222222222'
-    $script:vm = "/subscriptions/$($script:sub)/resourceGroups/rg-jaws-stepb-test/providers/Microsoft.Compute/virtualMachines/jaws-stepb-test"
+    $script:vm = "/subscriptions/$($script:sub)/resourceGroups/rg-jaws-cfg1/providers/Microsoft.Compute/virtualMachines/jaws-cfg1-datadog"
     $script:password = 'super-secret-value'
     $script:apiKey = 'dd-api-secret-value'
     Import-Module (Join-Path $script:root 'installer/modules/InstallConfig.psm1') -Force
@@ -50,6 +50,8 @@ if args[:3] == ["keyvault", "secret", "set"]:
     world["secrets"][flag("--name")] = {"length": len(value)}
     save()
     emit({"name": flag("--name"), "id": "https://kvjawscfg1.vault.azure.net/secrets/" + flag("--name")})
+if args[:2] == ["vm", "show"]:
+    emit({"name": flag("--name"), "location": "eastus"})
 if args[:2] == ["tag", "update"]:
     world["tags"].append({"resource": flag("--resource-id"), "tags": flag("--tags")})
     save()

@@ -1,14 +1,16 @@
 # Observability integration secrets
 
-Step G, the observability specialist and its MCP server, is not installable. Step B Install requests the ServiceNow developer instance and the Datadog parameters, stores the values in the Step B Key Vault, and marks one virtual machine as the default Datadog host. It does not install the Datadog Agent and it does not create the specialist. The standalone command below writes the same secrets after Install when a value changes.
+Step G, the observability specialist and its MCP server, is not installable. When that specialist is built, its skills and tools are added to the one custom MCP server as compiled modules named by the manifest. The metadata those modules use is supplied at install time and stored under the secret names below. Step B Install requests the ServiceNow developer instance and the Datadog parameters, stores the values in the Step B Key Vault, and marks one virtual machine as the default Datadog host. It does not install the Datadog Agent and it does not create the specialist. The standalone command below writes the same secrets after Install when a value changes.
 
-The Datadog Agent host must already exist when Datadog is configured. Install does not create it. The minimum is Windows 11 or Windows Server 2016 or later, 2 vCPU, 8 GiB RAM, and 4 GiB free disk. `Standard_D2s_v3` meets that minimum. The full table is in [SYSTEM-PREREQUISITES.md](SYSTEM-PREREQUISITES.md). The current test host is virtual machine `jaws-stepb-test` in resource group `rg-jaws-stepb-test`, size `Standard_D2s_v3`, Windows 11 Pro. Its resource id is:
+The Datadog Agent host must already exist in this environment when Datadog is configured. That is the same subscription, the environment resource group (`-ResourceGroupName`), and the environment location (`-Location`). For the current test those are subscription `c52f597b-7753-45b4-a764-67e290dcfd5e`, resource group `rg-aiops-lab-test2`, and location `eastus`. A new environment that keeps the generated resource group uses `rg-jaws-<environment>`. Install does not create the virtual machine. The minimum is Windows 11 or Windows Server 2016 or later, 2 vCPU, 8 GiB RAM, and 4 GiB free disk. `Standard_D2s_v3` meets that minimum. The Datadog Agent 7 must already be installed, configured with the site and API key you will enter, and the Windows service `datadogagent` must be Running. The full table and the install commands are in [SYSTEM-PREREQUISITES.md](SYSTEM-PREREQUISITES.md).
+
+`jaws-stepb-test` in `rg-jaws-stepb-test` is the operator machine. It is not in `rg-aiops-lab-test2`, so it is not a Datadog host for that environment. A resource id outside the environment subscription or resource group, or a machine in a different location, stops at `JAWS-OBS-009`.
 
 ```text
-/subscriptions/<subscription-id>/resourceGroups/rg-jaws-stepb-test/providers/Microsoft.Compute/virtualMachines/jaws-stepb-test
+/subscriptions/<subscription-id>/resourceGroups/<environment-resource-group>/providers/Microsoft.Compute/virtualMachines/<vm-name>
 ```
 
-The tag `jaws-datadog-default=true` on that machine is the same mark the command writes. The dev project vault is refused.
+The tag `jaws-datadog-default=true` on that machine is the mark the command writes. The dev project vault is refused. A host created inside the environment resource group is deleted with that group by [UNINSTALL.md](UNINSTALL.md).
 
 ## Secret names
 
@@ -41,7 +43,7 @@ Install prints `ServiceNow stored`, `ServiceNow skipped`, `Datadog stored`, `Dat
 Run this after Step B Install has written the receipt for the environment. Supply the ServiceNow values you have. Add the Datadog parameters when you have them. Do not commit the values.
 
 ```powershell
-.\installer\Set-JawsObservabilityIntegration.ps1 -EnvironmentName your-environment -AcknowledgeObservabilitySecrets -ServiceNowUrl https://<instance>.service-now.com -ServiceNowUsername <username> -ServiceNowPassword <password> -DefaultVirtualMachineResourceId /subscriptions/<subscription-id>/resourceGroups/rg-jaws-stepb-test/providers/Microsoft.Compute/virtualMachines/jaws-stepb-test
+.\installer\Set-JawsObservabilityIntegration.ps1 -EnvironmentName your-environment -AcknowledgeObservabilitySecrets -ServiceNowUrl https://<instance>.service-now.com -ServiceNowUsername <username> -ServiceNowPassword <password> -DefaultVirtualMachineResourceId /subscriptions/<subscription-id>/resourceGroups/rg-jaws-your-environment/providers/Microsoft.Compute/virtualMachines/<vm-name>
 ```
 
 When the Datadog parameters are available, run the same command with these added:
@@ -57,8 +59,6 @@ Expected: `Observability integration: recorded`, `Datadog Agent installed: false
 ## Acceptance criteria
 
 - G-00: Install and the later-update command write only the secret names above into the Step B vault. The evidence file and `jaws-install.<environment>.generated.json` contain no password and no API key.
-- G-01: The default virtual machine resource id is `jaws-stepb-test` for the current test, and that machine carries `jaws-datadog-default=true`.
+- G-01: The default virtual machine is in this environment's subscription, resource group, and location, the Datadog Agent service `datadogagent` is Running on it, and the machine carries `jaws-datadog-default=true`.
 - G-02: FedRAMP Moderate. The vault is the private Step B vault. The observability identity, when Step G exists, receives Key Vault Secrets User on these secrets and no broader vault role. The Datadog Agent on the virtual machine is the telemetry collector. JAWS still has one observability specialist and does not publish a public specialist URL.
-- G-03: Step G remains uninstalled. A secret receipt is not a specialist, an MCP server, or a Datadog Agent installation.
-
-The Datadog Agent install on `jaws-stepb-test` waits for the site and API key. Those parameters are the remaining input.
+- G-03: Step G remains uninstalled. A secret receipt is not a specialist, an MCP server, or a Datadog Agent installation. The specialist's skills and tools are added to that MCP server only when Step G is built.

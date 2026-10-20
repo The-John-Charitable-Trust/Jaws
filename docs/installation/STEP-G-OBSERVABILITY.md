@@ -62,3 +62,13 @@ Expected: `Observability integration: recorded`, `Datadog Agent installed: false
 - G-01: The default virtual machine is in this environment's subscription, resource group, and location, the Datadog Agent service `datadogagent` is Running on it, and the machine carries `jaws-datadog-default=true`.
 - G-02: FedRAMP Moderate. The vault is the private Step B vault. The observability identity, when Step G exists, receives Key Vault Secrets User on these secrets and no broader vault role. The Datadog Agent on the virtual machine is the telemetry collector. JAWS still has one observability specialist and does not publish a public specialist URL.
 - G-03: Step G remains uninstalled. A secret receipt is not a specialist, an MCP server, or a Datadog Agent installation. The specialist's skills and tools are added to that MCP server only when Step G is built.
+
+## Uninstall to stop charges or start a new install
+
+Run this command to delete the whole customer environment, stop its Azure charges, and clear the names before a new complete install. It removes every resource from Steps B, C, and D. It refuses `dev`. If the Key Vault purge is blocked, choose a different vault name on the next install until the purge date.
+
+```powershell
+.\installer\Uninstall-Jaws.ps1 -EnvironmentName your-environment -AcknowledgeJawsUninstall
+```
+
+Details are in [UNINSTALL.md](UNINSTALL.md).

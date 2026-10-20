@@ -43,6 +43,9 @@ az account set --subscription "&lt;your-subscription-id&gt;"
 <p>Offline Pester covers the empty-subscription path with a stand-in Azure CLI. A fresh-subscription receipt has not been archived, so greenfield Step A is not accepted. Dev-project reconciliation remains the previously accepted Step A evidence.</p>
 <p><strong>A-07, FedRAMP Moderate.</strong> Discovery creates no resource. Read the receipt against the inventory and record any Foundry account, Key Vault, registry, storage account, or container app that is publicly reachable before Step B. An empty subscription has nothing to record. Step A does not authorize the subscription. <code>rg-aiops-lab-test2</code> has been deleted. Run Discover again before the next Step B plan.</p>
 <p><a href="STEP-01-STAGE-A.md">Markdown copy</a> · <a href="STEP-01-STAGE-B.md">Step B</a></p>
+<h2>Uninstall to stop charges or start a new install</h2>
+<p>Discover creates no Azure resources and no charges. After Step B, or any later step, run this command to delete the whole environment, stop its Azure charges, and start a new complete install of the same names. It refuses <code>dev</code>. <a href="UNINSTALL.md">Uninstall details</a>.</p>
+<pre>.\installer\Uninstall-Jaws.ps1 -EnvironmentName your-environment -AcknowledgeJawsUninstall</pre>
 </section>
 </main>
 </body>

@@ -82,3 +82,13 @@ Pester `tests/installer/StepA.Tests.ps1` exercises a stand-in Azure CLI. That is
 ## Actual JAWS implementation source (A)
 
 The [Step A source-code walkthrough](source-code/STEP-A.md) includes **verbatim PowerShell excerpts**, reviewed file paths, source line ranges, and direct links to the complete source in the JAWS repository. No illustrative or Microsoft sample implementation has been substituted, and no Python code is included because this stage has no verified JAWS Python implementation. The excerpts are reference material, not standalone executable scripts. For complete behavior, consult the linked source and the install/validation commands above.
+
+## Uninstall to stop charges or start a new install
+
+Discover creates no Azure resources and no charges. After Step B, or any later step, run this command to delete the whole environment, stop its Azure charges, and start a new complete install of the same names. It refuses `dev`.
+
+```powershell
+.\installer\Uninstall-Jaws.ps1 -EnvironmentName your-environment -AcknowledgeJawsUninstall
+```
+
+Details are in [UNINSTALL.md](UNINSTALL.md).

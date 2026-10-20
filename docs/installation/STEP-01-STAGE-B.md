@@ -155,6 +155,7 @@ Install uploads `src/Jaws.Supervisor.Host` and runs `az acr build --platform lin
 | `-InstallConfig` path is missing | `JAWS-INSTALL-CONFIG-001`, before the first write |
 | ServiceNow URL, username, and password are not supplied together | `JAWS-OBS-003`, after the foundation exists |
 | Datadog key and site are not supplied together | `JAWS-OBS-006`, after the foundation exists |
+| Datadog host is outside this environment | `JAWS-OBS-009`, after the foundation exists. The virtual machine must be in this subscription, this resource group, and this location. The Datadog Agent install is in [SYSTEM-PREREQUISITES.md](SYSTEM-PREREQUISITES.md) |
 
 ## B4. Accept the foundation
 
@@ -198,6 +199,10 @@ Accept also prints `FedRAMP open resources` and `Install config` when B3 wrote t
 ## Restart
 
 `rg-aiops-lab-test2` has been deleted. An old receipt under `installer/.local` for that name fails Accept with `JAWS-STEP-B-024` because the resource group is gone. The default Key Vault for environment `aiops-lab-test2` stays purge-protected until 2027-01-18. Choose a new `-EnvironmentName` so the generated Key Vault name is different, or keep that environment. Preflight then prints that the Key Vault name is not available and asks for another. `-NonInteractive` does not ask, so pass `-KeyVaultName`. Run Plan, then Preflight, and use the `Plan SHA-256` Preflight prints when a name was replaced. Do not run `Install-JawsFoundryPrivateNetwork.ps1` during this restart. The dev project stays unchanged.
+
+## Remove this environment
+
+`installer/Uninstall-Jaws.ps1 -EnvironmentName your-environment -AcknowledgeJawsUninstall` force-deletes the Foundry agents, purges the account, and deletes the resource group. A purge-protected Key Vault is recorded as blocked and the next install needs a different vault name until the purge date. The command refuses `dev`. Details, including why a resource-group delete alone is not enough, are in [UNINSTALL.md](UNINSTALL.md).
 
 ## Actual JAWS implementation source (B)
 

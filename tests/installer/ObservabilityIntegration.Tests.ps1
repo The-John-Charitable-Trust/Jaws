@@ -1,7 +1,7 @@
 BeforeAll {
     $script:root = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
     $script:sub = '22222222-2222-2222-2222-222222222222'
-    $script:vm = "/subscriptions/$($script:sub)/resourceGroups/rg-jaws-stepb-test/providers/Microsoft.Compute/virtualMachines/jaws-stepb-test"
+    $script:vm = "/subscriptions/$($script:sub)/resourceGroups/rg-jaws-lab1/providers/Microsoft.Compute/virtualMachines/jaws-lab1-datadog"
     $script:stub = Join-Path ([System.IO.Path]::GetTempPath()) ('jaws-obs-stub-' + [guid]::NewGuid().ToString('N'))
     $script:state = Join-Path $script:stub 'state'
     New-Item -ItemType Directory -Path $script:state | Out-Null
@@ -47,6 +47,8 @@ if args[:3] == ["keyvault", "secret", "set"]:
     world["secrets"][flag("--name")] = {"length": len(value)}
     save()
     emit({"name": flag("--name"), "id": "https://kvjawslab1.vault.azure.net/secrets/" + flag("--name")})
+if args[:2] == ["vm", "show"]:
+    emit({"name": flag("--name"), "location": "eastus"})
 if args[:2] == ["tag", "update"]:
     world["tags"].append({"resource": flag("--resource-id"), "tags": flag("--tags")})
     save()
@@ -65,6 +67,7 @@ sys.exit(9)
         EnvironmentName = 'lab1'
         SubscriptionId = $script:sub
         ResourceGroupName = 'rg-jaws-lab1'
+        Location = 'eastus'
         KeyVaultName = 'kvjawslab1'
         FoundryAccountName = 'jaws-foundry-lab1'
         RegistryName = 'jawsacrlab1'
@@ -114,6 +117,11 @@ Describe 'Observability integration secrets' {
         $world.secrets.'jaws-servicenow-url'.length | Should -Be 'https://devexample.service-now.com'.Length
         $world.secrets.'jaws-servicenow-password'.length | Should -Be $password.Length
         $world.tags[0].resource | Should -Be $script:vm
+    }
+
+    It 'refuses a Datadog host that is outside this environment' {
+        $foreign = "/subscriptions/$($script:sub)/resourceGroups/rg-jaws-stepb-test/providers/Microsoft.Compute/virtualMachines/jaws-stepb-test"
+        { & (Join-Path $script:root 'installer/Set-JawsObservabilityIntegration.ps1') -EnvironmentName 'lab1' -AcknowledgeObservabilitySecrets -DefaultVirtualMachineResourceId $foreign } | Should -Throw '*JAWS-OBS-009*'
     }
 
     It 'refuses the dev project and a partial ServiceNow login' {

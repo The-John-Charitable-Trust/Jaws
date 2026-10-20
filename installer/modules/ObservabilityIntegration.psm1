@@ -58,6 +58,7 @@ function Resolve-JawsObservabilityVault {
         ReceiptPath = $receiptPath
         SubscriptionId = [string]$receipt.SubscriptionId
         ResourceGroupName = [string]$receipt.ResourceGroupName
+        Location = $(if ($receipt.PSObject.Properties['Location']) { [string]$receipt.Location } else { '' })
         KeyVaultName = [string]$receipt.KeyVaultName
         EnvironmentName = $EnvironmentName
     }
@@ -130,6 +131,19 @@ function Set-JawsObservabilityIntegration {
         throw 'JAWS-OBS-008: Supply the ServiceNow login, the Datadog parameters, or the default virtual machine.'
     }
     $vault = Resolve-JawsObservabilityVault -EnvironmentName $EnvironmentName -InstallerRoot $InstallerRoot
+    if (-not [string]::IsNullOrWhiteSpace($vmId)) {
+        $vmIdentity = [regex]::Match($vmId, '^/subscriptions/(?<sub>[0-9a-fA-F-]{36})/resourceGroups/(?<rg>[^/]+)/providers/Microsoft\.Compute/virtualMachines/(?<name>[A-Za-z0-9._-]+)$')
+        if ($vmIdentity.Groups['sub'].Value -ine $vault.SubscriptionId -or $vmIdentity.Groups['rg'].Value -ine $vault.ResourceGroupName) {
+            throw "JAWS-OBS-009: The Datadog Agent host must already exist in subscription $($vault.SubscriptionId) and resource group $($vault.ResourceGroupName), in this environment's location. A virtual machine in another resource group is not this environment."
+        }
+        if (-not [string]::IsNullOrWhiteSpace([string]$vault.Location)) {
+            $machine = Invoke-JawsObservabilityAz -Arguments @('vm','show','--subscription',$vault.SubscriptionId,'--resource-group',$vault.ResourceGroupName,'--name',$vmIdentity.Groups['name'].Value,'--output','json','--only-show-errors')
+            $machineLocation = [string]$machine.location
+            if ([string]::IsNullOrWhiteSpace($machineLocation) -or $machineLocation -ine [string]$vault.Location) {
+                throw "JAWS-OBS-009: The Datadog Agent host is in '$machineLocation'. This environment is in '$($vault.Location)'."
+            }
+        }
+    }
     $values = [ordered]@{}
     if ($serviceNow.Count -eq 3) {
         $values[$names.ServiceNowUrl] = $serviceNowUrlValue

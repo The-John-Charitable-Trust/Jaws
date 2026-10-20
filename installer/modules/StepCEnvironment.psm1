@@ -2,6 +2,21 @@
 # The dev project is not resolved here. Install-JawsThroughStepC.ps1 keeps that path.
 Set-StrictMode -Version Latest
 
+function Get-JawsStepCA2AEndpoint {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$ProjectEndpoint,
+        [Parameter(Mandatory)][string]$EnvironmentName
+    )
+    if ($EnvironmentName -ceq 'dev') { return $ProjectEndpoint }
+    if ($ProjectEndpoint -notmatch '^https://(?<account>[a-z0-9-]+)\.services\.ai\.azure\.com/api/projects/(?<project>[a-z0-9-]+)$') {
+        throw 'JAWS-DELEGATE-010: Project endpoint is not a Step B Foundry project URL.'
+    }
+    # services.ai.azure.com answers project reads, then returns "Project not found" for the
+    # A2A agent card after this project is recreated. The account endpoint serves that card.
+    return "https://$($Matches.account).cognitiveservices.azure.com/api/projects/$($Matches.project)"
+}
+
 function Get-JawsStepCReservedNames {
     [CmdletBinding()]
     param()
@@ -72,6 +87,7 @@ function Resolve-JawsStepCStepBContext {
         New-JawsStepBResourceNames -EnvironmentName $EnvironmentName -ModelName $ModelName
     } $EnvironmentName ([string]$receipt.ModelName)
     $endpoint = "https://$($names.FoundryAccountName).services.ai.azure.com/api/projects/$($names.ProjectName)"
+    $a2aEndpoint = Get-JawsStepCA2AEndpoint -ProjectEndpoint $endpoint -EnvironmentName $EnvironmentName
     $login = "$($names.RegistryName).azurecr.io"
     $imagePattern = '^' + [regex]::Escape($login) + '/jaws/supervisor@sha256:[a-f0-9]{64}$'
     $checks = @(
@@ -108,6 +124,7 @@ function Resolve-JawsStepCStepBContext {
         FoundryAccountName = [string]$names.FoundryAccountName
         ProjectName = [string]$names.ProjectName
         ProjectEndpoint = $endpoint
+        A2AEndpoint = $a2aEndpoint
         SupervisorAgent = [string]$names.AgentName
         PlannerAgent = $planner
         ConnectionName = $connection
@@ -123,4 +140,4 @@ function Resolve-JawsStepCStepBContext {
     }
 }
 
-Export-ModuleMember -Function Get-JawsStepCReservedNames, Resolve-JawsStepCStepBContext
+Export-ModuleMember -Function Get-JawsStepCA2AEndpoint, Get-JawsStepCReservedNames, Resolve-JawsStepCStepBContext

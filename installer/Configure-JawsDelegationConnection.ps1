@@ -30,10 +30,18 @@ if([string]$state.EnvironmentName -ceq 'dev'){
  $planSuffix=$connectionContext.PlanSuffix
 }
 $endpoint="https://$foundry.services.ai.azure.com/api/projects/$project"
+if([string]$state.EnvironmentName -ceq 'dev'){
+ $a2aEndpoint=$endpoint
+}else{
+ $a2aEndpoint=[string]$connectionContext.A2AEndpoint
+}
 # Foundry rejects A2A operations on hosted agents (HOSTED_AGENT_NOT_SUPPORTED / -32099).
 # The prompt planner is the A2A target. A hosted Investigation agent is not created for a Step B environment.
+# Customer projects call that planner on the account host. services.ai.azure.com returns
+# "Project not found" for the A2A agent card after the project is recreated.
 $hostedTarget="$endpoint/agents/$hostedAgent/endpoint/protocols/a2a"
-$target="$endpoint/agents/$plannerAgent/endpoint/protocols/a2a"
+$legacyPlannerTarget="$endpoint/agents/$plannerAgent/endpoint/protocols/a2a"
+$target="$a2aEndpoint/agents/$plannerAgent/endpoint/protocols/a2a"
 $id="/subscriptions/$($state.SubscriptionId)/resourceGroups/$($state.ResourceGroupName)/providers/Microsoft.CognitiveServices/accounts/$foundry/projects/$project/connections/$name"
 # Correct PowerShell interpolation: a question mark immediately after a variable needs $().
 $url="https://management.azure.com/$($id.TrimStart('/'))?api-version=2025-04-01-preview"
@@ -131,7 +139,41 @@ if($null -ne $current -and -not (Test-ConnectionShape $current $target)){
  if(Test-ConnectionShape $current $hostedTarget){
   throw 'JAWS-DELEGATE-004: Connection still targets the hosted Investigation agent. Foundry rejects A2A operations on hosted agents. Run -Mode Retarget with the plan SHA.'
  }
- throw 'JAWS-DELEGATE-004: Existing connection differs; refusing to overwrite.'
+ if($target -cne $legacyPlannerTarget -and (Test-ConnectionShape $current $legacyPlannerTarget)){
+  if($Mode -ne 'Install'){
+   throw 'JAWS-DELEGATE-010: RemoteA2A connection targets the services.ai.azure.com A2A route. That route returns Project not found for this project, so the toolbox cannot read the planner agent card. Install moves the target to the account endpoint.'
+  }
+  if(-not $AcknowledgeA2AConnection -or $ApprovedPlanSha256 -cne $sha){
+   throw 'JAWS-DELEGATE-005: Exact plan approval and acknowledgment required.'
+  }
+  $p=$current.properties
+  $shared=@()
+  if($null -ne $p.sharedUserList){$shared=@($p.sharedUserList)}
+  $put=[ordered]@{
+   name=$name
+   properties=[ordered]@{
+    authType=[string]$p.authType
+    group=[string]$p.group
+    category=[string]$p.category
+    target=$target
+    isSharedToAll=[bool]$p.isSharedToAll
+    sharedUserList=$shared
+    audience=[string]$p.audience
+    Credentials=[ordered]@{}
+    metadata=[ordered]@{ApiType='Azure'}
+   }
+  }
+  $putJson=ConvertTo-Json -InputObject $put -Depth 12 -Compress
+  $tmp=[IO.Path]::GetTempFileName()
+  try{
+   [IO.File]::WriteAllText($tmp,$putJson,[Text.UTF8Encoding]::new($false))
+   $result=& az rest --method put --url $url --resource https://management.azure.com/ --headers 'Content-Type=application/json' --body "@$tmp" --output json --only-show-errors 2>&1
+   if($LASTEXITCODE -ne 0){throw "JAWS-DELEGATE-008: Connection retarget outcome uncertain; inspect live state: $($result | Out-String)"}
+  }finally{Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue}
+  $current=Read-Connection
+ } else {
+  throw 'JAWS-DELEGATE-004: Existing connection differs; refusing to overwrite.'
+ }
 }
 if($Mode -eq 'Install' -and $null -eq $current){
  if(-not $AcknowledgeA2AConnection -or $ApprovedPlanSha256 -cne $sha){

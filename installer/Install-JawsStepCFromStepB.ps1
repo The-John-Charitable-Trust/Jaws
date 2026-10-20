@@ -60,6 +60,10 @@ function Invoke-StepCCorrection([string]$Action){
             $sha=Read-PlanSha "jaws-step-c-delegation-connection-plan.$($ctx.PlanSuffix).generated.json"
             & $connection -Mode Retarget -StateFile $ctx.StateFile -ApprovedPlanSha256 $sha -AcknowledgeA2AConnection
         }
+        'RetargetConnectionHost' {
+            $sha=Read-PlanSha "jaws-step-c-delegation-connection-plan.$($ctx.PlanSuffix).generated.json"
+            & $connection -Mode Install -StateFile $ctx.StateFile -ApprovedPlanSha256 $sha -AcknowledgeA2AConnection
+        }
         'CreateToolbox' {
             $sha=Read-PlanSha "jaws-step-c-toolbox-plan.$($ctx.PlanSuffix).generated.json"
             & $toolbox -Mode Install -EnvironmentName $ctx.EnvironmentName -ProjectEndpoint $ctx.ProjectEndpoint -ToolboxName $ctx.ToolboxName -ConnectionName $ctx.ConnectionName -PlannerAgent $ctx.PlannerAgent -ApprovedPlanSha256 $sha -AcknowledgeToolboxChargesAndAccess

@@ -31,6 +31,11 @@ if([string]$state.EnvironmentName -ceq 'dev'){
     $planSuffix=$identityContext.PlanSuffix
 }
 $project="https://$accountName.services.ai.azure.com/api/projects/$projectName"
+if([string]$state.EnvironmentName -ceq 'dev'){
+    $a2aProject=$project
+}else{
+    $a2aProject=Get-JawsStepCA2AEndpoint -ProjectEndpoint $project -EnvironmentName ([string]$state.EnvironmentName)
+}
 $id="/subscriptions/$($state.SubscriptionId)/resourceGroups/$($state.ResourceGroupName)/providers/Microsoft.CognitiveServices/accounts/$accountName/projects/$projectName/connections/$connectionName"
 $armUrl="https://management.azure.com/$($id.TrimStart('/'))?api-version=2025-04-01-preview"
 function Read-Json([string]$url,[string]$resource) {
@@ -62,7 +67,7 @@ $blueprintClientId=[string](Get-OptionalProperty $blueprint 'client_id')
 $authType=[string](Get-OptionalProperty $props 'authType')
 $category=[string](Get-OptionalProperty $props 'category')
 $target=[string](Get-OptionalProperty $props 'target')
-$expectedTarget="$project/agents/$plannerName/endpoint/protocols/a2a"
+$expectedTarget="$a2aProject/agents/$plannerName/endpoint/protocols/a2a"
 $contextAvailable= -not [string]::IsNullOrWhiteSpace($instanceClientId) -and -not [string]::IsNullOrWhiteSpace($blueprintClientId)
 $connectionValid=([string](Get-OptionalProperty $connection 'id') -ieq $id -and $authType -ceq 'AgenticIdentityToken' -and $category -ceq 'RemoteA2A' -and $target -ceq $expectedTarget)
 $status=if($contextAvailable -and $connectionValid){'IDENTITY_CONTEXT_AVAILABLE'}else{'IDENTITY_CONTEXT_INCOMPLETE'}

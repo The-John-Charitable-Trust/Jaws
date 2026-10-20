@@ -161,10 +161,40 @@ Describe 'Install-time ServiceNow, Datadog, and FedRAMP config' {
         $resolved['ServiceNowUsername'] | Should -Be 'override-user'
         $resolved['ServiceNowPassword'] | Should -Be $script:password
         $counter = @{ Count = 0 }
-        $null = Resolve-JawsInstallObservability -Parameters @{} -Prompter { param($Label, $Secret) $counter.Count++; return '' }
-        $counter.Count | Should -Be 7
+        $skipped = Resolve-JawsInstallObservability -Parameters @{} -Prompter {
+            param($Label, $Secret)
+            $counter.Count++
+            if ($Label -like 'Configure *') { return 'skip' }
+            return 'unexpected'
+        }
+        $counter.Count | Should -Be 2
+        $skipped['SkipServiceNow'] | Should -BeTrue
+        $skipped['SkipDatadog'] | Should -BeTrue
+        $skipped['DefaultVirtualMachineResourceId'] | Should -Be ''
         $silent = Resolve-JawsInstallObservability -Parameters @{}
         $silent['ServiceNowPassword'] | Should -Be ''
         $silent['DatadogApiKey'] | Should -Be ''
+        $silent['SkipDatadog'] | Should -BeFalse
+    }
+
+    It 'skips Datadog and ServiceNow without a Key Vault write or an agent host' {
+        $before = Get-Item -LiteralPath (Join-Path $script:state 'log.txt')
+        $result = Save-JawsInstallConfiguration -EnvironmentName 'cfg1' -InstallerRoot (Join-Path $script:root 'installer') -NonInteractive -SkipServiceNow -SkipDatadog
+        $result.ServiceNowSkipped | Should -BeTrue
+        $result.DatadogSkipped | Should -BeTrue
+        $result.ServiceNowConfigured | Should -BeFalse
+        $result.DatadogConfigured | Should -BeFalse
+        $result.DefaultVirtualMachineConfigured | Should -BeFalse
+        $result.DatadogAgentHostRequired | Should -BeFalse
+        $result.OpenResourceCount | Should -Be 9
+        (Get-Item -LiteralPath (Join-Path $script:state 'log.txt')).Length | Should -Be $before.Length
+        $config = Get-Content -LiteralPath $result.Path -Raw | ConvertFrom-Json
+        $config.Observability.Datadog.Skipped | Should -BeTrue
+        $config.Observability.Datadog.AgentHostRequired | Should -BeFalse
+        $hostRow = $config.FedRampModerate.Resources | Where-Object { $_.Name -eq 'datadog-agent-host' }
+        $hostRow.MeetsFedrampModerate | Should -BeTrue
+        $hostRow.CurrentPosture | Should -Match 'No Datadog Agent host is required'
+        { Save-JawsInstallConfiguration -EnvironmentName 'cfg1' -InstallerRoot (Join-Path $script:root 'installer') -NonInteractive -SkipDatadog -Parameters @{ DatadogApiKey = 'dd-api-secret-value'; DatadogSite = 'us5.datadoghq.com' } } | Should -Throw '*JAWS-INSTALL-CONFIG-003*'
+        { Resolve-JawsInstallObservability -NonInteractive -Parameters @{ DatadogSite = 'us5.datadoghq.com' } } | Should -Throw '*JAWS-INSTALL-CONFIG-005*'
     }
 }

@@ -10,6 +10,8 @@
   "ExpectedModelName": "gpt-5-mini",
   "ExpectedModelVersion": "2025-08-07",
   "TenantScan": "All enabled subscriptions visible to the signed-in identity in the selected subscription tenant",
+  "SkipServiceNow": false,
+  "SkipDatadog": false,
   "ServiceNowUrl": "",
   "ServiceNowUsername": "",
   "ServiceNowPassword": "",

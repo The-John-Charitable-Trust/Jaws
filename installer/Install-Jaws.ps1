@@ -25,6 +25,8 @@ param(
     [string]$DatadogApiKey,
     [string]$DatadogAppKey,
     [string]$DefaultVirtualMachineResourceId,
+    [switch]$SkipServiceNow,
+    [switch]$SkipDatadog,
     [string]$StateFile,
     [switch]$NonInteractive
 )
@@ -257,7 +259,7 @@ if ($Mode -eq 'Install') {
             DatadogAppKey = $DatadogAppKey
             DefaultVirtualMachineResourceId = $DefaultVirtualMachineResourceId
         }
-        $installConfigResult = Save-JawsInstallConfiguration -EnvironmentName $EnvironmentName -InstallerRoot $PSScriptRoot -InstallConfig $InstallConfig -Parameters $installParameters -NonInteractive:$NonInteractive -AcknowledgeStepBInstall:$AcknowledgeStepBInstall
+        $installConfigResult = Save-JawsInstallConfiguration -EnvironmentName $EnvironmentName -InstallerRoot $PSScriptRoot -InstallConfig $InstallConfig -Parameters $installParameters -NonInteractive:$NonInteractive -SkipServiceNow:$SkipServiceNow -SkipDatadog:$SkipDatadog -AcknowledgeStepBInstall:$AcknowledgeStepBInstall
     } catch {
         Save-JawsMilestoneFailure -Path $installEvidence -Message $_.Exception.Message -Started $jawsMilestoneStarted
         Write-JawsMilestoneResult -Result FAIL -ReadyForNextStep $false -NextStep 'Step B Accept' -EvidencePath $installEvidence
@@ -279,8 +281,11 @@ if ($Mode -eq 'Install') {
     Write-Host "State: $($installed.StatePath)"
     Write-Host "Receipt: $($installed.ReceiptPath)"
     Write-Host "ServiceNow stored: $($installConfigResult.ServiceNowConfigured.ToString().ToLowerInvariant())"
+    Write-Host "ServiceNow skipped: $($installConfigResult.ServiceNowSkipped.ToString().ToLowerInvariant())"
     Write-Host "Datadog stored: $($installConfigResult.DatadogConfigured.ToString().ToLowerInvariant())"
+    Write-Host "Datadog skipped: $($installConfigResult.DatadogSkipped.ToString().ToLowerInvariant())"
     Write-Host "Default virtual machine stored: $($installConfigResult.DefaultVirtualMachineConfigured.ToString().ToLowerInvariant())"
+    Write-Host "Datadog agent host required: $($installConfigResult.DatadogAgentHostRequired.ToString().ToLowerInvariant())"
     Write-Host 'FedRAMP Moderate: false'
     Write-Host "FedRAMP open resources: $($installConfigResult.OpenResourceCount)"
     Write-Host "Install config: $($installConfigResult.Path)"

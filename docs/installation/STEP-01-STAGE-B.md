@@ -74,7 +74,7 @@ Copy-Item .\installer\config\jaws.install.example.json .\installer\.local\jaws.i
 .\installer\Test-JawsStepB.ps1 -Mode Install
 ```
 
-The same seven fields can be passed as parameters, and a parameter replaces the matching field in the file. On an interactive console, Install asks for each field that is still empty. `az vm run-command` cannot answer those prompts, so use the file. `-NonInteractive` does not ask. Install with every field empty still prints `STEP-B INSTALL PASS`, stores nothing in Key Vault, and writes the FedRAMP inventory with `ServiceNow stored: false` and `Datadog stored: false`. A partial ServiceNow login, or a Datadog key without its site, fails the install milestone after the foundation exists. Fix the file and run Install again. `Set-JawsObservabilityIntegration.ps1` remains available for a later update of the same secrets.
+The same seven fields can be passed as parameters, and a parameter replaces the matching field in the file. On an interactive console, Install first asks `Configure ServiceNow during this install? (yes/skip)` and `Configure Datadog during this install? (yes/skip)`. `yes` asks for that product's values. `skip` leaves it unset. Skipping Datadog does not ask for a virtual machine, stores no Datadog secrets, and records `Datadog agent host required: false`. Configuring Datadog requires the site, the API key, and the virtual machine resource id that hosts the Datadog Agent. The application key stays optional. `-SkipServiceNow` and `-SkipDatadog` make the same choice without a prompt. The install file accepts `"SkipServiceNow": true` and `"SkipDatadog": true`. A skip combined with values for that product stops at `JAWS-INSTALL-CONFIG-002` or `JAWS-INSTALL-CONFIG-003`. `az vm run-command` cannot answer the prompts, so use the file or the switches. `-NonInteractive` does not ask. Install with every field empty, and without a skip, still prints `STEP-B INSTALL PASS` and stores nothing. A partial ServiceNow login, or Datadog details without the site, API key, and agent host, fails the install milestone after the foundation exists. Fix the file and run Install again. `Set-JawsObservabilityIntegration.ps1` remains available for a later update of the same secrets.
 
 `-QuotaMode` is `Static` or `Dynamic`. The default is `Static`. Static creates GlobalStandard capacity 1 (1,000 tokens per minute) and leaves dynamic quota off. Requests above that rate are refused. `Dynamic` does not change the plan digest or the capacity. It creates the regional Standard SKU, because Azure rejects `dynamicThrottlingEnabled` on GlobalStandard. After that deployment exists, Install sets `properties.dynamicThrottlingEnabled` to true with `az rest --method patch` and API version `2023-10-01-preview`. Azure may then serve more than the capacity-1 rate when it has spare capacity. Those extra tokens are billed at the normal rate, and dynamic quota has no throughput ceiling. Turning the property on has no separate fee. If a GlobalStandard deployment is already present, Dynamic Install deletes it and creates the Standard deployment under the same name. A later Dynamic Install does not delete a deployment that is already Standard. Use the same plan digest:
 
@@ -96,14 +96,17 @@ Agent: jaws-supervisor-your-environment
 Agent version: 1
 Agent status: active
 ServiceNow stored: true
+ServiceNow skipped: false
 Datadog stored: false
-Default virtual machine stored: true
+Datadog skipped: true
+Default virtual machine stored: false
+Datadog agent host required: false
 FedRAMP Moderate: false
 FedRAMP open resources: 10
 Install config: installer/.local/jaws-install.your-environment.generated.json
 ```
 
-`ServiceNow stored` and `Datadog stored` are `false` when those values were not supplied. `FedRAMP Moderate: false` is expected on this public-egress install. The open-resource count is the number of inventory rows that do not meet the criterion. `Quota mode: Dynamic` replaces the quota line when Install was given `-QuotaMode Dynamic`. Microsoft documents the property at [Azure OpenAI dynamic quota](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/dynamic-quota).
+`ServiceNow stored` and `Datadog stored` are `false` when those products were skipped or their values were not supplied. `Datadog agent host required` is `false` when Datadog is skipped. `FedRAMP Moderate: false` is expected on this public-egress install. The open-resource count is the number of inventory rows that do not meet the criterion. A skipped Datadog row is closed because no agent host is required. `Quota mode: Dynamic` replaces the quota line when Install was given `-QuotaMode Dynamic`. Microsoft documents the property at [Azure OpenAI dynamic quota](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/dynamic-quota).
 
 `Test-JawsStepB.ps1 -Mode Install` prints the same install lines and then `Live Azure read: false`. That score checks the receipt file. It does not re-read Azure and it is not acceptance.
 

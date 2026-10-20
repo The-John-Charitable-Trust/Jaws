@@ -30,7 +30,9 @@ These resources are billable. Install does nothing unless `-AcknowledgeStepBInst
 .\installer\Test-JawsStepB.ps1 -Mode Plan -ReportPath .\installer\.local\jaws-stage-b-plan.your-environment.offline.generated.json
 ```
 
-**Expected result.** Both commands print `STEP-B PLAN PASS`, `Subscription source: AzureCli`, `Install authorized: false`, `Quota mode: Static`, `Key Vault`, and `Plan SHA-256`. Azure writes stay 0. The report is `installer/.local/jaws-stage-b-plan.your-environment.offline.generated.json`. The digest binds the subscription, names, and model. It does not include the quota mode, and it does not authorize every mutation or an open-ended cost. Pass `-QuotaMode Dynamic` on Plan to print that choice before Install. The value used at Install is the one that is applied.
+`your-environment` is the name you choose. On an interactive console, leave `-EnvironmentName` off and Plan asks `Environment name`. Enter at the next two prompts uses resource group `rg-jaws-<environment>` and location `eastus`. `-NonInteractive` does not ask, so pass all three. The name is 2–21 characters, starts with a lowercase letter, and uses lowercase letters, digits, and hyphens. `dev` is reserved. That name selects the default Foundry account, project, Key Vault, registry, and Supervisor. A new environment name is how a second install avoids a Key Vault name left behind by an earlier one.
+
+**Expected result.** Both commands print `STEP-B PLAN PASS`, `Environment`, `Subscription source: AzureCli`, `Install authorized: false`, `Quota mode: Static`, `Key Vault`, and `Plan SHA-256`. Azure writes stay 0. The report is `installer/.local/jaws-stage-b-plan.your-environment.offline.generated.json`. The digest binds the subscription, names, and model. It does not include the quota mode, and it does not authorize every mutation or an open-ended cost. Pass `-QuotaMode Dynamic` on Plan to print that choice before Install. The value used at Install is the one that is applied.
 
 Plan prints the names it will create. Omit a name parameter to keep the generated default. The resource group and region are the `-ResourceGroupName` and `-Location` you already pass. The model deployment name is `-ModelName`.
 
@@ -192,7 +194,7 @@ Accept also prints `FedRAMP open resources` and `Install config` when B3 wrote t
 
 ## Restart
 
-`rg-aiops-lab-test2` has been deleted. An old receipt under `installer/.local` for that name will fail Accept with `JAWS-STEP-B-024` because the resource group is gone. The default Key Vault name `kvjawsaiopslabtest2` stays purge-protected until 2027-01-18, so a new Plan for environment `aiops-lab-test2` needs a different `-KeyVaultName`. The Foundry name `jaws-foundry-aiops-lab-test2` can stay the default. Run Plan, copy the new `Plan SHA-256`, then run Preflight and Install. Do not run `Install-JawsFoundryPrivateNetwork.ps1` during this restart. The dev project stays unchanged.
+`rg-aiops-lab-test2` has been deleted. An old receipt under `installer/.local` for that name fails Accept with `JAWS-STEP-B-024` because the resource group is gone. The default Key Vault for environment `aiops-lab-test2` stays purge-protected until 2027-01-18. Choose a new `-EnvironmentName` so the generated Key Vault name is different, or keep that environment and pass `-KeyVaultName`. Run Plan, copy the new `Plan SHA-256`, then run Preflight and Install. Do not run `Install-JawsFoundryPrivateNetwork.ps1` during this restart. The dev project stays unchanged.
 
 ## Actual JAWS implementation source (B)
 

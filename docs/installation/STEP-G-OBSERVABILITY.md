@@ -2,7 +2,7 @@
 
 Step G, the observability specialist and its MCP server, is not installable. Step B Install requests the ServiceNow developer instance and the Datadog parameters, stores the values in the Step B Key Vault, and marks one virtual machine as the default Datadog host. It does not install the Datadog Agent and it does not create the specialist. The standalone command below writes the same secrets after Install when a value changes.
 
-The current test default is virtual machine `jaws-stepb-test` in resource group `rg-jaws-stepb-test`. That machine is Windows. Its resource id is:
+The Datadog Agent host must already exist when Datadog is configured. Install does not create it. The minimum is Windows 11 or Windows Server 2016 or later, 2 vCPU, 8 GiB RAM, and 4 GiB free disk. `Standard_D2s_v3` meets that minimum. The full table is in [SYSTEM-PREREQUISITES.md](SYSTEM-PREREQUISITES.md). The current test host is virtual machine `jaws-stepb-test` in resource group `rg-jaws-stepb-test`, size `Standard_D2s_v3`, Windows 11 Pro. Its resource id is:
 
 ```text
 /subscriptions/<subscription-id>/resourceGroups/rg-jaws-stepb-test/providers/Microsoft.Compute/virtualMachines/jaws-stepb-test

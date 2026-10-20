@@ -80,25 +80,31 @@ function Resolve-JawsStepCStepBContext {
     if ([string]$receipt.Image -match 'jawsregistrydev001\.azurecr\.io' -or [string]$receipt.FoundryAccountName -ceq 'jaws-foundry-dev') {
         throw 'JAWS-INSTALL-C-017: Refusing the dev Foundry host or dev registry.'
     }
-    Import-Module (Join-Path $InstallerRoot 'modules/StepBInstall.psm1') -Force
-    $stepB = Get-Module StepBInstall
-    $names = & $stepB {
-        param($EnvironmentName, $ModelName)
-        New-JawsStepBResourceNames -EnvironmentName $EnvironmentName -ModelName $ModelName
-    } $EnvironmentName ([string]$receipt.ModelName)
-    $endpoint = "https://$($names.FoundryAccountName).services.ai.azure.com/api/projects/$($names.ProjectName)"
+    $foundryName = [string]$receipt.FoundryAccountName
+    $projectName = [string]$receipt.ProjectName
+    $registryName = [string]$receipt.RegistryName
+    $agentName = [string]$receipt.AgentName
+    $vaultName = [string]$receipt.KeyVaultName
+    $deploymentName = [string]$receipt.ModelDeploymentName
+    $endpoint = "https://$foundryName.services.ai.azure.com/api/projects/$projectName"
     $a2aEndpoint = Get-JawsStepCA2AEndpoint -ProjectEndpoint $endpoint -EnvironmentName $EnvironmentName
-    $login = "$($names.RegistryName).azurecr.io"
+    $login = "$registryName.azurecr.io"
     $imagePattern = '^' + [regex]::Escape($login) + '/jaws/supervisor@sha256:[a-f0-9]{64}$'
+    $resources = @()
+    if ($state.PSObject.Properties['Resources']) { $resources = @($state.Resources) }
+    function local:Get-JawsStepCStateResourceName {
+        param([Parameter(Mandatory)][string]$Type)
+        $matched = @($resources | Where-Object { $_ -and [string]$_.Type -eq $Type })
+        if ($matched.Count -ne 1) { return '' }
+        return [string]$matched[0].Name
+    }
     $checks = @(
         @{ Name = 'SubscriptionId'; Receipt = [string]$receipt.SubscriptionId; State = [string]$state.SubscriptionId },
         @{ Name = 'ResourceGroupName'; Receipt = [string]$receipt.ResourceGroupName; State = [string]$state.ResourceGroupName },
-        @{ Name = 'FoundryAccountName'; Receipt = [string]$receipt.FoundryAccountName; State = [string]$names.FoundryAccountName },
-        @{ Name = 'ProjectName'; Receipt = [string]$receipt.ProjectName; State = [string]$names.ProjectName },
-        @{ Name = 'RegistryName'; Receipt = [string]$receipt.RegistryName; State = [string]$names.RegistryName },
-        @{ Name = 'AgentName'; Receipt = [string]$receipt.AgentName; State = [string]$names.AgentName },
-        @{ Name = 'KeyVaultName'; Receipt = [string]$receipt.KeyVaultName; State = [string]$names.KeyVaultName },
-        @{ Name = 'ModelDeploymentName'; Receipt = [string]$receipt.ModelDeploymentName; State = [string]$names.ModelDeploymentName }
+        @{ Name = 'FoundryAccountName'; Receipt = $foundryName; State = (Get-JawsStepCStateResourceName -Type 'Microsoft.CognitiveServices/accounts') },
+        @{ Name = 'ProjectName'; Receipt = $projectName; State = (Get-JawsStepCStateResourceName -Type 'Microsoft.CognitiveServices/accounts/projects') },
+        @{ Name = 'KeyVaultName'; Receipt = $vaultName; State = (Get-JawsStepCStateResourceName -Type 'Microsoft.KeyVault/vaults') },
+        @{ Name = 'ModelDeploymentName'; Receipt = $deploymentName; State = (Get-JawsStepCStateResourceName -Type 'Microsoft.CognitiveServices/accounts/deployments') }
     )
     $mismatch = @($checks | Where-Object { $_.Receipt -cne $_.State } | ForEach-Object { $_.Name })
     if ([string]$state.SubscriptionId -ine [string]$receipt.SubscriptionId) { $mismatch += 'SubscriptionIdCase' }
@@ -121,18 +127,18 @@ function Resolve-JawsStepCStepBContext {
         SubscriptionId = [string]$receipt.SubscriptionId
         ResourceGroupName = [string]$receipt.ResourceGroupName
         Location = [string]$receipt.Location
-        FoundryAccountName = [string]$names.FoundryAccountName
-        ProjectName = [string]$names.ProjectName
+        FoundryAccountName = $foundryName
+        ProjectName = $projectName
         ProjectEndpoint = $endpoint
         A2AEndpoint = $a2aEndpoint
-        SupervisorAgent = [string]$names.AgentName
+        SupervisorAgent = $agentName
         PlannerAgent = $planner
         ConnectionName = $connection
         ToolboxName = 'jaws-investigation-a2a-tools'
         ModelName = [string]$receipt.ModelName
-        ModelDeploymentName = [string]$receipt.ModelDeploymentName
+        ModelDeploymentName = $deploymentName
         ExpectedImage = [string]$receipt.Image
-        RegistryName = [string]$names.RegistryName
+        RegistryName = $registryName
         RegistryLoginServer = $login
         PlanSuffix = $EnvironmentName
         HostedInvestigationConfigured = $false

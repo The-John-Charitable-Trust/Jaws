@@ -87,7 +87,7 @@ Run this only after Step B has written both of these files for the same environm
 .\installer\Install-JawsThroughStepC.ps1 -Mode Validate -EnvironmentName your-environment
 ```
 
-Validate is read-only. It discovers the Foundry account and Supervisor version 1 from the Step B receipt. Names come from that environment:
+Validate is read-only. It discovers the Foundry account and Supervisor version 1 from the Step B receipt. Foundry, project, Key Vault, registry, and Supervisor names are the names on that receipt, including a Key Vault name that replaced the generated default. A receipt that disagrees with its generated state stops with `JAWS-INSTALL-C-019`. Planner and connection names still come from the environment:
 
 | Resource | Name |
 | --- | --- |

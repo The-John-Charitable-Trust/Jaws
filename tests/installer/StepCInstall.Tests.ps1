@@ -406,6 +406,26 @@ Describe 'Step C from a Step B environment' {
         (Get-Content -LiteralPath (Join-Path $script:root 'installer/config/jaws-installation-state.dev.json') -Raw) | Should -Be $script:devBefore
     }
 
+    It 'follows the Key Vault name recorded by Step B' {
+        Import-Module (Join-Path $script:root 'installer/modules/StepCEnvironment.psm1') -Force
+        Write-StepBFixture
+        $local = Join-Path $script:root 'installer/.local'
+        $state = Get-Content -LiteralPath (Join-Path $local 'jaws-installation-state.lab1.generated.json') -Raw | ConvertFrom-Json
+        $receipt = Get-Content -LiteralPath (Join-Path $local 'jaws-step-b-install.lab1.generated.json') -Raw | ConvertFrom-Json
+        $vault = @($state.Resources | Where-Object { $_.Type -eq 'Microsoft.KeyVault/vaults' })[0]
+        $vault.Name = 'kv-jaws-lab1'
+        $receipt.KeyVaultName = 'kv-jaws-lab1'
+        $state | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $local 'jaws-installation-state.lab1.generated.json') -Encoding utf8
+        $receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $local 'jaws-step-b-install.lab1.generated.json') -Encoding utf8
+        $ctx = Resolve-JawsStepCStepBContext -EnvironmentName 'lab1' -InstallerRoot (Join-Path $script:root 'installer')
+        $ctx.ProjectEndpoint | Should -Be 'https://jaws-foundry-lab1.services.ai.azure.com/api/projects/jaws-lab1'
+        $ctx.RegistryName | Should -Be 'jawsacrlab1'
+        $ctx.SupervisorAgent | Should -Be 'jaws-supervisor-lab1'
+        $receipt.KeyVaultName = 'kv-jaws-other1'
+        $receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $local 'jaws-step-b-install.lab1.generated.json') -Encoding utf8
+        { Resolve-JawsStepCStepBContext -EnvironmentName 'lab1' -InstallerRoot (Join-Path $script:root 'installer') } | Should -Throw '*JAWS-INSTALL-C-019*KeyVaultName*'
+    }
+
     It 'refuses an unacknowledged install for a Step B environment before Azure' {
         Write-StepBFixture
         { & (Join-Path $script:root 'installer/Install-JawsThroughStepC.ps1') -Mode Install -EnvironmentName 'lab1' } | Should -Throw '*JAWS-INSTALL-C-001*'

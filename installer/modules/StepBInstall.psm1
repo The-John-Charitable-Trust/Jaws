@@ -45,6 +45,18 @@ function New-JawsStepBResourceNames {
     }
 }
 
+function Test-JawsStepBResourceName {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Label,
+        [Parameter(Mandatory)][string]$Pattern,
+        [Parameter(Mandatory)][string]$Rule
+    )
+    if ($Name -notmatch $Pattern) {
+        throw "JAWS-STEP-B-027: $Label '$Name' is invalid. $Rule"
+    }
+}
+
 function New-JawsStepBInstallScope {
     [CmdletBinding()]
     param(
@@ -53,7 +65,12 @@ function New-JawsStepBInstallScope {
         [Parameter(Mandatory)][string]$Location,
         [Parameter(Mandatory)][string]$EnvironmentName,
         [Parameter(Mandatory)][string]$ModelName,
-        [Parameter(Mandatory)][string]$ModelVersion
+        [Parameter(Mandatory)][string]$ModelVersion,
+        [string]$FoundryAccountName,
+        [string]$ProjectName,
+        [string]$KeyVaultName,
+        [string]$AcrName,
+        [string]$SupervisorAgentName
     )
     $parsed = [guid]::Empty
     if (-not [guid]::TryParse($SubscriptionId, [ref]$parsed) -or $parsed -eq [guid]::Empty) {
@@ -69,6 +86,20 @@ function New-JawsStepBInstallScope {
         throw 'JAWS-STEP-B-013: Step B install refuses the accepted dev environment and rg-aiops-lab.'
     }
     $names = New-JawsStepBResourceNames -EnvironmentName $EnvironmentName -ModelName $ModelName
+    if (-not [string]::IsNullOrWhiteSpace($FoundryAccountName)) { $names.FoundryAccountName = $FoundryAccountName.Trim() }
+    if (-not [string]::IsNullOrWhiteSpace($ProjectName)) { $names.ProjectName = $ProjectName.Trim() }
+    if (-not [string]::IsNullOrWhiteSpace($KeyVaultName)) { $names.KeyVaultName = $KeyVaultName.Trim() }
+    if (-not [string]::IsNullOrWhiteSpace($AcrName)) { $names.RegistryName = $AcrName.Trim() }
+    if (-not [string]::IsNullOrWhiteSpace($SupervisorAgentName)) { $names.AgentName = $SupervisorAgentName.Trim() }
+    $dnsName = 'Use 3-64 characters. Start with a lowercase letter, then use lowercase letters, digits, or hyphens, and end with a letter or digit.'
+    Test-JawsStepBResourceName -Name $names.FoundryAccountName -Label 'Foundry account name' -Pattern '^[a-z][a-z0-9-]{1,62}[a-z0-9]$' -Rule $dnsName
+    Test-JawsStepBResourceName -Name $names.ProjectName -Label 'Project name' -Pattern '^[a-z][a-z0-9-]{1,62}[a-z0-9]$' -Rule $dnsName
+    Test-JawsStepBResourceName -Name $names.AgentName -Label 'Supervisor agent name' -Pattern '^[a-z][a-z0-9-]{1,62}[a-z0-9]$' -Rule $dnsName
+    Test-JawsStepBResourceName -Name $names.KeyVaultName -Label 'Key Vault name' -Pattern '^[a-zA-Z][a-zA-Z0-9-]{1,22}[a-zA-Z0-9]$' -Rule 'Use 3-24 characters. Start with a letter, then use letters, digits, or hyphens, and end with a letter or digit.'
+    if ($names.KeyVaultName -match '--') {
+        throw "JAWS-STEP-B-027: Key Vault name '$($names.KeyVaultName)' is invalid. Consecutive hyphens are not allowed."
+    }
+    Test-JawsStepBResourceName -Name $names.RegistryName -Label 'Registry name' -Pattern '^[a-zA-Z0-9]{5,50}$' -Rule 'Use 5-50 letters or digits. Pass it as -AcrName.'
     foreach ($reserved in @('jaws-foundry-dev','jaws-dev','jawsregistrydev001','jaws-supervisor-dev','kv-jaws-dev-001')) {
         if ($names.FoundryAccountName -eq $reserved -or $names.ProjectName -eq $reserved -or
             $names.RegistryName -eq $reserved -or $names.AgentName -eq $reserved -or $names.KeyVaultName -eq $reserved) {
@@ -712,6 +743,36 @@ function Invoke-JawsStepBInstall {
     return [pscustomobject]@{ Receipt = $receipt; ReceiptPath = $receiptPath; StatePath = $statePath }
 }
 
+function Assert-JawsStepBPlanNames {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Scope,[Parameter(Mandatory)]$BoundParameters)
+    foreach ($pair in @(
+        @{ Parameter = 'FoundryAccountName'; Field = 'FoundryAccountName' },
+        @{ Parameter = 'ProjectName'; Field = 'ProjectName' },
+        @{ Parameter = 'KeyVaultName'; Field = 'KeyVaultName' },
+        @{ Parameter = 'AcrName'; Field = 'RegistryName' },
+        @{ Parameter = 'SupervisorAgentName'; Field = 'AgentName' }
+    )) {
+        if (-not $BoundParameters.ContainsKey($pair.Parameter)) { continue }
+        $supplied = [string]$BoundParameters[$pair.Parameter]
+        if ([string]::IsNullOrWhiteSpace($supplied)) { continue }
+        $actual = [string]$Scope.($pair.Field)
+        if ($supplied.Trim() -cne $actual) {
+            throw "JAWS-STEP-B-016: -$($pair.Parameter) '$($supplied.Trim())' does not match the saved plan name '$actual'. Resource names are chosen on Plan and locked by the plan digest. Re-run Plan to change them."
+        }
+    }
+}
+
+function Get-JawsStepBResolvedName {
+    param([string]$Supplied,$PlanScope,[Parameter(Mandatory)][string]$Field)
+    if (-not [string]::IsNullOrWhiteSpace($Supplied)) { return $Supplied.Trim() }
+    if ($null -ne $PlanScope -and $PlanScope.PSObject.Properties[$Field]) {
+        $planned = [string]$PlanScope.$Field
+        if (-not [string]::IsNullOrWhiteSpace($planned)) { return $planned }
+    }
+    return ''
+}
+
 function Invoke-JawsStepBAccept {
     [CmdletBinding()]
     param(
@@ -720,7 +781,12 @@ function Invoke-JawsStepBAccept {
         [Parameter(Mandatory)][string]$Location,
         [Parameter(Mandatory)][string]$ModelName,
         [Parameter(Mandatory)][string]$ModelVersion,
-        [Parameter(Mandatory)][string]$InstallerRoot
+        [Parameter(Mandatory)][string]$InstallerRoot,
+        [string]$FoundryAccountName,
+        [string]$ProjectName,
+        [string]$KeyVaultName,
+        [string]$AcrName,
+        [string]$SupervisorAgentName
     )
     $devState = Join-Path $InstallerRoot 'config/jaws-installation-state.dev.json'
     $devBefore = Get-Content -LiteralPath $devState -Raw
@@ -733,7 +799,13 @@ function Invoke-JawsStepBAccept {
     if ([string]$account.id -ine [string]$receipt.SubscriptionId) {
         throw 'JAWS-STEP-B-019: Azure CLI subscription differs from the install receipt. No resources were changed.'
     }
-    $scope = New-JawsStepBInstallScope -SubscriptionId ([string]$account.id) -ResourceGroupName $ResourceGroupName -Location $Location -EnvironmentName $EnvironmentName -ModelName $ModelName -ModelVersion $ModelVersion
+    $planScope = $null
+    $planPath = Join-Path $InstallerRoot ".local/jaws-stage-b-plan.$EnvironmentName.offline.generated.json"
+    if (Test-Path -LiteralPath $planPath -PathType Leaf) {
+        $savedPlan = Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json
+        if ($savedPlan.PSObject.Properties['InstallScope']) { $planScope = $savedPlan.InstallScope }
+    }
+    $scope = New-JawsStepBInstallScope -SubscriptionId ([string]$account.id) -ResourceGroupName $ResourceGroupName -Location $Location -EnvironmentName $EnvironmentName -ModelName $ModelName -ModelVersion $ModelVersion -FoundryAccountName (Get-JawsStepBResolvedName -Supplied $FoundryAccountName -PlanScope $planScope -Field 'FoundryAccountName') -ProjectName (Get-JawsStepBResolvedName -Supplied $ProjectName -PlanScope $planScope -Field 'ProjectName') -KeyVaultName (Get-JawsStepBResolvedName -Supplied $KeyVaultName -PlanScope $planScope -Field 'KeyVaultName') -AcrName (Get-JawsStepBResolvedName -Supplied $AcrName -PlanScope $planScope -Field 'RegistryName') -SupervisorAgentName (Get-JawsStepBResolvedName -Supplied $SupervisorAgentName -PlanScope $planScope -Field 'AgentName')
     $mismatch = @()
     if ([string]$receipt.PlanSha256 -cne [string]$scope.PlanSha256) { $mismatch += 'plan digest' }
     foreach ($name in @('ResourceGroupName','FoundryAccountName','ProjectName','ModelDeploymentName','ModelName','ModelVersion','KeyVaultName','RegistryName','AgentName')) {
@@ -849,4 +921,4 @@ function Invoke-JawsStepBAccept {
     return [pscustomobject]@{ Report = $report; ReportPath = $reportPath }
 }
 
-Export-ModuleMember -Function New-JawsStepBInstallScope,Get-JawsStepBScopeSha256,Get-JawsStepBAuthorizedWrites,Invoke-JawsStepBPreflight,Invoke-JawsStepBInstall,Invoke-JawsStepBAccept
+Export-ModuleMember -Function New-JawsStepBInstallScope,Get-JawsStepBScopeSha256,Get-JawsStepBAuthorizedWrites,Assert-JawsStepBPlanNames,Invoke-JawsStepBPreflight,Invoke-JawsStepBInstall,Invoke-JawsStepBAccept

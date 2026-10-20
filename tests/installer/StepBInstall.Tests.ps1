@@ -2,6 +2,10 @@ BeforeAll {
     Import-Module (Join-Path $PSScriptRoot '../../installer/modules/StepBInstall.psm1') -Force
     $script:root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
     $script:sub = '22222222-2222-2222-2222-222222222222'
+    $opsLocal = Join-Path $script:root 'installer/.local'
+    if (Test-Path -LiteralPath $opsLocal) {
+        Get-ChildItem -LiteralPath $opsLocal -Filter '*ops1*' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+    }
     $script:stub = Join-Path ([System.IO.Path]::GetTempPath()) ('jaws-stepb-stub-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $script:stub | Out-Null
     Set-Content -LiteralPath (Join-Path $script:stub 'az') -Encoding ascii -Value @'
@@ -38,6 +42,9 @@ def emit(payload):
     print(json.dumps(payload))
     sys.exit(0)
 
+def flag(name, default):
+    return args[args.index(name) + 1] if name in args else default
+
 def missing():
     print("MISSING", file=sys.stderr)
     sys.exit(3)
@@ -58,13 +65,14 @@ if args[:3] == ["policy", "assignment", "list"]:
 if args[:2] == ["group", "show"]:
     emit(load("group")) if exists("group") else missing()
 if args[:2] == ["group", "create"]:
-    payload = {"name": "rg-jaws-lab1", "location": "eastus", "tags": tags}
+    payload = {"name": flag("--name", "rg-jaws-lab1"), "location": "eastus", "tags": tags}
     save("group", payload)
     emit(payload)
 if args[:3] == ["cognitiveservices", "account", "show"]:
     emit(load("foundry")) if exists("foundry") else missing()
 if args[:3] == ["cognitiveservices", "account", "create"]:
-    payload = {"name": "jaws-foundry-lab1", "kind": "AIServices", "properties": {"provisioningState": "Succeeded", "customSubDomainName": "jaws-foundry-lab1"}, "tags": tags}
+    foundry_name = flag("--name", "jaws-foundry-lab1")
+    payload = {"name": foundry_name, "kind": "AIServices", "properties": {"provisioningState": "Succeeded", "customSubDomainName": foundry_name}, "tags": tags}
     save("foundry", payload)
     emit(payload)
 if args[:3] == ["cognitiveservices", "account", "list-models"]:
@@ -77,7 +85,7 @@ if args[:3] == ["cognitiveservices", "account", "list-models"]:
 if args[:4] == ["cognitiveservices", "account", "project", "show"]:
     emit(load("project")) if exists("project") else missing()
 if args[:4] == ["cognitiveservices", "account", "project", "create"]:
-    payload = {"name": "jaws-lab1", "properties": {"provisioningState": "Succeeded"}, "identity": {"type": "SystemAssigned", "principalId": principal}}
+    payload = {"name": flag("--project-name", "jaws-lab1"), "properties": {"provisioningState": "Succeeded"}, "identity": {"type": "SystemAssigned", "principalId": principal}}
     save("project", payload)
     emit(payload)
 if args[:4] == ["cognitiveservices", "account", "deployment", "show"]:
@@ -102,13 +110,14 @@ if args[:4] == ["cognitiveservices", "account", "deployment", "delete"]:
 if args[:2] == ["keyvault", "show"]:
     emit(load("vault")) if exists("vault") else missing()
 if args[:2] == ["keyvault", "create"]:
-    payload = {"name": "kvjawslab1", "properties": {"enableRbacAuthorization": True, "enablePurgeProtection": True}, "tags": tags}
+    payload = {"name": flag("--name", "kvjawslab1"), "properties": {"enableRbacAuthorization": True, "enablePurgeProtection": True}, "tags": tags}
     save("vault", payload)
     emit(payload)
 if args[:2] == ["acr", "show"]:
     emit(load("registry")) if exists("registry") else missing()
 if args[:2] == ["acr", "create"]:
-    payload = {"name": "jawsacrlab1", "loginServer": "jawsacrlab1.azurecr.io", "sku": {"name": "Basic"}, "adminUserEnabled": False, "tags": tags}
+    registry_name = flag("--name", "jawsacrlab1")
+    payload = {"name": registry_name, "loginServer": registry_name + ".azurecr.io", "sku": {"name": "Basic"}, "adminUserEnabled": False, "tags": tags}
     save("registry", payload)
     emit(payload)
 if args[:2] == ["acr", "login"]:
@@ -612,6 +621,78 @@ Describe 'Step B foundation install' {
             $env:JAWS_STEPB_STUB_STATE = $savedState
             $env:JAWS_STEPB_STUB_SUB = $savedSub
             $env:JAWS_STEPB_STUB_ENV = $savedEnv
+        }
+    }
+
+    It 'lets the operator replace generated resource names and keeps the defaults otherwise' {
+        $default = New-JawsStepBInstallScope -SubscriptionId $script:sub -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' -EnvironmentName 'lab1' -ModelName 'gpt-5-mini' -ModelVersion '2025-08-07'
+        $default.FoundryAccountName | Should -Be 'jaws-foundry-lab1'
+        $default.ProjectName | Should -Be 'jaws-lab1'
+        $default.KeyVaultName | Should -Be 'kvjawslab1'
+        $default.RegistryName | Should -Be 'jawsacrlab1'
+        $default.AgentName | Should -Be 'jaws-supervisor-lab1'
+        $custom = New-JawsStepBInstallScope -SubscriptionId $script:sub -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' -EnvironmentName 'lab1' -ModelName 'gpt-5-mini' -ModelVersion '2025-08-07' -FoundryAccountName 'jaws-foundry-operator1' -KeyVaultName 'kv-jaws-operator1'
+        $custom.FoundryAccountName | Should -Be 'jaws-foundry-operator1'
+        $custom.KeyVaultName | Should -Be 'kv-jaws-operator1'
+        $custom.ProjectName | Should -Be 'jaws-lab1'
+        $custom.RegistryName | Should -Be 'jawsacrlab1'
+        $custom.AgentName | Should -Be 'jaws-supervisor-lab1'
+        $custom.PlanSha256 | Should -Not -Be $default.PlanSha256
+        { New-JawsStepBInstallScope -SubscriptionId $script:sub -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' -EnvironmentName 'lab1' -ModelName 'gpt-5-mini' -ModelVersion '2025-08-07' -KeyVaultName 'x' } | Should -Throw '*JAWS-STEP-B-027*'
+        { New-JawsStepBInstallScope -SubscriptionId $script:sub -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' -EnvironmentName 'lab1' -ModelName 'gpt-5-mini' -ModelVersion '2025-08-07' -KeyVaultName 'kv--jaws1' } | Should -Throw '*JAWS-STEP-B-027*'
+        { New-JawsStepBInstallScope -SubscriptionId $script:sub -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' -EnvironmentName 'lab1' -ModelName 'gpt-5-mini' -ModelVersion '2025-08-07' -KeyVaultName 'kv-jaws-dev-001' } | Should -Throw '*JAWS-STEP-B-017*'
+        { New-JawsStepBInstallScope -SubscriptionId $script:sub -ResourceGroupName 'rg-jaws-lab1' -Location 'eastus' -EnvironmentName 'lab1' -ModelName 'gpt-5-mini' -ModelVersion '2025-08-07' -AcrName 'has-hyphen' } | Should -Throw '*JAWS-STEP-B-027*'
+    }
+
+    It 'locks operator resource names in the plan and uses them for install and accept' {
+        $state = Join-Path $script:stub 'state-custom-names'
+        $savedPath = $env:PATH
+        $savedState = $env:JAWS_STEPB_STUB_STATE
+        $savedSub = $env:JAWS_STEPB_STUB_SUB
+        $savedEnv = $env:JAWS_STEPB_STUB_ENV
+        try {
+            $env:JAWS_STEPB_STUB_STATE = $state
+            $env:JAWS_STEPB_STUB_SUB = $script:sub
+            $env:JAWS_STEPB_STUB_ENV = 'ops1'
+            $env:JAWS_STEPB_POLL_SECONDS = '0'
+            $env:PATH = $script:stub + [System.IO.Path]::PathSeparator + '/usr/bin'
+            $planOutput = & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Plan -NonInteractive -EnvironmentName 'ops1' -ResourceGroupName 'rg-jaws-ops1' -Location 'eastus' -FoundryAccountName 'jaws-foundry-ops1b' -KeyVaultName 'kv-jaws-ops1' *>&1 | Out-String
+            $planOutput | Should -Match 'STEP-B PLAN PASS'
+            $planOutput | Should -Match 'Foundry account: jaws-foundry-ops1b'
+            $planOutput | Should -Match 'Key Vault: kv-jaws-ops1'
+            $planOutput | Should -Match 'Project: jaws-ops1'
+            $planOutput | Should -Match 'Registry: jawsacrops1'
+            $planOutput | Should -Match 'Agent: jaws-supervisor-ops1'
+            $planPath = Join-Path $script:root 'installer/.local/jaws-stage-b-plan.ops1.offline.generated.json'
+            $plan = Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json
+            $scope = New-JawsStepBInstallScope -SubscriptionId $script:sub -ResourceGroupName 'rg-jaws-ops1' -Location 'eastus' -EnvironmentName 'ops1' -ModelName 'gpt-5-mini' -ModelVersion '2025-08-07' -FoundryAccountName 'jaws-foundry-ops1b' -KeyVaultName 'kv-jaws-ops1'
+            $plan.PlanSha256 | Should -Be $scope.PlanSha256
+            $default = New-JawsStepBInstallScope -SubscriptionId $script:sub -ResourceGroupName 'rg-jaws-ops1' -Location 'eastus' -EnvironmentName 'ops1' -ModelName 'gpt-5-mini' -ModelVersion '2025-08-07'
+            $plan.PlanSha256 | Should -Not -Be $default.PlanSha256
+            { & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Install -EnvironmentName 'ops1' -ResourceGroupName 'rg-jaws-ops1' -Location 'eastus' -ApprovedPlanSha256 $plan.PlanSha256 -KeyVaultName 'kv-jaws-other1' -AcknowledgeStepBInstall } | Should -Throw '*JAWS-STEP-B-016*'
+            $log = if (Test-Path -LiteralPath (Join-Path $state 'log.txt')) { Get-Content -LiteralPath (Join-Path $state 'log.txt') -Raw } else { '' }
+            $log | Should -Not -Match 'group create'
+            & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Install -EnvironmentName 'ops1' -ResourceGroupName 'rg-jaws-ops1' -Location 'eastus' -ApprovedPlanSha256 $plan.PlanSha256 -AcknowledgeStepBInstall
+            $receipt = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-step-b-install.ops1.generated.json') -Raw | ConvertFrom-Json
+            $receipt.FoundryAccountName | Should -Be 'jaws-foundry-ops1b'
+            $receipt.KeyVaultName | Should -Be 'kv-jaws-ops1'
+            $receipt.ProjectName | Should -Be 'jaws-ops1'
+            $receipt.RegistryName | Should -Be 'jawsacrops1'
+            $receipt.AgentName | Should -Be 'jaws-supervisor-ops1'
+            $accept = & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Accept -EnvironmentName 'ops1' -ResourceGroupName 'rg-jaws-ops1' -Location 'eastus' *>&1 | Out-String
+            $accept | Should -Match 'STEP-B ACCEPTANCE PASS'
+            $accept | Should -Match 'Foundry account: jaws-foundry-ops1b'
+            $accept | Should -Match 'Key Vault: kv-jaws-ops1'
+        } finally {
+            $opsLocal = Join-Path $script:root 'installer/.local'
+            if (Test-Path -LiteralPath $opsLocal) {
+                Get-ChildItem -LiteralPath $opsLocal -Filter '*ops1*' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+            }
+            $env:PATH = $savedPath
+            if ($null -eq $savedState) { Remove-Item Env:JAWS_STEPB_STUB_STATE -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_STATE = $savedState }
+            if ($null -eq $savedSub) { Remove-Item Env:JAWS_STEPB_STUB_SUB -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_SUB = $savedSub }
+            if ($null -eq $savedEnv) { Remove-Item Env:JAWS_STEPB_STUB_ENV -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_ENV = $savedEnv }
+            Remove-Item Env:JAWS_STEPB_POLL_SECONDS -ErrorAction SilentlyContinue
         }
     }
 

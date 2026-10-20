@@ -14,6 +14,11 @@ param(
     [string]$Location,
     [string]$ModelName='gpt-5-mini',
     [string]$ModelVersion='2025-08-07',
+    [string]$FoundryAccountName,
+    [string]$ProjectName,
+    [string]$KeyVaultName,
+    [string]$AcrName,
+    [string]$SupervisorAgentName,
     [ValidateSet('Static','Dynamic')][string]$QuotaMode='Static',
     [switch]$AcknowledgeStepBInstall,
     [string]$ApprovedPlanSha256,
@@ -38,6 +43,9 @@ Import-Module (Join-Path $PSScriptRoot 'modules/MilestoneResult.psm1') -Force
 if ($Mode -eq 'Package') {
     if ($AzureAware -or $SupervisorImage -or $RegistryName -or $PlanFile -or $StateFile) {
         throw 'JAWS-PACKAGE-007: Package mode is local-only; Azure-aware planning flags are not accepted.'
+    }
+    if ($FoundryAccountName -or $ProjectName -or $KeyVaultName -or $AcrName -or $SupervisorAgentName) {
+        throw 'JAWS-PACKAGE-007: Package mode is local-only. Pass resource names on Plan.'
     }
     Import-Module (Join-Path $PSScriptRoot 'modules/SupervisorPackage.psm1') -Force
     $package=Get-JawsSupervisorPackagePlan -InstallerRoot $PSScriptRoot
@@ -108,7 +116,7 @@ if ($Mode -eq 'Plan') {
     if ($exampleAfter -ne $exampleBefore) { throw 'JAWS-PLAN-012: Plan mode rewrote the example blueprint.' }
     if ($PSBoundParameters.ContainsKey('EnvironmentName') -and $PSBoundParameters.ContainsKey('ResourceGroupName') -and $PSBoundParameters.ContainsKey('Location')) {
         Import-Module (Join-Path $PSScriptRoot 'modules/StepBInstall.psm1') -Force
-        $installScope = New-JawsStepBInstallScope -SubscriptionId $offlinePlan.SubscriptionId -ResourceGroupName $ResourceGroupName -Location $Location -EnvironmentName $EnvironmentName -ModelName $ModelName -ModelVersion $ModelVersion
+        $installScope = New-JawsStepBInstallScope -SubscriptionId $offlinePlan.SubscriptionId -ResourceGroupName $ResourceGroupName -Location $Location -EnvironmentName $EnvironmentName -ModelName $ModelName -ModelVersion $ModelVersion -FoundryAccountName $FoundryAccountName -ProjectName $ProjectName -KeyVaultName $KeyVaultName -AcrName $AcrName -SupervisorAgentName $SupervisorAgentName
         $offlinePlan | Add-Member -NotePropertyName InstallScope -NotePropertyValue $installScope -Force
         $offlinePlan | Add-Member -NotePropertyName PlanSha256 -NotePropertyValue $installScope.PlanSha256 -Force
         $offlinePlan.ResourceGroupName = $installScope.ResourceGroupName
@@ -190,6 +198,7 @@ if ($Mode -eq 'Plan') {
             Write-Host "Project: $($planResult.InstallScope.ProjectName)"
             Write-Host "Model: $($planResult.InstallScope.ModelName) $($planResult.InstallScope.ModelVersion)"
             Write-Host "Quota mode: $QuotaMode"
+            Write-Host "Key Vault: $($planResult.InstallScope.KeyVaultName)"
             Write-Host "Registry: $($planResult.InstallScope.RegistryName)"
             Write-Host "Agent: $($planResult.InstallScope.AgentName)"
             Write-Host 'Install authorized: false'
@@ -211,6 +220,7 @@ if ($Mode -eq 'Preflight') {
     if (-not $saved.PSObject.Properties['InstallScope']) {
         throw 'JAWS-STEP-B-016: The saved plan has no install scope. Re-run Plan with -EnvironmentName, -ResourceGroupName, and -Location.'
     }
+    Assert-JawsStepBPlanNames -Scope $saved.InstallScope -BoundParameters $PSBoundParameters
     $checked = Invoke-JawsStepBPreflight -Scope $saved.InstallScope -InstallerRoot $PSScriptRoot
     if (-not $checked.Ready) {
         Write-JawsMilestoneResult -Result FAIL -ReadyForNextStep $false -NextStep 'Step B Install' -EvidencePath $checked.ReportPath
@@ -243,6 +253,7 @@ if ($Mode -eq 'Install') {
     if (-not $saved.PSObject.Properties['InstallScope']) {
         throw 'JAWS-STEP-B-016: The saved plan has no install scope. Re-run Plan with -EnvironmentName, -ResourceGroupName, and -Location.'
     }
+    Assert-JawsStepBPlanNames -Scope $saved.InstallScope -BoundParameters $PSBoundParameters
     if (-not [string]::IsNullOrWhiteSpace($InstallConfig) -and -not (Test-Path -LiteralPath $InstallConfig -PathType Leaf)) {
         throw "JAWS-INSTALL-CONFIG-001: Install config was not found at $InstallConfig."
     }
@@ -272,6 +283,7 @@ if ($Mode -eq 'Install') {
     Write-Host "Model: $($done.ModelName) $($done.ModelVersion)"
     Write-Host "Quota mode: $($done.QuotaMode)"
     Write-Host "Model SKU: $($done.ModelSku)"
+    Write-Host "Key Vault: $($done.KeyVaultName)"
     Write-Host "Registry: $($done.RegistryLoginServer)"
     Write-Host "Image: $($done.Image)"
     Write-Host "Agent: $($done.AgentName)"
@@ -299,7 +311,7 @@ if ($Mode -eq 'Accept') {
     Import-Module (Join-Path $PSScriptRoot 'modules/StepBInstall.psm1') -Force
     $acceptEvidence = Join-Path $PSScriptRoot ".local/jaws-step-b-acceptance.$EnvironmentName.generated.json"
     try {
-        $accepted = Invoke-JawsStepBAccept -EnvironmentName $EnvironmentName -ResourceGroupName $ResourceGroupName -Location $Location -ModelName $ModelName -ModelVersion $ModelVersion -InstallerRoot $PSScriptRoot
+        $accepted = Invoke-JawsStepBAccept -EnvironmentName $EnvironmentName -ResourceGroupName $ResourceGroupName -Location $Location -ModelName $ModelName -ModelVersion $ModelVersion -InstallerRoot $PSScriptRoot -FoundryAccountName $FoundryAccountName -ProjectName $ProjectName -KeyVaultName $KeyVaultName -AcrName $AcrName -SupervisorAgentName $SupervisorAgentName
     } catch {
         Save-JawsMilestoneFailure -Path $acceptEvidence -Message $_.Exception.Message -Started $jawsMilestoneStarted
         Write-JawsMilestoneResult -Result FAIL -ReadyForNextStep $false -NextStep 'Step C Validate' -EvidencePath $acceptEvidence
@@ -315,6 +327,7 @@ if ($Mode -eq 'Accept') {
     Write-Host "Model: $($live.ModelName) $($live.ModelVersion)"
     Write-Host "Quota mode: $($live.QuotaMode)"
     Write-Host "Model SKU: $($live.ModelSku)"
+    Write-Host "Key Vault: $($live.KeyVaultName)"
     Write-Host "Deployment: $($live.DeploymentProvisioningState)"
     Write-Host "Registry admin: false"
     Write-Host 'AcrPull: true'

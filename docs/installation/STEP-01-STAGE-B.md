@@ -30,7 +30,25 @@ These resources are billable. Install does nothing unless `-AcknowledgeStepBInst
 .\installer\Test-JawsStepB.ps1 -Mode Plan -ReportPath .\installer\.local\jaws-stage-b-plan.your-environment.offline.generated.json
 ```
 
-**Expected result.** Both commands print `STEP-B PLAN PASS`, `Subscription source: AzureCli`, `Install authorized: false`, `Quota mode: Static`, and `Plan SHA-256`. Azure writes stay 0. The report is `installer/.local/jaws-stage-b-plan.your-environment.offline.generated.json`. The digest binds the subscription, names, and model. It does not include the quota mode, and it does not authorize every mutation or an open-ended cost. Pass `-QuotaMode Dynamic` on Plan to print that choice before Install. The value used at Install is the one that is applied.
+**Expected result.** Both commands print `STEP-B PLAN PASS`, `Subscription source: AzureCli`, `Install authorized: false`, `Quota mode: Static`, `Key Vault`, and `Plan SHA-256`. Azure writes stay 0. The report is `installer/.local/jaws-stage-b-plan.your-environment.offline.generated.json`. The digest binds the subscription, names, and model. It does not include the quota mode, and it does not authorize every mutation or an open-ended cost. Pass `-QuotaMode Dynamic` on Plan to print that choice before Install. The value used at Install is the one that is applied.
+
+Plan prints the names it will create. Omit a name parameter to keep the generated default. The resource group and region are the `-ResourceGroupName` and `-Location` you already pass. The model deployment name is `-ModelName`.
+
+| Resource | Default | Plan parameter |
+| --- | --- | --- |
+| Foundry account | `jaws-foundry-<environment>` | `-FoundryAccountName` |
+| Project | `jaws-<environment>` | `-ProjectName` |
+| Key Vault | `kvjaws` plus the environment with hyphens removed, at most 24 characters | `-KeyVaultName` |
+| Registry | `jawsacr` plus that compact name, at most 50 characters | `-AcrName` |
+| Supervisor | `jaws-supervisor-<environment>` | `-SupervisorAgentName` |
+
+```powershell
+.\installer\Install-Jaws.ps1 -Mode Plan -NonInteractive -EnvironmentName your-environment -ResourceGroupName rg-jaws-your-environment -Location eastus -FoundryAccountName jaws-foundry-your-name -ProjectName jaws-your-project -KeyVaultName kv-jaws-your-vault -AcrName jawsacryourregistry -SupervisorAgentName jaws-supervisor-your-name
+```
+
+A name you supply replaces only that resource. The other names stay at the defaults above. The final names are part of the plan digest, so a custom name produces a new `Plan SHA-256`. Preflight and Install read the saved plan. Passing a different name on those commands stops at `JAWS-STEP-B-016` before any write. Accept reads the same saved plan when you omit the name parameters.
+
+Foundry, project, and Supervisor names are 3–64 characters: a lowercase letter, then lowercase letters, digits, or hyphens, ending with a letter or digit. A Key Vault name is 3–24 characters: a letter, then letters, digits, or hyphens, ending with a letter or digit, with no consecutive hyphens. A registry name is 5–50 letters or digits. `-RegistryName` is not this setting; it remains the Azure-aware registry assessment switch. An invalid name stops at `JAWS-STEP-B-027`. The reserved dev names `jaws-foundry-dev`, `jaws-dev`, `jawsregistrydev001`, `jaws-supervisor-dev`, and `kv-jaws-dev-001` stop at `JAWS-STEP-B-017`.
 
 ## B1a. Preflight
 
@@ -118,6 +136,8 @@ Install uploads `src/Jaws.Supervisor.Host` and runs `az acr build --platform lin
 | Preflight is not ready | `JAWS-STEP-B-026`, no Azure writes |
 | Plan digest differs | `JAWS-STEP-B-011`, no Azure writes |
 | Environment `dev` or resource group `rg-aiops-lab` | `JAWS-STEP-B-013` |
+| Resource name does not match the saved plan | `JAWS-STEP-B-016`, no Azure writes |
+| Custom resource name is invalid | `JAWS-STEP-B-027`, no Azure writes |
 | Existing resource without the installer tags | `JAWS-STEP-B-012`, no adoption |
 | Model quota or unsupported region | `JAWS-STEP-B-MODEL-001`. A quota refusal prints `Issue`, `Action`, and `Quota request: https://aka.ms/oai/stuquotarequest`. Dynamic quota cannot create the deployment when Azure has no quota for capacity 1 |
 | Requested quota mode is not recorded | `JAWS-STEP-B-MODEL-002`. Capacity stays 1. Dynamic uses the regional Standard SKU |
@@ -172,7 +192,7 @@ Accept also prints `FedRAMP open resources` and `Install config` when B3 wrote t
 
 ## Restart
 
-`rg-aiops-lab-test2` has been deleted. An old receipt under `installer/.local` for that name will fail Accept with `JAWS-STEP-B-024` because the resource group is gone. Run Plan, Preflight, and Install again before Accept. Reuse the name `aiops-lab-test2` only on that new Install. Pull `main` after the A2A host change is merged, so Step C keeps the planner on `services.ai.azure.com`. Do not run `Install-JawsFoundryPrivateNetwork.ps1` during this restart. The dev project stays unchanged.
+`rg-aiops-lab-test2` has been deleted. An old receipt under `installer/.local` for that name will fail Accept with `JAWS-STEP-B-024` because the resource group is gone. The default Key Vault name `kvjawsaiopslabtest2` stays purge-protected until 2027-01-18, so a new Plan for environment `aiops-lab-test2` needs a different `-KeyVaultName`. The Foundry name `jaws-foundry-aiops-lab-test2` can stay the default. Run Plan, copy the new `Plan SHA-256`, then run Preflight and Install. Do not run `Install-JawsFoundryPrivateNetwork.ps1` during this restart. The dev project stays unchanged.
 
 ## Actual JAWS implementation source (B)
 

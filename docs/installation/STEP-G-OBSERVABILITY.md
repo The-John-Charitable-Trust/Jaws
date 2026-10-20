@@ -1,6 +1,18 @@
 # Observability integration secrets
 
-Step G, the observability specialist and its MCP server, is not installable. When that specialist is built, its skills and tools are added to the one custom MCP server as compiled modules named by the manifest. The metadata those modules use is supplied at install time and stored under the secret names below. Step B Install requests the ServiceNow developer instance and the Datadog parameters, stores the values in the Step B Key Vault, and marks one virtual machine as the default Datadog host. It does not install the Datadog Agent and it does not create the specialist. The standalone command below writes the same secrets after Install when a value changes.
+Step G grants the Step F observability agent a second MCP server, `jaws-observability`. The compiled modules in this build are Datadog and ServiceNow, and the tools are read-only: `datadog.metrics.query` and `servicenow.incident.get`. Azure Monitor and Microsoft Defender stay on Azure MCP. The manifest records the module and the secret name. Install does not deploy the MCP server process and prints `MCP server deployed: false` and `Live tool call: false`.
+
+The metadata those modules use is supplied at install time and stored under the secret names below. Step B Install requests the ServiceNow developer instance and the Datadog parameters, stores the values in the Step B Key Vault, and marks one virtual machine as the default Datadog host. It does not install the Datadog Agent. The standalone secret command below writes the same secrets after Install when a value changes.
+
+```powershell
+.\installer\Install-JawsStepG.ps1 -Mode Validate -EnvironmentName your-environment
+.\installer\Install-JawsStepG.ps1 -Mode Install -EnvironmentName your-environment -AcknowledgeStepGInstall
+.\installer\Install-JawsStepG.ps1 -Mode Accept -EnvironmentName your-environment
+```
+
+Validate requires a Step F acceptance whose `Result` is `PASS`. Install without `-AcknowledgeStepGInstall` stops at `JAWS-STEP-G-001`. A module that is not `Datadog` or `ServiceNow`, or a tool that belongs on Azure MCP, stops at `JAWS-STEP-G-008`. Sources: [Model Context Protocol in Foundry](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/tools/model-context-protocol) and [Adding tools](https://learn.microsoft.com/en-us/agent-framework/journey/adding-tools).
+
+Expected on Accept: `STEP-G ACCEPTANCE PASS`, `MCP server deployed: false`, `Live tool call: false`, `Customer installation accepted: false`, `FedRAMP Moderate: false`, `Ready for next step: true`, and `Next step: Step H Validate`.
 
 The Datadog Agent host must already exist in this environment when Datadog is configured. That is the same subscription, the environment resource group (`-ResourceGroupName`), and the environment location (`-Location`). For the current test those are subscription `c52f597b-7753-45b4-a764-67e290dcfd5e`, resource group `rg-aiops-lab-test2`, and location `eastus`. A new environment that keeps the generated resource group uses `rg-jaws-<environment>`. Install does not create the virtual machine. The minimum is Windows 11 or Windows Server 2016 or later, 2 vCPU, 8 GiB RAM, and 4 GiB free disk. `Standard_D2s_v3` meets that minimum. The Datadog Agent 7 must already be installed, configured with the site and API key you will enter, and the Windows service `datadogagent` must be Running. The full table and the install commands are in [SYSTEM-PREREQUISITES.md](SYSTEM-PREREQUISITES.md).
 
@@ -54,14 +66,14 @@ When the Datadog parameters are available, run the same command with these added
 
 Use the site that matches the Datadog organization. Without `-AcknowledgeObservabilitySecrets` the command stops at `JAWS-OBS-001` and writes nothing. `-EnvironmentName dev` stops at `JAWS-OBS-002`. A missing Step B receipt stops at `JAWS-OBS-005`.
 
-Expected: `Observability integration: recorded`, `Datadog Agent installed: false`, `Customer installation accepted: false`, `Ready for next step: false`, and `Next step: Step G is not installable`. Evidence: `installer/.local/jaws-observability-integration.your-environment.generated.json`.
+Expected from the secret command: `Observability integration: recorded`, `Datadog Agent installed: false`, and `Customer installation accepted: false`. Evidence: `installer/.local/jaws-observability-integration.your-environment.generated.json`. That command stores secrets. Step G Install is the manifest and the second MCP server grant above.
 
 ## Acceptance criteria
 
 - G-00: Install and the later-update command write only the secret names above into the Step B vault. The evidence file and `jaws-install.<environment>.generated.json` contain no password and no API key.
 - G-01: The default virtual machine is in this environment's subscription, resource group, and location, the Datadog Agent service `datadogagent` is Running on it, and the machine carries `jaws-datadog-default=true`.
 - G-02: FedRAMP Moderate. The vault is the private Step B vault. The observability identity, when Step G exists, receives Key Vault Secrets User on these secrets and no broader vault role. The Datadog Agent on the virtual machine is the telemetry collector. JAWS still has one observability specialist and does not publish a public specialist URL.
-- G-03: Step G remains uninstalled. A secret receipt is not a specialist, an MCP server, or a Datadog Agent installation. The specialist's skills and tools are added to that MCP server only when Step G is built.
+- G-03: Step G Install records the manifest and the second-server grant. It does not deploy the MCP server, install the Datadog Agent, or claim a live tool call. A secret receipt is not that server.
 
 ## Uninstall to stop charges or start a new install
 

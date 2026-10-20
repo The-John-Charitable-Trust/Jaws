@@ -461,8 +461,8 @@ function Invoke-JawsStepDAccept {
     if (-not $ok) { throw "JAWS-STEP-D-024: Live virtual-machine specialist does not match the catalog. $($browserReasons -join ' ') Evidence: $evidencePath" }
     return [pscustomobject]@{
         EvidencePath = $evidencePath
-        ReadyForNextStep = $false
-        NextStep = 'Step E is not installable'
+        ReadyForNextStep = $true
+        NextStep = 'Step E Validate'
         AzureWrites = 0
     }
 }

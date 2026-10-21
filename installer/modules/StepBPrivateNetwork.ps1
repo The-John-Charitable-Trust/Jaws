@@ -236,7 +236,7 @@ function Install-JawsStepBPrivateAccess {
     }
     $inbound = Invoke-JawsStepBAz -AllowMissing -Arguments @('dns-resolver','inbound-endpoint','show','--subscription',$sub,'--resource-group',$rg,'--dns-resolver-name',$resolverName,'--name','inbound','--output','json','--only-show-errors')
     if ($null -eq $inbound) {
-        $config = '[{"private-ip-allocation-method":"Dynamic","subnet":{"id":"' + $Layout.ResolverSubnetId + '"}}]'
+        $config = '[{"private-ip-allocation-method":"Dynamic","id":"' + $Layout.ResolverSubnetId + '"}]'
         $inbound = Invoke-JawsStepBAz -Arguments @('dns-resolver','inbound-endpoint','create','--subscription',$sub,'--resource-group',$rg,'--dns-resolver-name',$resolverName,'--name','inbound','--ip-configurations',$config,'--output','json','--only-show-errors')
         $writes++
     }

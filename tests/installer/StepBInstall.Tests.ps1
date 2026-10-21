@@ -49,6 +49,20 @@ def missing():
     print("MISSING", file=sys.stderr)
     sys.exit(3)
 
+def provider_state(namespace):
+    registration = os.environ.get("JAWS_STEPB_STUB_PROVIDER", "Registered")
+    if os.environ.get("JAWS_STEPB_STUB_PROVIDER_STUCK") != "1" and exists("provider-registered"):
+        registered = load("provider-registered")
+        if isinstance(registered, dict) and registered.get(namespace) == "Registered":
+            registration = "Registered"
+    return registration
+
+def refuse_unregistered(namespace):
+    if provider_state(namespace) == "Registered":
+        return
+    print("ERROR: (MissingSubscriptionRegistration) The subscription is not registered to use namespace '%s'." % namespace, file=sys.stderr)
+    sys.exit(1)
+
 if args[:2] == ["account", "show"]:
     emit({"id": sub, "name": "stub", "state": "Enabled", "tenantId": "33333333-3333-3333-3333-333333333333", "user": {"name": "installer@stub.example", "type": "user"}})
 if args[:2] == ["account", "list"]:
@@ -58,8 +72,17 @@ if args[:2] == ["account", "list-locations"]:
         print("unrecognized arguments: --subscription", file=sys.stderr)
         sys.exit(2)
     emit([{"name": "eastus", "displayName": "East US"}])
+if args[:2] == ["provider", "register"]:
+    namespace = flag("--namespace", "stub")
+    registered = load("provider-registered") if exists("provider-registered") else {}
+    if not isinstance(registered, dict):
+        registered = {}
+    registered[namespace] = "Registered"
+    save("provider-registered", registered)
+    emit({"namespace": namespace, "registrationState": "Registering"})
 if args[:2] == ["provider", "show"]:
-    emit({"namespace": "stub", "registrationState": os.environ.get("JAWS_STEPB_STUB_PROVIDER", "Registered")})
+    namespace = flag("--namespace", "stub")
+    emit({"namespace": namespace, "registrationState": provider_state(namespace)})
 if args[:3] == ["policy", "assignment", "list"]:
     emit([])
 if args[:2] == ["group", "show"]:
@@ -69,6 +92,7 @@ if args[:2] == ["group", "create"]:
     save("group", payload)
     emit(payload)
 if args[:3] == ["cognitiveservices", "account", "show"]:
+    refuse_unregistered("Microsoft.CognitiveServices")
     emit(load("foundry")) if exists("foundry") else missing()
 if args[:3] == ["cognitiveservices", "account", "create"]:
     foundry_name = flag("--name", "jaws-foundry-lab1")
@@ -112,12 +136,14 @@ if args[:4] == ["cognitiveservices", "account", "deployment", "delete"]:
         os.remove(path("deployment"))
     emit({})
 if args[:2] == ["keyvault", "show"]:
+    refuse_unregistered("Microsoft.KeyVault")
     emit(load("vault")) if exists("vault") else missing()
 if args[:2] == ["keyvault", "create"]:
     payload = {"name": flag("--name", "kvjawslab1"), "properties": {"enableRbacAuthorization": True, "enablePurgeProtection": True}, "tags": tags}
     save("vault", payload)
     emit(payload)
 if args[:2] == ["acr", "show"]:
+    refuse_unregistered("Microsoft.ContainerRegistry")
     emit(load("registry")) if exists("registry") else missing()
 if args[:2] == ["acr", "create"]:
     registry_name = flag("--name", "jawsacrlab1")
@@ -142,6 +168,7 @@ if args[:3] == ["acr", "manifest", "show-metadata"]:
         sys.exit(1)
     emit({"digest": "sha256:" + ("a" * 64)})
 if args[:2] == ["acr", "check-name"]:
+    refuse_unregistered("Microsoft.ContainerRegistry")
     candidate = flag("--name", "")
     taken = [item for item in os.environ.get("JAWS_STEPB_STUB_NAME_TAKEN", "").split(",") if item]
     emit({"nameAvailable": candidate not in taken})
@@ -171,8 +198,13 @@ if args[:1] == ["rest"] and "--method" in args:
     method = args[args.index("--method") + 1]
     url = args[args.index("--url") + 1] if "--url" in args else ""
     if method == "POST" and "checkSkuAvailability" in url:
+        refuse_unregistered("Microsoft.CognitiveServices")
         emit({"value": [{"skuName": "S0", "skuAvailable": True}]})
     if method == "POST" and ("checkNameAvailability" in url or "checkDomainAvailability" in url):
+        if "Microsoft.KeyVault" in url:
+            refuse_unregistered("Microsoft.KeyVault")
+        else:
+            refuse_unregistered("Microsoft.CognitiveServices")
         body_flag = args[args.index("--body") + 1]
         with open(body_flag[1:], encoding="utf-8") as handle:
             body = json.load(handle)
@@ -883,5 +915,117 @@ Describe 'Step B foundation install' {
             if ($null -eq $savedEnv) { Remove-Item Env:JAWS_STEPB_STUB_ENV -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_ENV = $savedEnv }
             if ($null -eq $savedMissing) { Remove-Item Env:JAWS_STEPB_STUB_AGENT_MISSING -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_AGENT_MISSING = $savedMissing }
         }
+    }
+
+    It 'leaves provider registration to Install and still passes Preflight when the providers are not registered' {
+        $state = Join-Path $script:stub 'state-providers'
+        $savedPath = $env:PATH
+        $savedState = $env:JAWS_STEPB_STUB_STATE
+        $savedSub = $env:JAWS_STEPB_STUB_SUB
+        $savedEnv = $env:JAWS_STEPB_STUB_ENV
+        $savedProvider = $env:JAWS_STEPB_STUB_PROVIDER
+        try {
+            $env:JAWS_STEPB_STUB_STATE = $state
+            $env:JAWS_STEPB_STUB_SUB = $script:sub
+            $env:JAWS_STEPB_STUB_ENV = 'prov1'
+            $env:JAWS_STEPB_STUB_PROVIDER = 'NotRegistered'
+            $env:JAWS_STEPB_POLL_SECONDS = '0'
+            $env:PATH = $script:stub + [System.IO.Path]::PathSeparator + '/usr/bin'
+            & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Plan -NonInteractive -EnvironmentName 'prov1' -ResourceGroupName 'rg-jaws-prov1' -Location 'eastus'
+            $plan = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-stage-b-plan.prov1.offline.generated.json') -Raw | ConvertFrom-Json
+            $preflight = & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Preflight -EnvironmentName 'prov1' -ResourceGroupName 'rg-jaws-prov1' -Location 'eastus' *>&1 | Out-String
+            $preflight | Should -Match 'STEP-B PREFLIGHT PASS'
+            $preflight | Should -Match 'Azure writes: 0'
+            $preflight | Should -Match 'Providers: Install will register Microsoft.CognitiveServices, Microsoft.KeyVault, Microsoft.ContainerRegistry'
+            $preflight | Should -Not -Match 'Microsoft.Network'
+            $preflightLog = Get-Content -LiteralPath (Join-Path $state 'log.txt') -Raw
+            $preflightLog | Should -Not -Match 'provider register'
+            $report = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-step-b-preflight.prov1.generated.json') -Raw | ConvertFrom-Json
+            $report.AzureWrites | Should -Be 0
+            $report.Status | Should -Be 'READY_FOR_BOUNDED_WRITES'
+            @($report.ProvidersToRegister) | Should -Be @('Microsoft.CognitiveServices','Microsoft.KeyVault','Microsoft.ContainerRegistry')
+            $install = & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Install -EnvironmentName 'prov1' -ResourceGroupName 'rg-jaws-prov1' -Location 'eastus' -ApprovedPlanSha256 $plan.PlanSha256 -AcknowledgeStepBInstall *>&1 | Out-String
+            $install | Should -Match 'STEP-B INSTALL PASS'
+            $install | Should -Match 'Registering provider: Microsoft.CognitiveServices'
+            $install | Should -Match 'Provider registered: Microsoft.ContainerRegistry'
+            $log = Get-Content -LiteralPath (Join-Path $state 'log.txt') -Raw
+            foreach ($namespace in @('Microsoft.CognitiveServices','Microsoft.KeyVault','Microsoft.ContainerRegistry')) {
+                $log | Should -Match ([regex]::Escape("provider register --namespace $namespace"))
+            }
+            $log | Should -Not -Match 'provider register --namespace Microsoft.Network'
+            $log | Should -Not -Match 'provider register --namespace Microsoft.App'
+            $registerAt = $log.IndexOf('provider register')
+            $groupAt = $log.IndexOf('group create')
+            $registerAt | Should -BeGreaterThan -1
+            $groupAt | Should -BeGreaterThan $registerAt
+            $registered = Get-Content -LiteralPath (Join-Path $state 'provider-registered') -Raw | ConvertFrom-Json
+            $registered.'Microsoft.CognitiveServices' | Should -Be 'Registered'
+            $registered.'Microsoft.KeyVault' | Should -Be 'Registered'
+            $registered.'Microsoft.ContainerRegistry' | Should -Be 'Registered'
+        } finally {
+            $provLocal = Join-Path $script:root 'installer/.local'
+            if (Test-Path -LiteralPath $provLocal) {
+                Get-ChildItem -LiteralPath $provLocal -Filter '*prov1*' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+            }
+            $env:PATH = $savedPath
+            if ($null -eq $savedState) { Remove-Item Env:JAWS_STEPB_STUB_STATE -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_STATE = $savedState }
+            if ($null -eq $savedSub) { Remove-Item Env:JAWS_STEPB_STUB_SUB -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_SUB = $savedSub }
+            if ($null -eq $savedEnv) { Remove-Item Env:JAWS_STEPB_STUB_ENV -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_ENV = $savedEnv }
+            if ($null -eq $savedProvider) { Remove-Item Env:JAWS_STEPB_STUB_PROVIDER -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_PROVIDER = $savedProvider }
+            Remove-Item Env:JAWS_STEPB_POLL_SECONDS -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'stops before the resource group when a provider never becomes Registered' {
+        $state = Join-Path $script:stub 'state-provider-stuck'
+        $savedPath = $env:PATH
+        $savedState = $env:JAWS_STEPB_STUB_STATE
+        $savedSub = $env:JAWS_STEPB_STUB_SUB
+        $savedEnv = $env:JAWS_STEPB_STUB_ENV
+        $savedProvider = $env:JAWS_STEPB_STUB_PROVIDER
+        $savedStuck = $env:JAWS_STEPB_STUB_PROVIDER_STUCK
+        try {
+            $env:JAWS_STEPB_STUB_STATE = $state
+            $env:JAWS_STEPB_STUB_SUB = $script:sub
+            $env:JAWS_STEPB_STUB_ENV = 'prov2'
+            $env:JAWS_STEPB_STUB_PROVIDER = 'NotRegistered'
+            $env:JAWS_STEPB_STUB_PROVIDER_STUCK = '1'
+            $env:JAWS_STEPB_POLL_SECONDS = '0'
+            $env:PATH = $script:stub + [System.IO.Path]::PathSeparator + '/usr/bin'
+            & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Plan -NonInteractive -EnvironmentName 'prov2' -ResourceGroupName 'rg-jaws-prov2' -Location 'eastus'
+            $plan = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-stage-b-plan.prov2.offline.generated.json') -Raw | ConvertFrom-Json
+            $output = ''
+            try {
+                & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Install -EnvironmentName 'prov2' -ResourceGroupName 'rg-jaws-prov2' -Location 'eastus' -ApprovedPlanSha256 $plan.PlanSha256 -AcknowledgeStepBInstall *>&1 | ForEach-Object { $output += "$_`n" }
+                throw 'Install returned instead of JAWS-STEP-B-PROVIDER-001.'
+            } catch {
+                $output += $_.Exception.Message
+            }
+            $output | Should -Match 'JAWS-STEP-B-PROVIDER-001'
+            $output | Should -Match 'Microsoft.CognitiveServices'
+            $output | Should -Match 'No foundation resources were created'
+            $log = Get-Content -LiteralPath (Join-Path $state 'log.txt') -Raw
+            $log | Should -Match 'provider register --namespace Microsoft.CognitiveServices'
+            $log | Should -Not -Match 'group create'
+        } finally {
+            $provLocal = Join-Path $script:root 'installer/.local'
+            if (Test-Path -LiteralPath $provLocal) {
+                Get-ChildItem -LiteralPath $provLocal -Filter '*prov2*' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+            }
+            $env:PATH = $savedPath
+            if ($null -eq $savedState) { Remove-Item Env:JAWS_STEPB_STUB_STATE -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_STATE = $savedState }
+            if ($null -eq $savedSub) { Remove-Item Env:JAWS_STEPB_STUB_SUB -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_SUB = $savedSub }
+            if ($null -eq $savedEnv) { Remove-Item Env:JAWS_STEPB_STUB_ENV -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_ENV = $savedEnv }
+            if ($null -eq $savedProvider) { Remove-Item Env:JAWS_STEPB_STUB_PROVIDER -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_PROVIDER = $savedProvider }
+            if ($null -eq $savedStuck) { Remove-Item Env:JAWS_STEPB_STUB_PROVIDER_STUCK -ErrorAction SilentlyContinue } else { $env:JAWS_STEPB_STUB_PROVIDER_STUCK = $savedStuck }
+            Remove-Item Env:JAWS_STEPB_POLL_SECONDS -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'includes the network providers only when the saved plan is private' {
+        $public = New-JawsStepBInstallScope -SubscriptionId $script:sub -ResourceGroupName 'rg-jaws-prov1' -Location 'eastus' -EnvironmentName 'prov1' -ModelName 'gpt-5-mini' -ModelVersion '2025-08-07'
+        $private = New-JawsStepBInstallScope -SubscriptionId $script:sub -ResourceGroupName 'rg-jaws-prov1' -Location 'eastus' -EnvironmentName 'prov1' -ModelName 'gpt-5-mini' -ModelVersion '2025-08-07' -NetworkProfile Private
+        @(Get-JawsStepBProviderNames $public) -join ',' | Should -Be 'Microsoft.CognitiveServices,Microsoft.KeyVault,Microsoft.ContainerRegistry'
+        @(Get-JawsStepBProviderNames $private) -join ',' | Should -Be 'Microsoft.CognitiveServices,Microsoft.KeyVault,Microsoft.ContainerRegistry,Microsoft.Network,Microsoft.App'
     }
 }

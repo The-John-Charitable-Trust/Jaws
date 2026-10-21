@@ -249,7 +249,15 @@ if ($Mode -eq 'Preflight') {
     Write-Host 'STEP-B PREFLIGHT PASS'
     Write-Host 'Azure writes: 0'
     Write-Host "Plan SHA-256: $($checked.Report.PlanSha256)"
-    Write-Host 'Providers: Registered'
+    $pendingProviders = @()
+    if ($checked.Report.PSObject.Properties['ProvidersToRegister'] -and $null -ne $checked.Report.ProvidersToRegister) {
+        $pendingProviders = @($checked.Report.ProvidersToRegister | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+    }
+    if ($pendingProviders.Count -eq 0) {
+        Write-Host 'Providers: Registered'
+    } else {
+        Write-Host "Providers: Install will register $($pendingProviders -join ', ')"
+    }
     Write-Host "Resource write: $($checked.Report.ResourceWrite.ToString().ToLowerInvariant())"
     Write-Host "Role assignment: $($checked.Report.RoleAssignment.ToString().ToLowerInvariant())"
     Write-Host "Location: $($checked.Report.Location)"

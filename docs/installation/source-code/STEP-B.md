@@ -38,6 +38,8 @@ function Get-JawsStepBScopeSha256 {
 }
 ```
 
+This preflight excerpt is the earlier snapshot. Current Preflight records an unregistered provider on `ProvidersToRegister` and does not fail for that reason. Install calls `Register-JawsStepBResourceProviders` before it creates the resource group.
+
 **Source lines 279–316:**
 
 ```powershell

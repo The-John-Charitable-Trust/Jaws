@@ -73,6 +73,8 @@ Authorized writes: bounded
 
 The report is `installer/.local/jaws-step-b-preflight.your-environment.generated.json`. It lists the only writes Install is allowed to attempt. Model quota stays deferred until the Foundry account exists, and the install then refuses a model the account does not offer. Azure Policy deny effects are listed as not simulated. A caller with Contributor but without Owner, User Access Administrator, or Role Based Access Control Administrator stops at `JAWS-STEP-B-026`. No resource group is created. Install repeats this check before its first write, so an old report cannot skip it.
 
+An unregistered provider does not fail Preflight. The line is `Providers: Install will register` followed by the namespace names, and `Azure writes` stays 0. A name or SKU read that Azure refuses only because that provider is not registered is deferred. Install registers those providers and waits until each is `Registered` before it creates the resource group. A provider that is still not `Registered` after that wait stops at `JAWS-STEP-B-PROVIDER-001`. The private profile also registers `Microsoft.Network` and `Microsoft.App`.
+
 When the Foundry account, Key Vault, or registry name is already taken, Preflight prints `is not available` and asks `Enter another` name. An invalid answer is printed and the prompt repeats. The accepted name is saved into the plan, and Preflight prints the new `Plan SHA-256`. Use that digest for Install. `-NonInteractive` does not ask. It stops at `JAWS-STEP-B-026` and names `-FoundryAccountName`, `-KeyVaultName`, or `-AcrName`. Install asks the same question before its first write.
 
 ## B2. Package
@@ -157,7 +159,8 @@ Install uploads `src/Jaws.Supervisor.Host` and runs `az acr build --platform lin
 | Condition | Result |
 | --- | --- |
 | Approval switch omitted | `JAWS-STEP-B-010`, no Azure writes |
-| Preflight is not ready | `JAWS-STEP-B-026`, no Azure writes |
+| Preflight is not ready | `JAWS-STEP-B-026`, no Azure writes. An unregistered provider is not this failure |
+| A provider stays unregistered after Install requests it | `JAWS-STEP-B-PROVIDER-001`, before the resource group is created |
 | Plan digest differs | `JAWS-STEP-B-011`, no Azure writes |
 | Environment `dev` or resource group `rg-aiops-lab` | `JAWS-STEP-B-013` |
 | Resource name does not match the saved plan | `JAWS-STEP-B-016`, no Azure writes |

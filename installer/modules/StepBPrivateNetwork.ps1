@@ -219,7 +219,7 @@ function Install-JawsStepBPrivateAccess {
     if ($null -eq $gateway) {
         $null = Invoke-JawsStepBAz -Arguments @(
             'network','vnet-gateway','create','--subscription',$sub,'--resource-group',$rg,'--name',$gatewayName,'--location',$location,
-            '--public-ip-addresses',$pipName,'--vnet',$plan.VnetName,'--gateway-type','Vpn','--vpn-type','RouteBased','--sku','VpnGw1',
+            '--public-ip-addresses',$pipName,'--vnet',$plan.VnetName,'--gateway-type','Vpn','--vpn-type','RouteBased','--sku','VpnGw1AZ',
             '--vpn-gateway-generation','Generation1','--vpn-auth-type','AAD','--client-protocol','OpenVPN','--address-prefixes',[string]$plan.VpnClientPrefix,
             '--aad-tenant',"https://login.microsoftonline.com/$tenant/",
             '--aad-audience','41b23e61-6c1e-4545-b367-cd054e0ed4b4',

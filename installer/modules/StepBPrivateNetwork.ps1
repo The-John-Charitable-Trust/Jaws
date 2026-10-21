@@ -184,21 +184,27 @@ function Install-JawsStepBPrivateAccess {
         )
         $writes++
     }
-    $group = Invoke-JawsStepBAz -AllowMissing -Arguments @('network','private-endpoint','dns-zone-group','show','--subscription',$sub,'--resource-group',$rg,'--endpoint-name',$endpointName,'--name','default','--output','json','--only-show-errors')
+    $groupShow = @('network','private-endpoint','dns-zone-group','show','--subscription',$sub,'--resource-group',$rg,'--endpoint-name',$endpointName,'--name','default','--output','json','--only-show-errors')
+    $group = Invoke-JawsStepBAz -AllowMissing -Arguments $groupShow
+    $aliases = @('cognitiveservices','openai','services')
     if ($null -eq $group) {
         $null = Invoke-JawsStepBAz -Arguments @(
             'network','private-endpoint','dns-zone-group','create','--subscription',$sub,'--resource-group',$rg,
-            '--endpoint-name',$endpointName,'--name','default','--private-dns-zone',$zoneIds[0],'--zone-name','cognitiveservices','--output','json','--only-show-errors'
+            '--endpoint-name',$endpointName,'--name','default','--private-dns-zone',$zoneIds[0],'--zone-name',$aliases[0],'--output','json','--only-show-errors'
         )
         $writes++
-        $aliases = @('openai','services')
-        for ($i = 1; $i -lt $zoneIds.Count; $i++) {
-            $null = Invoke-JawsStepBAz -Arguments @(
-                'network','private-endpoint','dns-zone-group','add','--subscription',$sub,'--resource-group',$rg,
-                '--endpoint-name',$endpointName,'--name','default','--private-dns-zone',$zoneIds[$i],'--zone-name',$aliases[$i - 1],'--output','json','--only-show-errors'
-            )
-            $writes++
-        }
+        $group = Invoke-JawsStepBAz -AllowMissing -Arguments $groupShow
+    }
+    $attached = @(Get-JawsStepBPrivateDnsZoneIds $group)
+    for ($i = 0; $i -lt $zoneIds.Count; $i++) {
+        $zoneId = [string]$zoneIds[$i]
+        if ($attached -contains $zoneId.ToLowerInvariant()) { continue }
+        $null = Invoke-JawsStepBAz -Arguments @(
+            'network','private-endpoint','dns-zone-group','add','--subscription',$sub,'--resource-group',$rg,
+            '--endpoint-name',$endpointName,'--name','default','--private-dns-zone',$zoneId,'--zone-name',$aliases[$i],'--output','json','--only-show-errors'
+        )
+        $writes++
+        $attached += $zoneId.ToLowerInvariant()
     }
     $compact = [string]$plan.Compact
     $pipName = "jaws-vpn-pip-$compact"
@@ -253,6 +259,35 @@ function Install-JawsStepBPrivateAccess {
     }
 }
 
+function Get-JawsStepBPrivateDnsZoneIds {
+    param($Group)
+    if ($null -eq $Group) { return @() }
+    $configs = @()
+    if ($Group.PSObject.Properties['privateDnsZoneConfigs'] -and $null -ne $Group.privateDnsZoneConfigs) {
+        $configs = @($Group.privateDnsZoneConfigs)
+    } elseif ($Group.PSObject.Properties['properties'] -and $null -ne $Group.properties -and $Group.properties.PSObject.Properties['privateDnsZoneConfigs'] -and $null -ne $Group.properties.privateDnsZoneConfigs) {
+        $configs = @($Group.properties.privateDnsZoneConfigs)
+    }
+    $ids = New-Object System.Collections.Generic.List[string]
+    foreach ($config in $configs) {
+        if ($null -eq $config) { continue }
+        $id = ''
+        if ($config.PSObject.Properties['privateDnsZoneId']) { $id = [string]$config.privateDnsZoneId }
+        if ([string]::IsNullOrWhiteSpace($id) -and $config.PSObject.Properties['properties'] -and $null -ne $config.properties -and $config.properties.PSObject.Properties['privateDnsZoneId']) {
+            $id = [string]$config.properties.privateDnsZoneId
+        }
+        if (-not [string]::IsNullOrWhiteSpace($id)) { $ids.Add($id.ToLowerInvariant()) | Out-Null }
+    }
+    return @($ids)
+}
+
+function Test-JawsStepBPrivateDataPlaneUnreachable {
+    param([string]$Message)
+    if ($Message -match 'JAWS-STEP-B-029') { return $true }
+    # The public name still resolves. The account then refuses the call because public access is disabled.
+    return $Message -match '(?i)public access is disabled|public network access is disabled|PublicNetworkAccess|Virtual Network/Firewall rules'
+}
+
 function Test-JawsStepBPrivateDataPlaneReachable {
     param([Parameter(Mandatory)]$Scope)
     $url = "https://$($Scope.FoundryAccountName).services.ai.azure.com/api/projects/$($Scope.ProjectName)/agents?api-version=v1"
@@ -260,7 +295,7 @@ function Test-JawsStepBPrivateDataPlaneReachable {
         $null = Invoke-JawsStepBAz -Arguments @('rest','--method','GET','--url',$url,'--resource','https://ai.azure.com','--output','json','--only-show-errors')
         return $true
     } catch {
-        if ($_.Exception.Message -match 'JAWS-STEP-B-029') { return $false }
+        if (Test-JawsStepBPrivateDataPlaneUnreachable $_.Exception.Message) { return $false }
         throw
     }
 }

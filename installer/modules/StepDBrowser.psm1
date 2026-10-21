@@ -347,7 +347,7 @@ function Install-JawsFoundryPrivateNetwork {
                 $null = Invoke-JawsBrowserAz -AllowMissing -Arguments @('cognitiveservices','account','project','delete','--subscription',$sub,'--resource-group',$rg,'--name',$accountName,'--project-name',$projectName,'--output','json','--only-show-errors')
                 $writes++
             }
-            $null = Invoke-JawsBrowserAz -Arguments @('cognitiveservices','account','delete','--subscription',$sub,'--resource-group',$rg,'--name',$accountName,'--yes','--output','json','--only-show-errors')
+            $null = Invoke-JawsBrowserAz -Arguments @('cognitiveservices','account','delete','--subscription',$sub,'--resource-group',$rg,'--name',$accountName,'--output','json','--only-show-errors')
             $writes++
             $null = Invoke-JawsBrowserAz -Arguments @('cognitiveservices','account','purge','--subscription',$sub,'--resource-group',$rg,'--name',$accountName,'--location',[string]$receipt.Location,'--output','json','--only-show-errors')
             $writes++

@@ -46,7 +46,7 @@ def missing():
 
 def slot():
     name = flag("--name", "")
-    if "--zone-name" in args:
+    if "--zone-name" in args and "dns-zone-group" not in args:
         name += "-" + flag("--zone-name", "")
     if "--endpoint-name" in args:
         name += "-" + flag("--endpoint-name", "")
@@ -126,7 +126,11 @@ if args[:1] == ["rest"] and "--method" in args:
     if method == "POST" and ("checkNameAvailability" in url or "checkDomainAvailability" in url):
         emit({"nameAvailable": True, "isSubdomainAvailable": True})
     if method == "GET" and "services.ai.azure.com" in url and "/agents?" in url:
-        if os.environ.get("JAWS_STEPB_STUB_PRIVATE_REACHABLE") != "1":
+        reach = os.environ.get("JAWS_STEPB_STUB_PRIVATE_REACHABLE", "")
+        if reach == "public-refused":
+            print('{"error":{"code":"403","message":"Public access is disabled. Please configure private endpoint."}}', file=sys.stderr)
+            sys.exit(1)
+        if reach != "1":
             print("Name or service not known", file=sys.stderr)
             sys.exit(1)
         emit({"value": []})
@@ -167,6 +171,19 @@ if args and args[0] in ("network", "dns-resolver") and any(word in args for word
     }
     if "subnet" in args:
         payload["id"] = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/virtualNetworks/%s/subnets/%s" % (sub, resource_group, flag("--vnet-name", "vnet"), name)
+    if "dns-zone-group" in args and ("create" in args or "add" in args):
+        zone = flag("--private-dns-zone", "")
+        configs = []
+        if exists(key):
+            previous = load(key)
+            configs = list(previous.get("privateDnsZoneConfigs") or [])
+        known = []
+        for item in configs:
+            known.append(str(item.get("privateDnsZoneId") or (item.get("properties") or {}).get("privateDnsZoneId") or ""))
+        if zone and zone not in known:
+            configs.append({"name": flag("--zone-name", "zone"), "properties": {"privateDnsZoneId": zone}})
+        payload["privateDnsZoneConfigs"] = configs
+        payload["properties"] = {"provisioningState": "Succeeded", "privateDnsZoneConfigs": configs}
     save(key, payload)
     emit(payload)
 print("unexpected " + " ".join(args), file=sys.stderr)
@@ -185,7 +202,7 @@ AfterAll {
     $env:PATH = $script:originalPath
     Remove-Item Env:JAWS_STEPB_STUB_PRIVATE_REACHABLE -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $script:stub -Recurse -Force -ErrorAction SilentlyContinue
-    foreach ($name in @('priv1','badp')) {
+    foreach ($name in @('priv1','badp','http1','dns1')) {
         Get-ChildItem -LiteralPath (Join-Path $script:root 'installer/.local') -Filter "*$name*" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
     }
 }
@@ -299,6 +316,52 @@ Describe 'Step B private profile' {
         } catch { $output += $_.Exception.Message }
         $output | Should -Match 'JAWS-STEP-B-028'
         $output | Should -Not -Match 'rest --method PUT'
+        $env:JAWS_STEPB_STUB_ENV = 'priv1'
+    }
+
+    It 'pauses when the public name resolves and the account refuses public access' {
+        foreach ($name in @('foundry','project','deployment','vault','registry','agent','roles','group')) {
+            $file = Join-Path $script:stub $name
+            if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file -Force }
+        }
+        $env:JAWS_STEPB_STUB_ENV = 'http1'
+        $env:JAWS_STEPB_STUB_PRIVATE_REACHABLE = 'public-refused'
+        & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Plan -NonInteractive -EnvironmentName 'http1' -ResourceGroupName 'rg-jaws-http1' -Location 'eastus' -SubscriptionId $script:sub -NetworkProfile Private *>&1 | Out-Null
+        $plan = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-stage-b-plan.http1.offline.generated.json') -Raw | ConvertFrom-Json
+        $output = ''
+        try {
+            & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Install -EnvironmentName 'http1' -ResourceGroupName 'rg-jaws-http1' -Location 'eastus' -ApprovedPlanSha256 $plan.PlanSha256 -AcknowledgeStepBInstall *>&1 | ForEach-Object { $output += "$_`n" }
+        } catch { $output += $_.Exception.Message }
+        $output | Should -Match 'STEP-B INSTALL PAUSED'
+        $output | Should -Not -Match 'JAWS-STEP-B-AZ-001'
+        $output | Should -Match 'Connect that VPN'
+        Remove-Item Env:JAWS_STEPB_STUB_PRIVATE_REACHABLE
+        $env:JAWS_STEPB_STUB_ENV = 'priv1'
+    }
+
+    It 'adds private DNS zones that an earlier run left off the zone group' {
+        foreach ($name in @('foundry','project','deployment','vault','registry','agent','roles','group')) {
+            $file = Join-Path $script:stub $name
+            if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file -Force }
+        }
+        $env:JAWS_STEPB_STUB_ENV = 'dns1'
+        Remove-Item Env:JAWS_STEPB_STUB_PRIVATE_REACHABLE -ErrorAction SilentlyContinue
+        & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Plan -NonInteractive -EnvironmentName 'dns1' -ResourceGroupName 'rg-jaws-dns1' -Location 'eastus' -SubscriptionId $script:sub -NetworkProfile Private *>&1 | Out-Null
+        $plan = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-stage-b-plan.dns1.offline.generated.json') -Raw | ConvertFrom-Json
+        & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Install -EnvironmentName 'dns1' -ResourceGroupName 'rg-jaws-dns1' -Location 'eastus' -ApprovedPlanSha256 $plan.PlanSha256 -AcknowledgeStepBInstall *>&1 | Out-Null
+        $groupFile = Get-ChildItem -LiteralPath $script:stub -Filter '*dns-zone-group*' | Where-Object { $_.Name -match 'dns1' } | Select-Object -First 1
+        $groupFile | Should -Not -BeNullOrEmpty
+        $group = Get-Content -LiteralPath $groupFile.FullName -Raw | ConvertFrom-Json
+        @($group.privateDnsZoneConfigs).Count | Should -Be 3
+        $group.privateDnsZoneConfigs = @($group.privateDnsZoneConfigs[0])
+        $group.properties.privateDnsZoneConfigs = @($group.privateDnsZoneConfigs)
+        $group | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $groupFile.FullName -Encoding utf8
+        if (Test-Path (Join-Path $script:stub 'log.txt')) { Remove-Item (Join-Path $script:stub 'log.txt') }
+        & (Join-Path $script:root 'installer/Install-Jaws.ps1') -Mode Install -EnvironmentName 'dns1' -ResourceGroupName 'rg-jaws-dns1' -Location 'eastus' -ApprovedPlanSha256 $plan.PlanSha256 -AcknowledgeStepBInstall *>&1 | Out-Null
+        $log = Get-Content -LiteralPath (Join-Path $script:stub 'log.txt') -Raw
+        ([regex]::Matches($log, 'dns-zone-group add')).Count | Should -Be 2
+        $group = Get-Content -LiteralPath $groupFile.FullName -Raw | ConvertFrom-Json
+        @($group.privateDnsZoneConfigs).Count | Should -Be 3
         $env:JAWS_STEPB_STUB_ENV = 'priv1'
     }
 }

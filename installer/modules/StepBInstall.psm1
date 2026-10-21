@@ -773,8 +773,8 @@ function Invoke-JawsStepBInstall {
     }
     $foundryShow = @('cognitiveservices','account','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.FoundryAccountName,'--output','json','--only-show-errors')
     if ($networkProfile -eq 'Private') {
-        # A private endpoint is rejected while the account is still Creating. Injection accounts often stay there for several minutes.
-        $foundry = Wait-JawsStepBProvisioned -Arguments $foundryShow -Label 'Foundry account' -Attempts 60 -DelaySeconds 15
+        # A private endpoint is rejected while the account is still Creating. An injection account can stay there for well over 15 minutes after the create request is accepted.
+        $foundry = Wait-JawsStepBProvisioned -Arguments $foundryShow -Label 'Foundry account' -Attempts 120 -DelaySeconds 20
         $privateAccess = Install-JawsStepBPrivateAccess -Scope $Scope -Layout $privateLayout
         $writes += [int]$privateAccess.AzureWrites
     }

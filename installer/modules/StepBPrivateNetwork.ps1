@@ -158,6 +158,15 @@ function Add-JawsStepBPrivateDnsZone {
     [pscustomobject]@{ Id = $id; AzureWrites = $writes }
 }
 
+function Install-JawsStepBDnsResolverCli {
+    $listed = @(Invoke-JawsStepBAz -Arguments @('extension','list','--output','json','--only-show-errors'))
+    foreach ($item in $listed) {
+        if ([string](Get-JawsStepBProperty -Object $item -Names @('name')) -eq 'dns-resolver') { return }
+    }
+    # Invoke-JawsStepBAz captures the CLI output, so a dynamic-install prompt would wait forever.
+    $null = Invoke-JawsStepBAz -Arguments @('extension','add','--name','dns-resolver','--yes','--output','json','--only-show-errors')
+}
+
 function Install-JawsStepBPrivateAccess {
     param([Parameter(Mandatory)]$Scope,[Parameter(Mandatory)]$Layout)
     $writes = 0
@@ -229,6 +238,7 @@ function Install-JawsStepBPrivateAccess {
         $writes++
     }
     $resolverName = "jaws-dns-$compact"
+    Install-JawsStepBDnsResolverCli
     $resolver = Invoke-JawsStepBAz -AllowMissing -Arguments @('dns-resolver','show','--subscription',$sub,'--resource-group',$rg,'--name',$resolverName,'--output','json','--only-show-errors')
     if ($null -eq $resolver) {
         $null = Invoke-JawsStepBAz -Arguments @('dns-resolver','create','--subscription',$sub,'--resource-group',$rg,'--name',$resolverName,'--location',$location,'--id',$Layout.VnetId,'--output','json','--only-show-errors')

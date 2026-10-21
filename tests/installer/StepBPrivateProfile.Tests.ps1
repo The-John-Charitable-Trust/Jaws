@@ -52,6 +52,10 @@ def slot():
         name += "-" + flag("--endpoint-name", "")
     return "net-" + "-".join(args[:3]) + "-" + name
 
+if args[:2] == ["extension", "list"]:
+    emit([])
+if args[:2] == ["extension", "add"]:
+    emit({"name": flag("--name", "")})
 if args[:2] == ["account", "show"]:
     emit({"id": sub, "name": "stub", "state": "Enabled", "tenantId": "33333333-3333-3333-3333-333333333333", "user": {"name": "installer@stub.example", "type": "user"}})
 if args[:2] == ["account", "list-locations"]:
@@ -272,6 +276,14 @@ Describe 'Step B private profile' {
         $log | Should -Match '10\.42\.6\.0/28'
         $log | Should -Match 'rest --method PUT'
         $log | Should -Not -Match 'acr build'
+        $log | Should -Match 'extension add --name dns-resolver --yes'
+        $log | Should -Match '--sku VpnGw1AZ'
+        $log | Should -Not -Match '--sku VpnGw1 '
+        $log | Should -Match 'private-ip-allocation-method.:.Dynamic.,.id.:'
+        $log | Should -Not -Match '"subnet"'
+        $endpointAt = $log.IndexOf('network private-endpoint create')
+        $endpointAt | Should -BeGreaterThan 0
+        ([regex]::Matches($log.Substring(0, $endpointAt), 'cognitiveservices account show')).Count | Should -BeGreaterOrEqual 2
         $body = Get-Content -LiteralPath (Join-Path $script:root 'installer/.local/jaws-step-b-foundry-private.priv1.json') -Raw
         $body | Should -Match '"publicNetworkAccess":"Disabled"'
         $body | Should -Match 'jaws-foundry-agents'

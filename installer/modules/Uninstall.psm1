@@ -303,7 +303,7 @@ function Invoke-JawsUninstall {
     $foundryPurged = $false
     if (-not [string]::IsNullOrWhiteSpace($target.FoundryAccountName)) {
         foreach ($deployment in @(Get-JawsUninstallNames (Invoke-JawsUninstallAz -AllowMissing -Arguments @('cognitiveservices','account','deployment','list','--subscription',$sub,'--resource-group',$rg,'--name',$target.FoundryAccountName,'--output','json','--only-show-errors')))) {
-            $null = Invoke-JawsUninstallAz -AllowMissing -Arguments @('cognitiveservices','account','deployment','delete','--subscription',$sub,'--resource-group',$rg,'--name',$target.FoundryAccountName,'--deployment-name',$deployment,'--yes','--output','json','--only-show-errors')
+            $null = Invoke-JawsUninstallAz -AllowMissing -Arguments @('cognitiveservices','account','deployment','delete','--subscription',$sub,'--resource-group',$rg,'--name',$target.FoundryAccountName,'--deployment-name',$deployment,'--output','json','--only-show-errors')
             $deployments.Add($deployment) | Out-Null
             $writes++
         }
@@ -317,13 +317,13 @@ function Invoke-JawsUninstall {
         foreach ($projectName in @($projectNames)) {
             $project = Invoke-JawsUninstallAz -AllowMissing -Arguments @('cognitiveservices','account','project','show','--subscription',$sub,'--resource-group',$rg,'--name',$target.FoundryAccountName,'--project-name',$projectName,'--output','json','--only-show-errors')
             if ($null -eq $project) { continue }
-            $null = Invoke-JawsUninstallAz -Arguments @('cognitiveservices','account','project','delete','--subscription',$sub,'--resource-group',$rg,'--name',$target.FoundryAccountName,'--project-name',$projectName,'--yes','--output','json','--only-show-errors')
+            $null = Invoke-JawsUninstallAz -Arguments @('cognitiveservices','account','project','delete','--subscription',$sub,'--resource-group',$rg,'--name',$target.FoundryAccountName,'--project-name',$projectName,'--output','json','--only-show-errors')
             $projects.Add($projectName) | Out-Null
             $writes++
         }
         $account = Invoke-JawsUninstallAz -AllowMissing -Arguments @('cognitiveservices','account','show','--subscription',$sub,'--resource-group',$rg,'--name',$target.FoundryAccountName,'--output','json','--only-show-errors')
         if ($null -ne $account) {
-            $null = Invoke-JawsUninstallAz -Arguments @('cognitiveservices','account','delete','--subscription',$sub,'--resource-group',$rg,'--name',$target.FoundryAccountName,'--yes','--output','json','--only-show-errors')
+            $null = Invoke-JawsUninstallAz -Arguments @('cognitiveservices','account','delete','--subscription',$sub,'--resource-group',$rg,'--name',$target.FoundryAccountName,'--output','json','--only-show-errors')
             $writes++
         }
         $null = Invoke-JawsUninstallAz -AllowMissing -Arguments @('cognitiveservices','account','purge','--subscription',$sub,'--resource-group',$rg,'--name',$target.FoundryAccountName,'--location',$target.Location,'--output','json','--only-show-errors')
@@ -376,11 +376,11 @@ function Invoke-JawsUninstall {
         }
         if ($type -eq 'Microsoft.CognitiveServices/accounts' -and -not [string]::IsNullOrWhiteSpace($name) -and $name -ine $target.FoundryAccountName) {
             foreach ($deployment in @(Get-JawsUninstallNames (Invoke-JawsUninstallAz -AllowMissing -Arguments @('cognitiveservices','account','deployment','list','--subscription',$sub,'--resource-group',$rg,'--name',$name,'--output','json','--only-show-errors')))) {
-                $null = Invoke-JawsUninstallAz -AllowMissing -Arguments @('cognitiveservices','account','deployment','delete','--subscription',$sub,'--resource-group',$rg,'--name',$name,'--deployment-name',$deployment,'--yes','--output','json','--only-show-errors')
+                $null = Invoke-JawsUninstallAz -AllowMissing -Arguments @('cognitiveservices','account','deployment','delete','--subscription',$sub,'--resource-group',$rg,'--name',$name,'--deployment-name',$deployment,'--output','json','--only-show-errors')
                 $deployments.Add($deployment) | Out-Null
                 $writes++
             }
-            $null = Invoke-JawsUninstallAz -AllowMissing -Arguments @('cognitiveservices','account','delete','--subscription',$sub,'--resource-group',$rg,'--name',$name,'--yes','--output','json','--only-show-errors')
+            $null = Invoke-JawsUninstallAz -AllowMissing -Arguments @('cognitiveservices','account','delete','--subscription',$sub,'--resource-group',$rg,'--name',$name,'--output','json','--only-show-errors')
             $null = Invoke-JawsUninstallAz -AllowMissing -Arguments @('cognitiveservices','account','purge','--subscription',$sub,'--resource-group',$rg,'--name',$name,'--location',$target.Location,'--output','json','--only-show-errors')
             $writes += 2
         }

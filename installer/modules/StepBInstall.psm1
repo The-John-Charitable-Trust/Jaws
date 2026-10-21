@@ -283,17 +283,23 @@ function Get-JawsStepBProvisioningState {
 
 function Wait-JawsStepBProvisioned {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string[]]$Arguments,[Parameter(Mandatory)][string]$Label)
+    param(
+        [Parameter(Mandatory)][string[]]$Arguments,
+        [Parameter(Mandatory)][string]$Label,
+        [int]$Attempts = 36,
+        [int]$DelaySeconds = 5
+    )
+    if ($Attempts -lt 1) { throw 'JAWS-STEP-B-023: Wait attempts must be at least 1.' }
     $resource = $null
-    for ($attempt = 0; $attempt -lt 36; $attempt++) {
+    for ($attempt = 0; $attempt -lt $Attempts; $attempt++) {
         $resource = Invoke-JawsStepBAz -AllowMissing -Arguments $Arguments
         $state = Get-JawsStepBProvisioningState -Resource $resource
         if ($null -ne $resource -and ([string]::IsNullOrWhiteSpace($state) -or $state -eq 'Succeeded')) { return $resource }
         if ($state -in @('Failed','Canceled','Cancelled')) {
             throw "JAWS-STEP-B-023: $Label provisioning is $state."
         }
-        if ($attempt -eq 35) { break }
-        Start-JawsStepBPollSleep -Seconds 5
+        if ($attempt -eq ($Attempts - 1)) { break }
+        Start-JawsStepBPollSleep -Seconds $DelaySeconds
     }
     throw "JAWS-STEP-B-023: $Label did not reach provisioning state Succeeded."
 }
@@ -765,11 +771,13 @@ function Invoke-JawsStepBInstall {
     } elseif (-not (Test-JawsStepBOwned -Resource $foundry -EnvironmentName $Scope.EnvironmentName)) {
         throw 'JAWS-STEP-B-012: Foundry account exists and is not owned by this installer. Refusing adoption.'
     }
+    $foundryShow = @('cognitiveservices','account','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.FoundryAccountName,'--output','json','--only-show-errors')
     if ($networkProfile -eq 'Private') {
+        # A private endpoint is rejected while the account is still Creating. Injection accounts often stay there for several minutes.
+        $foundry = Wait-JawsStepBProvisioned -Arguments $foundryShow -Label 'Foundry account' -Attempts 60 -DelaySeconds 15
         $privateAccess = Install-JawsStepBPrivateAccess -Scope $Scope -Layout $privateLayout
         $writes += [int]$privateAccess.AzureWrites
     }
-    $foundryShow = @('cognitiveservices','account','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.FoundryAccountName,'--output','json','--only-show-errors')
     $foundry = Wait-JawsStepBProvisioned -Arguments $foundryShow -Label 'Foundry account'
     $projectShow = @('cognitiveservices','account','project','show','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.FoundryAccountName,'--project-name',[string]$Scope.ProjectName,'--output','json','--only-show-errors')
     $project = Invoke-JawsStepBAz -AllowMissing -Arguments $projectShow

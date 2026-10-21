@@ -28,14 +28,15 @@
     {
       "id": "B",
       "title": "Foundry foundation & packaging",
-      "status": "partial",
+      "status": "accepted",
       "capability": "Approved Foundry foundation install",
-      "value": "An approved plan can create a Foundry account, project, model deployment, Key Vault, registry, project identity pull role, and a digest-pinned hosted Supervisor.",
+      "value": "An approved plan creates a Foundry account, project, model deployment, Key Vault, registry, project identity pull role, and a digest-pinned hosted Supervisor.",
       "implementation": "installer/Install-Jaws.ps1",
       "tests": "tests/installer/StepBInstall.Tests.ps1",
       "microsoftUrl": "https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/deploy-hosted-agent",
       "microsoftTitle": "Foundry hosted agents",
-      "evidence": "Code and offline CLI-stand-in tests cover Preflight, Install, and Accept. Install builds the Supervisor image with az acr build and reads the digest from the registry. It does not call docker build, docker tag, or docker push. Provisioning, functional acceptance, and customer installation are not recorded. The plan digest binds names and model, not an unbounded cost."
+      "acceptanceScope": "stepb-accept in Pay-As-You-Go, public egress. Customer installation remains open because FedRAMP Moderate B-09 is false.",
+      "evidence": "21 October 2026: Install-Jaws.ps1 -Mode Accept printed STEP-B ACCEPTANCE PASS, Live Azure read: true, and Azure writes: 0 for environment stepb-accept in subscription c52f597b-7753-45b4-a764-67e290dcfd5e, resource group rg-jaws-stepb-accept, location eastus. Foundry account jaws-foundry-stepb-accept and project jaws-stepb-accept are Succeeded. Model gpt-5-mini 2025-08-07 is GlobalStandard and Succeeded. Registry jawsacrstepbaccept has admin disabled and AcrPull assigned. Supervisor jaws-supervisor-stepb-accept version 1 is active on jawsacrstepbaccept.azurecr.io/jaws/supervisor@sha256:fa6b05c9c55f8efb4ac4f8f141d828ef51b14a6b1b554246df0eff774cbbd173. The image was produced by az acr build --platform linux/amd64. Plan SHA-256 is 5eccc857f5465b4876748ad78510986ac50f064a0dba6f78002bd2527bb7f737. ServiceNow and Datadog were skipped. Dev state is unchanged. FedRAMP Moderate is false with 9 open resources, so customer installation accepted stays false."
     },
     {
       "id": "C",

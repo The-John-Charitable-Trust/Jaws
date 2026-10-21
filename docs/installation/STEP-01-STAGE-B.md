@@ -144,7 +144,62 @@ Use the `Plan SHA-256` from the private plan. A public digest stops at `JAWS-STE
 
 The address table lives in one place: `10.42.0.0/16`, apps `10.42.0.0/23`, agents `10.42.2.0/24`, private endpoints `10.42.3.0/24`, `GatewaySubnet` `10.42.5.0/27`, DNS inbound `10.42.6.0/28`. The VPN client pool is `172.16.201.0/24`. The gateway uses Entra ID and the Azure VPN client audience `41b23e61-6c1e-4545-b367-cd054e0ed4b4`. Its SKU is VpnGw1AZ. Azure no longer accepts a new VpnGw1 gateway. It bills for each hour it exists. The first Install waits while Azure provisions that gateway, often 30 to 45 minutes. Install also installs the Azure CLI `dns-resolver` extension without a prompt, and it waits until the Foundry account is `Succeeded` before creating the private endpoint. An injection account can stay in `Creating` for more than 15 minutes.
 
-**Expected first Install.** `STEP-B INSTALL PAUSED`, `Private posture: verified`, `Supervisor created: false`, the gateway name `jaws-vpn-<compact>`, and the resolver address. Connect that VPN on this computer and set its DNS server to the resolver address. Run the same Install command again. The second run adopts the account with no further account write and creates the Supervisor. It prints `STEP-B INSTALL PASS`. Accept then runs on this same computer. A DNS failure pauses. A refusal that says public access is disabled pauses the same way, because the public name can still resolve. A later data-plane failure, after this probe has succeeded, stops at `JAWS-STEP-B-029`.
+**Expected first Install.** `STEP-B INSTALL PAUSED`, `Private posture: verified`, `Supervisor created: false`, the gateway name `jaws-vpn-<compact>`, and the resolver address. The installer cannot sign in to the VPN. Follow [Connect the Azure VPN Client](#connect-the-azure-vpn-client) on this computer, then run the same Install command again. The second run adopts the account with no further account write and creates the Supervisor. It prints `STEP-B INSTALL PASS`. Accept then runs on this same computer, with the VPN still connected. A DNS failure pauses. A refusal that says public access is disabled pauses the same way, because the public name can still resolve. A later data-plane failure, after this probe has succeeded, stops at `JAWS-STEP-B-029`.
+
+### Connect the Azure VPN Client
+
+Do this on the same computer that runs Install. There is no jump VM. Leave the VPN connected for the second Install, for Accept, and for Steps C and D.
+
+The pause prints the two values you need. `Point-to-site VPN` is the gateway, `jaws-vpn-<compact>`. `<compact>` is the environment name with the hyphens removed, so environment `stepb-private` uses gateway `jaws-vpn-stepbprivate`. `DNS resolver` is the address you put in the client. On this address plan that address is the first host in `10.42.6.0/28`, usually `10.42.6.4`. Use the printed value.
+
+1. Install the Azure VPN Client on this computer. On Windows, install **Azure VPN Client** from the Microsoft Store. On macOS, install **Azure VPN Client** from the Mac App Store. The Linux preview client was retired on 31 August 2026, so use Windows or macOS for this step.
+
+2. Download the profile for that gateway. In the [Azure portal](https://portal.azure.com), open resource group `rg-jaws-<environment>`, open virtual network gateway `jaws-vpn-<compact>`, open **Point-to-site configuration**, and choose **Download VPN client**. Extract the zip. The file to edit is `AzureVPN/azurevpnconfig.xml`. Azure CLI prints a URL for the same zip:
+
+```powershell
+az network vnet-gateway vpn-client generate --resource-group rg-jaws-your-environment --name jaws-vpn-<compact> --processor-architecture Amd64
+```
+
+Download that URL and extract it. The audience in the profile must be `41b23e61-6c1e-4545-b367-cd054e0ed4b4`. That is the Microsoft-registered Azure VPN Client app this gateway uses. A different audience is the wrong profile.
+
+3. Add the printed resolver and the private DNS suffixes before you import the file. Open `azurevpnconfig.xml`. If `<clientconfig>` already exists, put these two blocks inside it. If it does not exist, add the whole block under `<azvpnprofile>`. Replace `PRINTED-RESOLVER-ADDRESS` with the `DNS resolver` line from the pause.
+
+```xml
+<clientconfig>
+  <dnsservers>
+    <dnsserver>PRINTED-RESOLVER-ADDRESS</dnsserver>
+  </dnsservers>
+  <dnssuffixes>
+    <dnssuffix>.services.ai.azure.com</dnssuffix>
+    <dnssuffix>.privatelink.services.ai.azure.com</dnssuffix>
+    <dnssuffix>.cognitiveservices.azure.com</dnssuffix>
+    <dnssuffix>.privatelink.cognitiveservices.azure.com</dnssuffix>
+    <dnssuffix>.openai.azure.com</dnssuffix>
+    <dnssuffix>.privatelink.openai.azure.com</dnssuffix>
+  </dnssuffixes>
+</clientconfig>
+```
+
+Those suffixes send `services.ai.azure.com` and the three private zones to the resolver. With Entra ID sign-in, the Azure VPN Client applies them as name-resolution policy rules. The resolver address does not appear in `ipconfig /all`. Microsoft documents the profile shape in [Configure Azure VPN Client optional settings](https://learn.microsoft.com/en-us/azure/vpn-gateway/azure-vpn-client-optional-configurations).
+
+4. Import the edited file and connect. On Windows, open the Azure VPN Client, select **+**, then **Import**, and choose the edited `azurevpnconfig.xml`. Select **Save**. Select the profile, then select **Connect**. Sign in with the same Entra account you use for Azure CLI. The profile turns green and says **Connected**. On macOS, select **Import**, choose the file, select **Save**, then **Connect** and sign in. Microsoft documents that extra DNS suffixes do not persist on macOS, so use Windows for this install when you can. The client steps are in [Configure a VPN client for P2S Microsoft Entra ID authentication](https://learn.microsoft.com/en-us/azure/vpn-gateway/point-to-site-entra-vpn-client).
+
+5. Check the name before the second Install. From PowerShell, while the profile says **Connected**:
+
+```powershell
+Get-DnsClientNrptPolicy
+Resolve-DnsName jaws-foundry-your-environment.services.ai.azure.com
+```
+
+`Resolve-DnsName` must return an address in `10.42.3.0/24`, the private endpoint subnet. A public address means this computer is still using public DNS. Fix the profile and connect again. The second Install pauses again when that name still resolves in public, because the account refuses public access.
+
+6. Run the same Install command again on this computer. Keep the VPN connected.
+
+```powershell
+.\installer\Install-Jaws.ps1 -Mode Install -EnvironmentName your-environment -ResourceGroupName rg-jaws-your-environment -Location eastus -ApprovedPlanSha256 <plan-sha> -AcknowledgeStepBInstall
+```
+
+**Expected second Install.** `STEP-B INSTALL PASS`, an image line ending in `@sha256:`, and `Agent status: active`. Then run Accept on this computer while the VPN stays connected.
 
 An existing account whose preview read is not exactly that posture stops at `JAWS-STEP-B-028` and is left unchanged. `JAWS-STEP-B-028` is also the code for a network profile value that is neither Public nor Private. `JAWS-STEP-B-029` is the code for a data-plane failure after the reachability probe has already succeeded, and Accept uses the same code when the receipt is still paused. Microsoft documents the account shape in [How to use a virtual network with the Azure AI Foundry Agent Service](https://learn.microsoft.com/en-us/azure/ai-foundry/agents/how-to/virtual-networks).
 

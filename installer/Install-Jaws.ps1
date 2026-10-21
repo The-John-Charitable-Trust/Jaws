@@ -289,6 +289,7 @@ if ($Mode -eq 'Install') {
             Write-Host "Point-to-site VPN: $($paused.VpnGatewayName)"
             Write-Host "DNS resolver: $($paused.DnsResolverInboundIp)"
             Write-Host 'Connect that VPN on this computer. Set its DNS server to the resolver address. Then run this same Install command again.'
+            Write-Host 'This connection is manual. Download the VPN client profile for the gateway above. Add the DNS resolver and the private DNS suffixes to azurevpnconfig.xml. Import that file into the Azure VPN Client and connect. The steps are in docs/installation/STEP-01-STAGE-B.md under Connect the Azure VPN Client.'
             Write-Host "Azure writes: $($paused.AzureWrites)"
             Write-Host 'FedRAMP Moderate: false'
             Write-Host "Receipt: $($installed.ReceiptPath)"

@@ -798,7 +798,7 @@ function Invoke-JawsStepBInstall {
             throw "JAWS-STEP-B-MODEL-001: $detail The approved plan was not changed."
         }
         if ($replaceSku) {
-            $null = Invoke-JawsStepBAz -Arguments @('cognitiveservices','account','deployment','delete','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.FoundryAccountName,'--deployment-name',[string]$Scope.ModelDeploymentName,'--yes','--output','json','--only-show-errors')
+            $null = Invoke-JawsStepBAz -Arguments @('cognitiveservices','account','deployment','delete','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.FoundryAccountName,'--deployment-name',[string]$Scope.ModelDeploymentName,'--output','json','--only-show-errors')
             $writes++
         }
         $deployment = Invoke-JawsStepBAz -Arguments @('cognitiveservices','account','deployment','create','--subscription',$sub,'--resource-group',$rg,'--name',[string]$Scope.FoundryAccountName,'--deployment-name',[string]$Scope.ModelDeploymentName,'--model-name',[string]$Scope.ModelName,'--model-version',[string]$Scope.ModelVersion,'--model-format','OpenAI','--sku-name',$skuName,'--sku-capacity','1','--output','json','--only-show-errors')

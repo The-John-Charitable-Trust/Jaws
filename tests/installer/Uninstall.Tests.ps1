@@ -67,9 +67,16 @@ if args[:2] == ["group", "delete"]:
 def flag(name):
     return args[args.index(name) + 1] if name in args else ""
 
+def reject_yes():
+    # Real az: deployment, project, and account delete have no --yes option.
+    if "--yes" in args:
+        print("ERROR: unrecognized arguments: --yes", file=sys.stderr)
+        sys.exit(2)
+
 if args[:4] == ["cognitiveservices", "account", "deployment", "list"]:
     emit([{"name": name} for name in world.get("deployments", [])])
 if args[:4] == ["cognitiveservices", "account", "deployment", "delete"]:
+    reject_yes()
     name = flag("--deployment-name")
     world["deployments"] = [item for item in world.get("deployments", []) if item != name]
     save()
@@ -79,12 +86,14 @@ if args[:4] == ["cognitiveservices", "account", "project", "list"]:
 if args[:3] == ["cognitiveservices", "account", "project"] and args[3] == "show":
     emit({"name": "jaws-uninst1"}) if world["project"] else missing()
 if args[:3] == ["cognitiveservices", "account", "project"] and args[3] == "delete":
+    reject_yes()
     world["project"] = False
     save()
     emit({})
 if args[:3] == ["cognitiveservices", "account", "show"]:
     emit({"name": "jaws-foundry-uninst1"}) if world["account"] else missing()
 if args[:3] == ["cognitiveservices", "account", "delete"]:
+    reject_yes()
     world["account"] = False
     save()
     emit({})

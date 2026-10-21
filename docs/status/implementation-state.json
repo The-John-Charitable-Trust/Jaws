@@ -48,8 +48,8 @@
       "tests": "tests/installer/StepCInstall.Tests.ps1",
       "microsoftUrl": "https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/tools/agent-to-agent",
       "microsoftTitle": "Foundry agent-to-agent",
-      "acceptanceScope": "Existing DEV project only",
-      "evidence": "Closed DEV: Supervisor v5, planner v1, TASK_STATE_COMPLETED; hosted investigation runtime did not execute. Install-JawsThroughStepC.ps1 -EnvironmentName reads a Step B receipt and offline Pester covers that path. A fresh-subscription functional receipt has not been recorded, so the Step B path is not accepted."
+      "acceptanceScope": "Dev project, and stepb-accept on the Step B public foundation. Customer installation remains open because C-02 is false.",
+      "evidence": "21 October 2026: Install-JawsThroughStepC.ps1 -Mode Validate -EnvironmentName stepb-accept -AcknowledgeInferenceCharges closed with Acceptance Passed, TOOL_INVOKED_SUCCEEDED, and TASK_STATE_COMPLETED. Supervisor jaws-supervisor-stepb-accept version 2 called prompt planner jaws-investigation-planner-stepb-accept. Version 1 stayed on the Step B digest without the toolbox variable. No hosted Investigation agent was created. The Supervisor response was rate-limited after the task completed, and acceptance used DelegationCompletedUnderRateLimit. Quota stayed Static. CustomerInstallationAccepted is false. The earlier dev-project acceptance remains Supervisor v5 to planner v1."
     },
     {
       "id": "D",

@@ -2,7 +2,7 @@
 
 `installer/Uninstall-Jaws.ps1` hard-deletes one customer environment so the next install of the same names starts empty. It refuses the accepted dev project. It does not recreate resources.
 
-This is not `Install-JawsFoundryPrivateNetwork.ps1`. That script deletes a Foundry account and recreates it with network injection while public network access stays enabled. Do not run it. Uninstall stops after the delete.
+This is not `Install-JawsFoundryPrivateNetwork.ps1`. That script is deprecated. It deletes a Foundry account and recreates it with network injection while public network access stays enabled. Do not run it. Uninstall stops after the delete. A private-profile gateway and DNS resolver are deleted before the virtual network.
 
 ## Command
 
@@ -59,7 +59,18 @@ On 20 October 2026 the resource group `rg-aiops-lab-test2` was deleted and the s
 
 ## Key Vault purge protection
 
-A vault with purge protection cannot be purged before its scheduled date. Uninstall records `Key Vault purge: blocked` and `Key Vault purge not before`, then continues and still deletes the resource group. The next install must use a different Key Vault name until that date. The generated name `kvjawsaiopslabtest2` is purge-protected until `2027-01-18T04:29:10Z`. The vault the current test install uses is `kv-jaws-lab-test2`. A vault that was not present is recorded as `absent`. A vault that purge accepted is recorded as `purged`.
+A vault with purge protection cannot be purged before its scheduled date. Uninstall records `Key Vault purge: blocked` and `Key Vault purge not before`, then continues and still deletes the resource group. The next install must use a different Key Vault name until that date. A vault that was not present is recorded as `absent`. A vault that purge accepted is recorded as `purged`.
+
+On 20 October 2026, no live JAWS resource remains in subscription `c52f597b-7753-45b4-a764-67e290dcfd5e`. Four JAWS Key Vault names are still soft-deleted. Azure will not purge them early, and each name stays reserved until its scheduled purge.
+
+| Name | Deleted (UTC) | Scheduled purge (UTC) | Why it stays |
+| --- | --- | --- | --- |
+| `kv-jaws-lab-test2` | 2026-10-20T22:06:00Z | 2027-01-18T22:06:00Z | Purge protection. Deleted today. |
+| `kv-jaws-dev-001` | 2026-10-20T22:05:39Z | 2027-01-18T22:05:39Z | Purge protection. Deleted today. The installer also refuses this reserved dev name with `JAWS-STEP-B-017`. |
+| `kvjawsaiopslabtest2` | 2026-10-20T04:29:10Z | 2027-01-18T04:29:10Z | `DeletedVaultPurge`, the same refusal recorded in October. |
+| `kvjawsaiopslabtest` | 2026-10-19T00:22:58Z | 2027-01-17T00:22:58Z | `DeletedVaultPurge`, the same refusal recorded in October. |
+
+Azure auto-purges `kvjawsaiopslabtest` on 17 January 2027 and the other three on 18 January 2027. These four soft-deleted names are the only JAWS resources left in the subscription. Pass `-KeyVaultName` with a name that is not in this list.
 
 ## What is left unchanged
 
@@ -73,4 +84,4 @@ A vault with purge protection cannot be purged before its scheduled date. Uninst
 
 A pass prints `JAWS UNINSTALL PASS`, `Resource group deleted: true`, and `Customer installation accepted: false`. The milestone line is `Ready for next step: true` and `Next step: Step B Plan`. That ready line means the environment was removed. It does not accept a customer installation.
 
-Run this only when that environment should be destroyed. The current `aiops-lab-test2` resources are the Step D install under test. Do not point this command at that environment unless the intent is to delete it.
+Run this only when that environment should be destroyed. `rg-aiops-lab-test2` has already been deleted. The four soft-deleted Key Vault names above are what remains of JAWS in the subscription.

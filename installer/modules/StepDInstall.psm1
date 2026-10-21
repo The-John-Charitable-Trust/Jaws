@@ -432,7 +432,22 @@ function Invoke-JawsStepDAccept {
     $browserReasons = @()
     $installReceipt = Get-Content -LiteralPath $installPath -Raw | ConvertFrom-Json
     if ($EnvironmentName -ne 'dev') {
-        $browserReasons = @(Confirm-JawsStepDBrowser -Context $context -InstallReceipt $installReceipt)
+        $stepBReceipt = Get-Content -LiteralPath $context.StepBReceiptPath -Raw | ConvertFrom-Json
+        if ($stepBReceipt.PSObject.Properties['NetworkProfile'] -and [string]$stepBReceipt.NetworkProfile -eq 'Private') {
+            Import-Module (Join-Path $PSScriptRoot 'StepBInstall.psm1') -Force
+            Import-Module (Join-Path $PSScriptRoot 'StepDBrowser.psm1') -Force
+            $previewScope = [pscustomobject]@{
+                SubscriptionId = [string]$context.SubscriptionId
+                ResourceGroupName = [string]$context.ResourceGroupName
+                FoundryAccountName = [string]$context.FoundryAccountName
+            }
+            $preview = Get-JawsStepBFoundryPreview -Scope $previewScope
+            $layout = Get-JawsBrowserNetworkPlan -EnvironmentName $EnvironmentName
+            $subnetId = "/subscriptions/$([string]$context.SubscriptionId)/resourceGroups/$([string]$context.ResourceGroupName)/providers/Microsoft.Network/virtualNetworks/$($layout.VnetName)/subnets/$($layout.AgentsSubnet)"
+            $problem = Test-JawsStepBPrivateFoundryPosture -Account $preview -SubnetId $subnetId
+            if (-not [string]::IsNullOrWhiteSpace($problem)) { $browserReasons += "Foundry private posture drifted: $problem" }
+        }
+        $browserReasons = @($browserReasons + @(Confirm-JawsStepDBrowser -Context $context -InstallReceipt $installReceipt))
         $hostedTools = @($vm.AllowedTools | ForEach-Object { [string]$_ })
         foreach ($tool in @(Get-JawsBrowserToolNames)) {
             if ($tool -notin $hostedTools) { $browserReasons += "catalog is missing $tool" }

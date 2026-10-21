@@ -109,6 +109,30 @@ function Get-JawsBrowserNames {
         CredentialSecret = 'jaws-browser-credentials'
         ImageRepository = 'jaws/browser:step-d'
         Audience = 'api://jaws-browser'
+        Compact = $compact
+    }
+}
+
+function Get-JawsBrowserNetworkPlan {
+    param([Parameter(Mandatory)][string]$EnvironmentName)
+    $names = Get-JawsBrowserNames -EnvironmentName $EnvironmentName
+    # One address table for the browser VNet. Step B private profile and Step D both read it.
+    [pscustomobject]@{
+        VnetName = [string]$names.VnetName
+        Compact = [string]$names.Compact
+        VnetPrefix = '10.42.0.0/16'
+        AppsSubnet = 'jaws-br-apps'
+        AppsPrefix = '10.42.0.0/23'
+        AgentsSubnet = 'jaws-foundry-agents'
+        AgentsPrefix = '10.42.2.0/24'
+        PrivateEndpointSubnet = 'jaws-private-endpoints'
+        PrivateEndpointPrefix = '10.42.3.0/24'
+        GatewaySubnet = 'GatewaySubnet'
+        GatewayPrefix = '10.42.5.0/27'
+        ResolverSubnet = 'jaws-dns-inbound'
+        ResolverPrefix = '10.42.6.0/28'
+        VpnClientPrefix = '172.16.201.0/24'
+        DnsZones = @('privatelink.cognitiveservices.azure.com','privatelink.openai.azure.com','privatelink.services.ai.azure.com')
     }
 }
 
@@ -234,6 +258,7 @@ function Test-JawsFoundryAgentInjection {
 function Enable-JawsBrowserPrivateNetwork {
     param($Context)
     $names = Get-JawsBrowserNames -EnvironmentName $Context.EnvironmentName
+    $plan = Get-JawsBrowserNetworkPlan -EnvironmentName $Context.EnvironmentName
     $writes = 0
     $sub = [string]$Context.SubscriptionId
     $rg = [string]$Context.ResourceGroupName
@@ -246,17 +271,17 @@ function Enable-JawsBrowserPrivateNetwork {
     }
     $vnet = Invoke-JawsBrowserAz -AllowMissing -Arguments @('network','vnet','show','--subscription',$sub,'--resource-group',$rg,'--name',$names.VnetName,'--output','json','--only-show-errors')
     if ($null -eq $vnet) {
-        $null = Invoke-JawsBrowserAz -Arguments @('network','vnet','create','--subscription',$sub,'--resource-group',$rg,'--name',$names.VnetName,'--location',$location,'--address-prefix','10.42.0.0/16','--output','json','--only-show-errors')
+        $null = Invoke-JawsBrowserAz -Arguments @('network','vnet','create','--subscription',$sub,'--resource-group',$rg,'--name',$names.VnetName,'--location',$location,'--address-prefix',$plan.VnetPrefix,'--output','json','--only-show-errors')
         $writes++
     }
     $browserSubnet = Invoke-JawsBrowserAz -AllowMissing -Arguments @('network','vnet','subnet','show','--subscription',$sub,'--resource-group',$rg,'--vnet-name',$names.VnetName,'--name',$names.SubnetName,'--output','json','--only-show-errors')
     if ($null -eq $browserSubnet) {
-        $browserSubnet = Invoke-JawsBrowserAz -Arguments @('network','vnet','subnet','create','--subscription',$sub,'--resource-group',$rg,'--vnet-name',$names.VnetName,'--name',$names.SubnetName,'--address-prefixes','10.42.0.0/23','--delegations','Microsoft.App/environments','--output','json','--only-show-errors')
+        $browserSubnet = Invoke-JawsBrowserAz -Arguments @('network','vnet','subnet','create','--subscription',$sub,'--resource-group',$rg,'--vnet-name',$names.VnetName,'--name',$names.SubnetName,'--address-prefixes',$plan.AppsPrefix,'--delegations','Microsoft.App/environments','--output','json','--only-show-errors')
         $writes++
     }
     $foundrySubnet = Invoke-JawsBrowserAz -AllowMissing -Arguments @('network','vnet','subnet','show','--subscription',$sub,'--resource-group',$rg,'--vnet-name',$names.VnetName,'--name',$names.FoundrySubnetName,'--output','json','--only-show-errors')
     if ($null -eq $foundrySubnet) {
-        $foundrySubnet = Invoke-JawsBrowserAz -Arguments @('network','vnet','subnet','create','--subscription',$sub,'--resource-group',$rg,'--vnet-name',$names.VnetName,'--name',$names.FoundrySubnetName,'--address-prefixes','10.42.2.0/24','--delegations','Microsoft.App/environments','--output','json','--only-show-errors')
+        $foundrySubnet = Invoke-JawsBrowserAz -Arguments @('network','vnet','subnet','create','--subscription',$sub,'--resource-group',$rg,'--vnet-name',$names.VnetName,'--name',$names.FoundrySubnetName,'--address-prefixes',$plan.AgentsPrefix,'--delegations','Microsoft.App/environments','--output','json','--only-show-errors')
         $writes++
     }
     $browserSubnetId = [string](Get-JawsBrowserProperty $browserSubnet @('id'))
@@ -266,6 +291,8 @@ function Enable-JawsBrowserPrivateNetwork {
     return [pscustomobject]@{ AzureWrites = $writes; BrowserSubnetId = $browserSubnetId; FoundrySubnetId = $foundrySubnetId }
 }
 
+# DEPRECATED. Do not call this to convert an account. It leaves public network access Enabled.
+# The Step B private profile replaces it. The body below is unchanged.
 function Install-JawsFoundryPrivateNetwork {
     [CmdletBinding()]
     param(
@@ -918,7 +945,7 @@ function Invoke-JawsBrowserPrivatePath {
     $stepB = Get-JawsBrowserStepBReceipt -InstallerRoot $InstallerRoot -EnvironmentName $EnvironmentName
     $foundry = Invoke-JawsBrowserAz -AllowMissing -Arguments @('cognitiveservices','account','show','--subscription',[string]$stepB.SubscriptionId,'--resource-group',[string]$stepB.ResourceGroupName,'--name',[string]$stepB.FoundryAccountName,'--output','json','--only-show-errors')
     if ([string]::IsNullOrWhiteSpace((Test-JawsFoundryAgentInjection $foundry))) {
-        throw 'JAWS-STEP-D-043: Foundry has no agent virtual-network injection, so it cannot reach the private browser. Run Install-JawsFoundryPrivateNetwork.ps1 -AcknowledgeFoundryReplacement. No Supervisor call was made.'
+        throw 'JAWS-STEP-D-043: Foundry has no agent virtual-network injection, so it cannot reach the private browser. Create the account with Install-Jaws.ps1 -NetworkProfile Private. No Supervisor call was made.'
     }
     $endpoint = "https://$([string]$stepB.FoundryAccountName).services.ai.azure.com/api/projects/$([string]$stepB.ProjectName)"
     $supervisor = [string]$stepB.AgentName
@@ -1047,4 +1074,4 @@ function Invoke-JawsBrowserCapability {
     }
 }
 
-Export-ModuleMember -Function Get-JawsBrowserToolNames,Get-JawsBrowserNames,Install-JawsStepDBrowser,Install-JawsFoundryPrivateNetwork,Update-JawsBrowserAllowList,Get-JawsBrowserAllowListPath,Confirm-JawsStepDBrowser,Publish-JawsSupervisorBrowserImage,Invoke-JawsBrowserPrivatePath,Invoke-JawsBrowserCapability
+Export-ModuleMember -Function Get-JawsBrowserToolNames,Get-JawsBrowserNames,Get-JawsBrowserNetworkPlan,Enable-JawsBrowserPrivateNetwork,Test-JawsFoundryAgentInjection,Install-JawsStepDBrowser,Install-JawsFoundryPrivateNetwork,Update-JawsBrowserAllowList,Get-JawsBrowserAllowListPath,Confirm-JawsStepDBrowser,Publish-JawsSupervisorBrowserImage,Invoke-JawsBrowserPrivatePath,Invoke-JawsBrowserCapability

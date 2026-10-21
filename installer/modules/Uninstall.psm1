@@ -179,7 +179,11 @@ function Get-JawsUninstallResourceRank {
         '^Microsoft\.App/containerApps$' { return 10 }
         '^Microsoft\.Compute/virtualMachines$' { return 20 }
         '^Microsoft\.App/managedEnvironments$' { return 30 }
+        '^Microsoft\.Network/virtualNetworkGateways$' { return 35 }
+        '^Microsoft\.Network/dnsResolvers$' { return 36 }
         '^Microsoft\.Network/privateEndpoints$' { return 40 }
+        '^Microsoft\.Network/privateDnsZones$' { return 45 }
+        '^Microsoft\.Network/publicIPAddresses$' { return 55 }
         '^Microsoft\.Network/networkInterfaces$' { return 50 }
         '^Microsoft\.CognitiveServices/accounts/.+' { return 60 }
         '^Microsoft\.CognitiveServices/accounts$' { return 70 }

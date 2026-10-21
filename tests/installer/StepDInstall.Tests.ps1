@@ -376,8 +376,8 @@ if args[:3] == ["cognitiveservices", "account", "show"]:
 if args[:4] == ["cognitiveservices", "account", "project", "delete"]:
     emit({})
 if args[:3] == ["cognitiveservices", "account", "delete"]:
-    if "--yes" not in args:
-        print("foundry delete requires --yes", file=sys.stderr)
+    if "--yes" in args:
+        print("ERROR: unrecognized arguments: --yes", file=sys.stderr)
         sys.exit(2)
     world["foundry"] = "deleted"
     save()

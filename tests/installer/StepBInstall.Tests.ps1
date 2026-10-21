@@ -104,6 +104,10 @@ if args[:4] == ["cognitiveservices", "account", "deployment", "create"]:
     save("deployment", payload)
     emit(payload)
 if args[:4] == ["cognitiveservices", "account", "deployment", "delete"]:
+    if "--yes" in args:
+        # Real az: deployment delete has no --yes option.
+        print("ERROR: unrecognized arguments: --yes", file=sys.stderr)
+        sys.exit(2)
     if exists("deployment"):
         os.remove(path("deployment"))
     emit({})

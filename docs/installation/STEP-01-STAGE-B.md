@@ -52,6 +52,16 @@ A name you supply replaces only that resource. The other names stay at the defau
 
 Foundry, project, and Supervisor names are 3–64 characters: a lowercase letter, then lowercase letters, digits, or hyphens, ending with a letter or digit. A Key Vault name is 3–24 characters: a letter, then letters, digits, or hyphens, ending with a letter or digit, with no consecutive hyphens. A registry name is 5–50 letters or digits. `-RegistryName` is not this setting; it remains the Azure-aware registry assessment switch. An invalid name stops at `JAWS-STEP-B-027`. The reserved dev names `jaws-foundry-dev`, `jaws-dev`, `jawsregistrydev001`, `jaws-supervisor-dev`, and `kv-jaws-dev-001` stop at `JAWS-STEP-B-017`.
 
+### Model choice
+
+`-ModelName` and `-ModelVersion` choose the deployment. The default is `gpt-5-mini` `2025-08-07`. Static requires a GlobalStandard quota line for that model in the target location. Dynamic requires a regional Standard quota line. DataZone and Provisioned SKUs are not choices, and capacity stays 1.
+
+```powershell
+.\installer\Install-Jaws.ps1 -Mode Plan -NonInteractive -EnvironmentName your-environment -ResourceGroupName rg-jaws-your-environment -Location eastus -ModelName gpt-5.1 -ModelVersion 2025-11-13
+```
+
+In eastus today, gpt-5.1 (version 2025-11-13) is the GPT-5 family model with a regional Standard SKU, and Dynamic requires that SKU. Preflight reads the live catalog and quota for the location, so this note going stale cannot mislead an install. A model or quota mode the location does not offer stops at `JAWS-STEP-B-030` before any Azure write. The message names the model, the version, the location, the quota mode, and the SKUs that location offers.
+
 ## B1a. Preflight
 
 ```powershell
@@ -66,12 +76,13 @@ Azure writes: 0
 Providers: Registered
 Resource write: true
 Role assignment: true
+Model check: passed
 Model quota: deferred
 Policy simulation: not performed
 Authorized writes: bounded
 ```
 
-The report is `installer/.local/jaws-step-b-preflight.your-environment.generated.json`. It lists the only writes Install is allowed to attempt. Model quota stays deferred until the Foundry account exists, and the install then refuses a model the account does not offer. Azure Policy deny effects are listed as not simulated. A caller with Contributor but without Owner, User Access Administrator, or Role Based Access Control Administrator stops at `JAWS-STEP-B-026`. No resource group is created. Install repeats this check before its first write, so an old report cannot skip it.
+The report is `installer/.local/jaws-step-b-preflight.your-environment.generated.json`. It lists the only writes Install is allowed to attempt. `Model check: passed` means the saved model and version are offered in the location and the quota mode fits. Those two reads use `az cognitiveservices model list` and `az cognitiveservices usage list`. They need no Foundry account. A mismatch stops at `JAWS-STEP-B-030` and names the SKUs the location offers. Install repeats that check before its first write, so an old report cannot skip it. `Model quota: deferred` is the later account-catalog check, after the Foundry account exists and before the deployment is created. Azure Policy deny effects are listed as not simulated. A caller with Contributor but without Owner, User Access Administrator, or Role Based Access Control Administrator stops at `JAWS-STEP-B-026`. No resource group is created.
 
 When the Foundry account, Key Vault, or registry name is already taken, Preflight prints `is not available` and asks `Enter another` name. An invalid answer is printed and the prompt repeats. The accepted name is saved into the plan, and Preflight prints the new `Plan SHA-256`. Use that digest for Install. `-NonInteractive` does not ask. It stops at `JAWS-STEP-B-026` and names `-FoundryAccountName`, `-KeyVaultName`, or `-AcrName`. Install asks the same question before its first write.
 

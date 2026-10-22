@@ -74,6 +74,13 @@ if args[:3] == ["cognitiveservices", "account", "show"]:
     emit(load("foundry")) if exists("foundry") else missing()
 if args[:3] == ["cognitiveservices", "account", "list-models"]:
     emit([{"format": "OpenAI", "name": "gpt-5-mini", "version": "2025-08-07", "skus": [{"name": "GlobalStandard"}, {"name": "Standard"}]}])
+if args[:3] == ["cognitiveservices", "model", "list"]:
+    emit([{"format": "OpenAI", "name": "gpt-5-mini", "version": "2025-08-07", "skus": [{"name": "GlobalStandard"}, {"name": "Standard"}]}])
+if args[:3] == ["cognitiveservices", "usage", "list"]:
+    emit([
+        {"name": {"value": "OpenAI.GlobalStandard.gpt-5-mini"}, "currentValue": 0, "limit": 1},
+        {"name": {"value": "OpenAI.Standard.gpt-5-mini"}, "currentValue": 0, "limit": 1}
+    ])
 if args[:4] == ["cognitiveservices", "account", "project", "show"]:
     emit(load("project")) if exists("project") else missing()
 if args[:4] == ["cognitiveservices", "account", "project", "create"]:

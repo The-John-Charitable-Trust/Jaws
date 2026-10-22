@@ -1,0 +1,260 @@
+{
+  "SchemaVersion": "0.1",
+  "Platform": "JAWS",
+  "PlanKind": "OfflineBlueprint",
+  "EnvironmentName": "gold1",
+  "SubscriptionId": "22222222-2222-2222-2222-222222222222",
+  "SubscriptionSource": "Parameter",
+  "ResourceGroupName": "rg-jaws-gold1",
+  "Location": "eastus",
+  "CanExecute": false,
+  "AzureWrites": 0,
+  "AzureDiscoveryPerformed": false,
+  "CostsVerified": false,
+  "UserAuthorizationVerified": false,
+  "Status": "BLOCKED_PENDING_AZURE_DISCOVERY_AND_APPROVAL",
+  "Disclaimer": "Offline dependency blueprint only. This is NOT an Azure-validated plan or authorization to deploy.",
+  "Components": [
+    {
+      "Id": "vault",
+      "Name": "Azure Key Vault",
+      "ResourceType": "Microsoft.KeyVault/vaults",
+      "DependsOn": [],
+      "ProposedAction": "RequiresAzureDiscovery",
+      "AzureState": "NotChecked",
+      "PermissionState": "NotChecked",
+      "EstimatedCost": "Potential operations charges",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "foundry",
+      "Name": "Microsoft Foundry resource",
+      "ResourceType": "Microsoft.CognitiveServices/accounts",
+      "DependsOn": [],
+      "ProposedAction": "RequiresAzureDiscovery",
+      "AzureState": "NotChecked",
+      "PermissionState": "NotChecked",
+      "EstimatedCost": "Unknown",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "identity",
+      "Name": "Managed identities and scoped RBAC",
+      "ResourceType": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "DependsOn": [
+        "vault"
+      ],
+      "ProposedAction": "RequiresAzureDiscovery",
+      "AzureState": "NotChecked",
+      "PermissionState": "NotChecked",
+      "EstimatedCost": "Unknown",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "project",
+      "Name": "Microsoft Foundry project",
+      "ResourceType": "Microsoft.CognitiveServices/accounts/projects",
+      "DependsOn": [
+        "foundry"
+      ],
+      "ProposedAction": "RequiresAzureDiscovery",
+      "AzureState": "NotChecked",
+      "PermissionState": "NotChecked",
+      "EstimatedCost": "Unknown",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "datadog-mcp",
+      "Name": "Custom Datadog MCP service",
+      "ResourceType": "CustomMcpService",
+      "DependsOn": [
+        "vault",
+        "identity"
+      ],
+      "ProposedAction": "RequiresAzureDiscovery",
+      "AzureState": "NotChecked",
+      "PermissionState": "NotChecked",
+      "EstimatedCost": "Potential hosting charges",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "model",
+      "Name": "Model deployment",
+      "ResourceType": "Microsoft.CognitiveServices/accounts/deployments",
+      "DependsOn": [
+        "foundry",
+        "project"
+      ],
+      "ProposedAction": "RequiresAzureDiscovery",
+      "AzureState": "NotChecked",
+      "PermissionState": "NotChecked",
+      "EstimatedCost": "Potential inference usage",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "datadog-worker",
+      "Name": "Datadog Observability agent",
+      "ResourceType": "FoundryHostedAgent",
+      "DependsOn": [
+        "project",
+        "model",
+        "identity",
+        "datadog-mcp"
+      ],
+      "ProposedAction": "RequiresAzureDiscovery",
+      "AzureState": "NotChecked",
+      "PermissionState": "NotChecked",
+      "EstimatedCost": "Unknown",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "supervisor",
+      "Name": "Hosted Supervisor agent",
+      "ResourceType": "FoundryHostedAgent",
+      "DependsOn": [
+        "project",
+        "model",
+        "identity"
+      ],
+      "ProposedAction": "RequiresAzureDiscovery",
+      "AzureState": "NotChecked",
+      "PermissionState": "NotChecked",
+      "EstimatedCost": "Unknown",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "datadog-sandbox",
+      "Name": "Isolated Datadog worker compute",
+      "ResourceType": "ExecutionSandbox",
+      "DependsOn": [
+        "datadog-worker",
+        "identity"
+      ],
+      "ProposedAction": "RequiresAzureDiscovery",
+      "AzureState": "NotChecked",
+      "PermissionState": "NotChecked",
+      "EstimatedCost": "Potential compute and idle charges",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "azure-mcp",
+      "Name": "Azure MCP integration",
+      "ResourceType": "McpIntegration",
+      "DependsOn": [
+        "supervisor",
+        "identity"
+      ],
+      "ProposedAction": "RequiresAzureDiscovery",
+      "AzureState": "NotChecked",
+      "PermissionState": "NotChecked",
+      "EstimatedCost": "Unknown",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "azure-worker",
+      "Name": "Azure VM Security and Compliance agent",
+      "ResourceType": "FoundryHostedAgent",
+      "DependsOn": [
+        "project",
+        "model",
+        "identity",
+        "azure-mcp"
+      ],
+      "ProposedAction": "RequiresAzureDiscovery",
+      "AzureState": "NotChecked",
+      "PermissionState": "NotChecked",
+      "EstimatedCost": "Unknown",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "authz",
+      "Name": "Delegated authorization and approval broker",
+      "ResourceType": "ApplicationService",
+      "DependsOn": [
+        "identity",
+        "azure-worker",
+        "datadog-worker"
+      ],
+      "ProposedAction": "RequiresAzureDiscovery",
+      "AzureState": "NotChecked",
+      "PermissionState": "NotChecked",
+      "EstimatedCost": "Unknown",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "azure-sandbox",
+      "Name": "Isolated Azure worker compute",
+      "ResourceType": "ExecutionSandbox",
+      "DependsOn": [
+        "azure-worker",
+        "identity"
+      ],
+      "ProposedAction": "RequiresAzureDiscovery",
+      "AzureState": "NotChecked",
+      "PermissionState": "NotChecked",
+      "EstimatedCost": "Potential compute and idle charges",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "sessions",
+      "Name": "Project-scoped durable conversations",
+      "ResourceType": "PersistentStateService",
+      "DependsOn": [
+        "vault",
+        "authz"
+      ],
+      "ProposedAction": "RequiresAzureDiscovery",
+      "AzureState": "NotChecked",
+      "PermissionState": "NotChecked",
+      "EstimatedCost": "Potential storage charges",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "teams",
+      "Name": "Teams integration and Supervisor routing",
+      "ResourceType": "TeamsIntegration",
+      "DependsOn": [
+        "supervisor",
+        "sessions",
+        "authz"
+      ],
+      "ProposedAction": "RequiresAzureDiscovery",
+      "AzureState": "NotChecked",
+      "PermissionState": "NotChecked",
+      "EstimatedCost": "Unknown",
+      "ApprovalRequired": true
+    },
+    {
+      "Id": "validation",
+      "Name": "End-to-end verification",
+      "ResourceType": "Validation",
+      "DependsOn": [
+        "teams",
+        "azure-sandbox",
+        "datadog-sandbox"
+      ],
+      "ProposedAction": "RequiresAzureDiscovery",
+      "AzureState": "NotChecked",
+      "PermissionState": "NotChecked",
+      "EstimatedCost": "Potential inference and execution charges",
+      "ApprovalRequired": true
+    }
+  ],
+  "InstallScope": {
+    "SubscriptionId": "22222222-2222-2222-2222-222222222222",
+    "ResourceGroupName": "rg-jaws-gold1",
+    "Location": "eastus",
+    "EnvironmentName": "gold1",
+    "FoundryAccountName": "jaws-foundry-gold1",
+    "ProjectName": "jaws-gold1",
+    "ModelDeploymentName": "gpt-5-mini",
+    "ModelName": "gpt-5-mini",
+    "ModelVersion": "2025-08-07",
+    "KeyVaultName": "kvjawsgold1",
+    "RegistryName": "jawsacrgold1",
+    "AgentName": "jaws-supervisor-gold1",
+    "NetworkProfile": "Public",
+    "PlanSha256": "5344e84c4215c37784f46c0690dd7cb15fe77850d41c8ffadfbf41dbdfd2c4e6"
+  },
+  "PlanSha256": "5344e84c4215c37784f46c0690dd7cb15fe77850d41c8ffadfbf41dbdfd2c4e6"
+}

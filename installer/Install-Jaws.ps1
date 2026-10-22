@@ -235,7 +235,7 @@ if ($Mode -eq 'Preflight') {
         throw 'JAWS-STEP-B-016: The saved plan has no install scope. Re-run Plan with -EnvironmentName, -ResourceGroupName, and -Location.'
     }
     Assert-JawsStepBPlanNames -Scope $saved.InstallScope -BoundParameters $PSBoundParameters
-    $checked = Invoke-JawsStepBPreflight -Scope $saved.InstallScope -InstallerRoot $PSScriptRoot -PlanFile $planPath -NonInteractive:$NonInteractive
+    $checked = Invoke-JawsStepBPreflight -Scope $saved.InstallScope -InstallerRoot $PSScriptRoot -PlanFile $planPath -QuotaMode $QuotaMode -NonInteractive:$NonInteractive
     if ($checked.NamesRevised) {
         Write-Host 'Resource name replaced.'
         Write-Host "Foundry account: $($saved.InstallScope.FoundryAccountName)"
@@ -244,7 +244,7 @@ if ($Mode -eq 'Preflight') {
     }
     if (-not $checked.Ready) {
         Write-JawsMilestoneResult -Result FAIL -ReadyForNextStep $false -NextStep 'Step B Install' -EvidencePath $checked.ReportPath
-        throw "JAWS-STEP-B-026: Step B preflight is not ready. No Azure writes were attempted. $($checked.Report.Reasons -join ' ')"
+        throw (Get-JawsStepBPreflightStopMessage -Preflight $checked)
     }
     Write-Host 'STEP-B PREFLIGHT PASS'
     Write-Host 'Azure writes: 0'
@@ -252,6 +252,7 @@ if ($Mode -eq 'Preflight') {
     Write-Host 'Providers: Registered'
     Write-Host "Resource write: $($checked.Report.ResourceWrite.ToString().ToLowerInvariant())"
     Write-Host "Role assignment: $($checked.Report.RoleAssignment.ToString().ToLowerInvariant())"
+    Write-Host "Model check: $($checked.Report.ModelCheck)"
     Write-Host "Location: $($checked.Report.Location)"
     Write-Host 'Model quota: deferred'
     Write-Host 'Policy simulation: not performed'
@@ -347,7 +348,20 @@ if ($Mode -eq 'Accept') {
     Import-Module (Join-Path $PSScriptRoot 'modules/StepBInstall.psm1') -Force
     $acceptEvidence = Join-Path $PSScriptRoot ".local/jaws-step-b-acceptance.$EnvironmentName.generated.json"
     try {
-        $accepted = Invoke-JawsStepBAccept -EnvironmentName $EnvironmentName -ResourceGroupName $ResourceGroupName -Location $Location -ModelName $ModelName -ModelVersion $ModelVersion -InstallerRoot $PSScriptRoot -FoundryAccountName $FoundryAccountName -ProjectName $ProjectName -KeyVaultName $KeyVaultName -AcrName $AcrName -SupervisorAgentName $SupervisorAgentName
+        $acceptArgs = @{
+            EnvironmentName = $EnvironmentName
+            ResourceGroupName = $ResourceGroupName
+            Location = $Location
+            InstallerRoot = $PSScriptRoot
+            FoundryAccountName = $FoundryAccountName
+            ProjectName = $ProjectName
+            KeyVaultName = $KeyVaultName
+            AcrName = $AcrName
+            SupervisorAgentName = $SupervisorAgentName
+        }
+        if ($PSBoundParameters.ContainsKey('ModelName')) { $acceptArgs.ModelName = $ModelName }
+        if ($PSBoundParameters.ContainsKey('ModelVersion')) { $acceptArgs.ModelVersion = $ModelVersion }
+        $accepted = Invoke-JawsStepBAccept @acceptArgs
     } catch {
         Save-JawsMilestoneFailure -Path $acceptEvidence -Message $_.Exception.Message -Started $jawsMilestoneStarted
         Write-JawsMilestoneResult -Result FAIL -ReadyForNextStep $false -NextStep 'Step C Validate' -EvidencePath $acceptEvidence

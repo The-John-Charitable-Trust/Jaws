@@ -527,11 +527,170 @@ function Resolve-JawsStepBTakenName {
     return $false
 }
 
+function ConvertTo-JawsStepBItemList {
+    param($Value)
+    if ($null -eq $Value) { return @() }
+    if ($Value -is [System.Array]) { return @($Value) }
+    if ($Value.PSObject.Properties['value'] -and $null -ne $Value.value) { return @($Value.value) }
+    return @($Value)
+}
+
+function Get-JawsStepBUsageName {
+    param($Item)
+    if ($null -eq $Item -or -not $Item.PSObject.Properties['name']) { return '' }
+    $name = $Item.name
+    if ($null -eq $name) { return '' }
+    if ($name -is [string]) { return $name }
+    if ($name.PSObject.Properties['value']) { return [string]$name.value }
+    return [string]$name
+}
+
+function Get-JawsStepBQuotaFamily {
+    param([string]$UsageName,[string]$ModelName)
+    if ([string]::IsNullOrWhiteSpace($UsageName) -or [string]::IsNullOrWhiteSpace($ModelName)) { return '' }
+    foreach ($family in @('GlobalProvisionedManaged','DataZoneProvisionedManaged','GlobalStandard','DataZoneStandard','ProvisionedManaged','Standard','Developer')) {
+        $pattern = '(^|\.)' + [regex]::Escape($family) + '\.' + [regex]::Escape($ModelName) + '$'
+        if ($UsageName -cmatch $pattern) { return $family }
+    }
+    return ''
+}
+
+function Get-JawsStepBLocationQuotaFamilies {
+    param($Usage,[Parameter(Mandatory)][string]$ModelName)
+    $families = [System.Collections.Generic.List[string]]::new()
+    foreach ($item in @(ConvertTo-JawsStepBItemList $Usage)) {
+        if ($null -eq $item) { continue }
+        $family = Get-JawsStepBQuotaFamily -UsageName (Get-JawsStepBUsageName $item) -ModelName $ModelName
+        if (-not [string]::IsNullOrWhiteSpace($family) -and -not $families.Contains($family)) { $families.Add($family) }
+    }
+    return @($families)
+}
+
+function Get-JawsStepBCatalogModel {
+    param($Item)
+    if ($null -eq $Item) { return $null }
+    $model = $Item
+    if ($Item.PSObject.Properties['model'] -and $null -ne $Item.model) { $model = $Item.model }
+    $itemName = [string](Get-JawsStepBProperty -Object $model -Names @('name'))
+    if ([string]::IsNullOrWhiteSpace($itemName)) { $itemName = [string](Get-JawsStepBProperty -Object $Item -Names @('name')) }
+    $itemVersion = [string](Get-JawsStepBProperty -Object $model -Names @('version'))
+    if ([string]::IsNullOrWhiteSpace($itemVersion)) { $itemVersion = [string](Get-JawsStepBProperty -Object $Item -Names @('version')) }
+    $format = [string](Get-JawsStepBProperty -Object $model -Names @('format'))
+    if ([string]::IsNullOrWhiteSpace($format)) { $format = [string](Get-JawsStepBProperty -Object $Item -Names @('format')) }
+    $skus = @()
+    if ($model.PSObject.Properties['skus']) { $skus = @($model.skus) }
+    elseif ($Item.PSObject.Properties['skus']) { $skus = @($Item.skus) }
+    elseif ($model.PSObject.Properties['sku'] -and $null -ne $model.sku) { $skus = @($model.sku) }
+    $skuNames = [System.Collections.Generic.List[string]]::new()
+    foreach ($sku in $skus) {
+        if ($null -eq $sku) { continue }
+        $skuName = [string]$sku
+        if ($sku.PSObject.Properties['name']) { $skuName = [string]$sku.name }
+        if (-not [string]::IsNullOrWhiteSpace($skuName) -and -not $skuNames.Contains($skuName)) { $skuNames.Add($skuName) }
+    }
+    return [pscustomobject]@{ Name = $itemName; Version = $itemVersion; Format = $format; Skus = @($skuNames) }
+}
+
+function Get-JawsStepBLocationModelOffer {
+    param($Catalog,[Parameter(Mandatory)][string]$Name,[Parameter(Mandatory)][string]$Version)
+    $versionOffered = $false
+    $nameOffered = $false
+    $versionSkus = [System.Collections.Generic.List[string]]::new()
+    $nameSkus = [System.Collections.Generic.List[string]]::new()
+    foreach ($item in @(ConvertTo-JawsStepBItemList $Catalog)) {
+        $model = Get-JawsStepBCatalogModel $item
+        if ($null -eq $model -or $model.Name -ne $Name) { continue }
+        if (-not [string]::IsNullOrWhiteSpace($model.Format) -and $model.Format -ne 'OpenAI') { continue }
+        $nameOffered = $true
+        foreach ($skuName in @($model.Skus)) {
+            if (-not $nameSkus.Contains($skuName)) { $nameSkus.Add($skuName) }
+        }
+        if ($model.Version -ne $Version) { continue }
+        $versionOffered = $true
+        foreach ($skuName in @($model.Skus)) {
+            if (-not $versionSkus.Contains($skuName)) { $versionSkus.Add($skuName) }
+        }
+    }
+    $shown = $(if ($versionOffered) { @($versionSkus) } else { @($nameSkus) })
+    return [pscustomobject]@{ VersionOffered = $versionOffered; NameOffered = $nameOffered; Skus = @($shown) }
+}
+
+function New-JawsStepBModelChoiceFailure {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Version,
+        [Parameter(Mandatory)][string]$Location,
+        [Parameter(Mandatory)][string]$QuotaMode,
+        [bool]$VersionOffered,
+        [string[]]$OfferedSkus = @(),
+        [string[]]$QuotaFamilies = @()
+    )
+    $shown = @($OfferedSkus | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($shown.Count -eq 0) { $shown = @($QuotaFamilies | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) }
+    $offerText = if ($shown.Count -eq 0) { 'no SKU for that model' } else { ($shown -join ', ') }
+    if (-not $VersionOffered) {
+        return "JAWS-STEP-B-030: Model $Name $Version in $Location is not offered. Quota mode $QuotaMode was requested. This location offers $offerText. No Azure writes were attempted."
+    }
+    return "JAWS-STEP-B-030: Model $Name $Version in $Location does not support quota mode $QuotaMode. This location offers $offerText. Dynamic requires a regional Standard quota line. Static requires GlobalStandard. No Azure writes were attempted."
+}
+
+function Resolve-JawsStepBModelChoice {
+    param(
+        [Parameter(Mandatory)]$Scope,
+        [Parameter(Mandatory)][ValidateSet('Static','Dynamic')][string]$QuotaMode
+    )
+    $modelName = [string]$Scope.ModelName
+    $modelVersion = [string]$Scope.ModelVersion
+    $locationName = [string]$Scope.Location
+    try {
+        $catalog = Invoke-JawsStepBAz -Arguments @('cognitiveservices','model','list','--location',$locationName,'--output','json','--only-show-errors')
+    } catch {
+        return [pscustomobject]@{
+            Passed = $false
+            Message = "JAWS-STEP-B-030: Could not read the model catalog for $modelName $modelVersion in ${locationName}. $($_.Exception.Message) No Azure writes were attempted."
+        }
+    }
+    $offer = Get-JawsStepBLocationModelOffer -Catalog $catalog -Name $modelName -Version $modelVersion
+    $quotaFamilies = @()
+    try {
+        $usage = Invoke-JawsStepBAz -Arguments @('cognitiveservices','usage','list','--location',$locationName,'--output','json','--only-show-errors')
+        $quotaFamilies = @(Get-JawsStepBLocationQuotaFamilies -Usage $usage -ModelName $modelName)
+    } catch {
+        if ($offer.VersionOffered) {
+            return [pscustomobject]@{
+                Passed = $false
+                Message = "JAWS-STEP-B-030: Could not read quota for $modelName $modelVersion in ${locationName}. $($_.Exception.Message) No Azure writes were attempted."
+            }
+        }
+    }
+    $fits = $(if ($QuotaMode -eq 'Dynamic') { @($quotaFamilies) -contains 'Standard' } else { @($quotaFamilies) -contains 'GlobalStandard' })
+    if ($offer.VersionOffered -and $fits) {
+        return [pscustomobject]@{ Passed = $true; Message = 'passed' }
+    }
+    return [pscustomobject]@{
+        Passed = $false
+        Message = (New-JawsStepBModelChoiceFailure -Name $modelName -Version $modelVersion -Location $locationName -QuotaMode $QuotaMode -VersionOffered:$offer.VersionOffered -OfferedSkus $offer.Skus -QuotaFamilies $quotaFamilies)
+    }
+}
+
+function Get-JawsStepBPreflightStopMessage {
+    param([Parameter(Mandatory)]$Preflight)
+    $modelStop = @($Preflight.Report.Reasons | Where-Object { [string]$_ -like 'JAWS-STEP-B-030:*' })
+    if ($modelStop.Count -gt 0) {
+        $rest = @($Preflight.Report.Reasons | Where-Object { [string]$_ -notlike 'JAWS-STEP-B-030:*' })
+        $text = $modelStop -join ' '
+        if ($rest.Count -gt 0) { $text = "$text $($rest -join ' ')" }
+        return $text
+    }
+    return "JAWS-STEP-B-026: Step B preflight is not ready. No Azure writes were attempted. $($Preflight.Report.Reasons -join ' ')"
+}
+
 function Invoke-JawsStepBPreflight {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]$Scope,
         [Parameter(Mandatory)][string]$InstallerRoot,
+        [ValidateSet('Static','Dynamic')][string]$QuotaMode = 'Static',
         [string]$PlanFile,
         [switch]$NonInteractive,
         [scriptblock]$Prompter
@@ -662,6 +821,12 @@ function Invoke-JawsStepBPreflight {
         $policyNote = $_.Exception.Message
     }
     if ($namesRevised) { Update-JawsStepBPlanFile -PlanFile $PlanFile -Scope $Scope }
+    $modelChoice = Resolve-JawsStepBModelChoice -Scope $Scope -QuotaMode $QuotaMode
+    $modelCheck = 'passed'
+    if (-not $modelChoice.Passed) {
+        $modelCheck = 'failed'
+        $reasons.Add([string]$modelChoice.Message)
+    }
     $ready = $reasons.Count -eq 0
     $report = [pscustomobject]@{
         SchemaVersion = '1.0'
@@ -676,6 +841,7 @@ function Invoke-JawsStepBPreflight {
         RoleAssignment = [bool]$canAssign
         LocationAccepted = [bool]$locationOk
         ModelQuota = 'DeferredUntilFoundryAccountExists'
+        ModelCheck = $modelCheck
         ModelBound = "$($Scope.ModelName) $($Scope.ModelVersion) OpenAI capacity 1. Static uses GlobalStandard. Dynamic uses the regional Standard SKU. Quota mode is applied at Install and defaults to Static."
         PolicySimulation = 'NotPerformed'
         PolicyAssignmentCount = $policyCount
@@ -692,7 +858,7 @@ function Invoke-JawsStepBPreflight {
             } else { @() })
         )
         Reasons = @($reasons)
-        AuthorizationScope = 'The plan SHA-256 binds the resource names, subscription, and model. This report binds the read-only permission and provider checks. Neither one authorizes an unbounded mutation or an unbounded cost. Model quota is checked again after the Foundry account exists and before the deployment is created. Azure Policy deny effects are not simulated.'
+        AuthorizationScope = 'The plan SHA-256 binds the resource names, subscription, and model. This report binds the read-only permission, provider, and location model checks. Neither one authorizes an unbounded mutation or an unbounded cost. The location catalog and quota mode are checked before any write. The account catalog is checked again after the Foundry account exists and before the deployment is created. Azure Policy deny effects are not simulated.'
     }
     $reportPath = Join-Path $local "jaws-step-b-preflight.$($Scope.EnvironmentName).generated.json"
     $report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $reportPath -Encoding utf8
@@ -723,9 +889,9 @@ function Invoke-JawsStepBInstall {
     }
     $devState = Join-Path $InstallerRoot 'config/jaws-installation-state.dev.json'
     $devBefore = Get-Content -LiteralPath $devState -Raw
-    $preflight = Invoke-JawsStepBPreflight -Scope $Scope -InstallerRoot $InstallerRoot -PlanFile $PlanFile -NonInteractive:$NonInteractive
+    $preflight = Invoke-JawsStepBPreflight -Scope $Scope -InstallerRoot $InstallerRoot -PlanFile $PlanFile -QuotaMode $QuotaMode -NonInteractive:$NonInteractive
     if (-not $preflight.Ready) {
-        throw "JAWS-STEP-B-026: Step B preflight is not ready. No Azure writes were attempted. $($preflight.Report.Reasons -join ' ')"
+        throw (Get-JawsStepBPreflightStopMessage -Preflight $preflight)
     }
     $recomputed = Get-JawsStepBScopeSha256 -Scope $Scope
     if ([string]$Scope.PlanSha256 -cne $recomputed) {
@@ -1033,8 +1199,8 @@ function Invoke-JawsStepBAccept {
         [Parameter(Mandatory)][string]$EnvironmentName,
         [Parameter(Mandatory)][string]$ResourceGroupName,
         [Parameter(Mandatory)][string]$Location,
-        [Parameter(Mandatory)][string]$ModelName,
-        [Parameter(Mandatory)][string]$ModelVersion,
+        [string]$ModelName,
+        [string]$ModelVersion,
         [Parameter(Mandatory)][string]$InstallerRoot,
         [string]$FoundryAccountName,
         [string]$ProjectName,
@@ -1052,6 +1218,18 @@ function Invoke-JawsStepBAccept {
     if ([string]$receipt.Status -eq 'STEP_B_PRIVATE_PAUSED') {
         throw 'JAWS-STEP-B-029: Step B Install paused before the Supervisor was created. Connect the point-to-site VPN on this computer and run the same Install again. Accept was not attempted.'
     }
+    $modelDifferences = @()
+    if ($PSBoundParameters.ContainsKey('ModelName') -and [string]$ModelName -cne [string]$receipt.ModelName) {
+        $modelDifferences += "-ModelName '$ModelName' and receipt ModelName '$([string]$receipt.ModelName)'"
+    }
+    if ($PSBoundParameters.ContainsKey('ModelVersion') -and [string]$ModelVersion -cne [string]$receipt.ModelVersion) {
+        $modelDifferences += "-ModelVersion '$ModelVersion' and receipt ModelVersion '$([string]$receipt.ModelVersion)'"
+    }
+    if ($modelDifferences.Count -gt 0) {
+        throw "JAWS-STEP-B-025: Caller model parameters disagree with the install receipt ($($modelDifferences -join '; ')). Accept uses the receipt. No resources were changed."
+    }
+    $ModelName = [string]$receipt.ModelName
+    $ModelVersion = [string]$receipt.ModelVersion
     $account = Invoke-JawsStepBAz -Arguments @('account','show','--output','json','--only-show-errors')
     if ([string]$account.id -ine [string]$receipt.SubscriptionId) {
         throw 'JAWS-STEP-B-019: Azure CLI subscription differs from the install receipt. No resources were changed.'
@@ -1200,4 +1378,4 @@ function Invoke-JawsStepBAccept {
 }
 
 . (Join-Path $PSScriptRoot 'StepBPrivateNetwork.ps1')
-Export-ModuleMember -Function New-JawsStepBInstallScope,Get-JawsStepBScopeSha256,Get-JawsStepBNetworkProfile,Resolve-JawsStepBPlanTarget,Get-JawsStepBAuthorizedWrites,Assert-JawsStepBPlanNames,Invoke-JawsStepBPreflight,Invoke-JawsStepBInstall,Invoke-JawsStepBAccept,Get-JawsStepBFoundryPreview,Test-JawsStepBPrivateFoundryPosture
+Export-ModuleMember -Function New-JawsStepBInstallScope,Get-JawsStepBScopeSha256,Get-JawsStepBNetworkProfile,Resolve-JawsStepBPlanTarget,Get-JawsStepBAuthorizedWrites,Assert-JawsStepBPlanNames,Invoke-JawsStepBPreflight,Invoke-JawsStepBInstall,Invoke-JawsStepBAccept,Get-JawsStepBPreflightStopMessage,Get-JawsStepBFoundryPreview,Test-JawsStepBPrivateFoundryPosture

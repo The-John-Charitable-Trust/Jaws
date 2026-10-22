@@ -82,6 +82,18 @@ if args[:3] == ["cognitiveservices", "account", "list-models"]:
     if os.environ.get("JAWS_STEPB_STUB_STANDARD_SKU", "1") == "1":
         skus.append({"name": "Standard"})
     emit([{"format": "OpenAI", "name": "gpt-5-mini", "version": "2025-08-07", "skus": skus}])
+if args[:3] == ["cognitiveservices", "model", "list"]:
+    emit([
+        {"format": "OpenAI", "name": "gpt-5-mini", "version": "2025-08-07", "skus": [{"name": "GlobalStandard"}, {"name": "Standard"}]},
+        {"format": "OpenAI", "name": "gpt-5.1", "version": "2025-11-13", "skus": [{"name": "GlobalStandard"}, {"name": "Standard"}]}
+    ])
+if args[:3] == ["cognitiveservices", "usage", "list"]:
+    emit([
+        {"name": {"value": "OpenAI.GlobalStandard.gpt-5-mini"}, "currentValue": 0, "limit": 1},
+        {"name": {"value": "OpenAI.Standard.gpt-5-mini"}, "currentValue": 0, "limit": 1},
+        {"name": {"value": "OpenAI.GlobalStandard.gpt-5.1"}, "currentValue": 0, "limit": 1},
+        {"name": {"value": "OpenAI.Standard.gpt-5.1"}, "currentValue": 0, "limit": 1}
+    ])
 if args[:4] == ["cognitiveservices", "account", "project", "show"]:
     emit(load("project")) if exists("project") else missing()
 if args[:4] == ["cognitiveservices", "account", "project", "create"]:

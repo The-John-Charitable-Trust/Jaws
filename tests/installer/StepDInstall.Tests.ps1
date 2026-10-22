@@ -425,7 +425,8 @@ sys.exit(9)
             [string]$FoundryAccountName = 'jaws-foundry-lab1',
             [string]$ProjectName = 'jaws-lab1',
             [string]$Image = $script:image,
-            [string]$AgentName = 'jaws-supervisor-lab1'
+            [string]$AgentName = 'jaws-supervisor-lab1',
+            [string]$ModelDeploymentName = 'gpt-5-mini'
         )
         $local = Join-Path $script:root 'installer/.local'
         if (-not (Test-Path -LiteralPath $local)) { New-Item -ItemType Directory -Path $local | Out-Null }
@@ -439,7 +440,7 @@ sys.exit(9)
             AgentName = $AgentName
             KeyVaultName = 'kvjawslab1'
             Image = $Image
-            ModelDeploymentName = 'gpt-5-mini'
+            ModelDeploymentName = $ModelDeploymentName
             SubscriptionId = '22222222-2222-2222-2222-222222222222'
             Location = 'eastus'
         } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $local "jaws-step-b-install.$EnvironmentName.generated.json") -Encoding utf8
@@ -519,6 +520,16 @@ Describe 'Step D catalog' {
 
         Write-StepDReceipt -EnvironmentName 'dev2' -FoundryAccountName 'jaws-foundry-dev2' -ProjectName 'jaws-dev2' -AgentName 'jaws-supervisor-dev2' -Image 'jawsregistrydev001.azurecr.io/jaws/supervisor@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
         { Resolve-JawsStepDContext -EnvironmentName 'dev2' -InstallerRoot $installer } | Should -Throw '*JAWS-STEP-D-017*'
+    }
+
+    It 'reads a deployment name other than the dev fixture from the Step B receipt' {
+        $installer = Join-Path $script:root 'installer'
+        Write-StepDAcceptance 'mdl1'
+        Write-StepDReceipt -EnvironmentName 'mdl1' -FoundryAccountName 'jaws-foundry-mdl1' -ProjectName 'jaws-mdl1' -AgentName 'jaws-supervisor-mdl1' -ModelDeploymentName 'gpt-5.1'
+        $context = Resolve-JawsStepDContext -EnvironmentName 'mdl1' -InstallerRoot $installer
+        $context.Profile | Should -Be 'StepB'
+        $context.ModelDeploymentName | Should -Be 'gpt-5.1'
+        Remove-Item -LiteralPath (Join-Path $installer '.local/jaws-step-b-install.mdl1.generated.json'), (Join-Path $installer '.local/jaws-step-c-final-acceptance.mdl1.generated.json') -Force -ErrorAction SilentlyContinue
     }
 }
 
